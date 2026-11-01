@@ -63,5 +63,18 @@ def test_shutdown_engine_and_handler_are_reclaimed_together(qapp):
     assert handler_ref() is None
 
 
+
+def test_explicit_close_disconnects_parent_destruction_callback(qapp, monkeypatch):
+    parent = QObject()
+    handler = _QtLogHandler(parent=parent)
+    callbacks = []
+    monkeypatch.setattr(handler, "_detach_from_loggers", lambda: callbacks.append(True))
+    handler.close()
+    _delete_parent(parent, qapp)
+    # Closed handlers have already left their loggers. There must be no Python
+    # callback left for QObject destruction to invoke during cyclic collection.
+    assert not callbacks
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))

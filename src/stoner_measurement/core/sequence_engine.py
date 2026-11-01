@@ -145,6 +145,8 @@ class _QtLogHandler(logging.Handler):
     def __init__(self, parent: QObject | None = None, level: int = logging.DEBUG) -> None:
         logging.Handler.__init__(self, level)
         self._qt_closed = False
+        self._parent_ref = None
+        self._destroyed_callback = None
         self._emitter = _QtLogEmitter(parent)
         self.record_emitted = self._emitter.record_emitted
         if parent is not None:
@@ -158,6 +160,8 @@ class _QtLogHandler(logging.Handler):
                 if handler is not None:
                     handler._detach_from_loggers()
 
+            self._parent_ref = ref(parent)
+            self._destroyed_callback = detach_handler
             parent.destroyed.connect(detach_handler)
 
     def _detach_from_loggers(self) -> None:
@@ -200,6 +204,20 @@ class _QtLogHandler(logging.Handler):
         """Close the handler once, including during late Qt/Python finalization."""
         if getattr(self, "_qt_closed", False):
             return
+        # Explicit shutdown must remove the Python callback before Qt destroys
+        # the parent during cyclic GC. A weak capture alone does not make a
+        # queued/native callback safe once Python has begun clearing its graph.
+        callback = getattr(self, "_destroyed_callback", None)
+        parent_ref = getattr(self, "_parent_ref", None)
+        self._destroyed_callback = None
+        self._parent_ref = None
+        parent = parent_ref() if parent_ref is not None else None
+        if parent is not None and callback is not None:
+            try:
+                parent.destroyed.disconnect(callback)
+            except (RuntimeError, TypeError):
+                # The native parent may already be in its destruction path.
+                pass
         # A QObject ``destroyed`` callback can run very late in interpreter
         # shutdown, after logging.Handler's instance state has been cleared.
         # There is nothing left for Handler.close() to unregister in that case.

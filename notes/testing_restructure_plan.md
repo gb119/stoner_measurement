@@ -14,8 +14,18 @@
 - Focused validation: 207 passed, one skipped with offscreen PyQt5/Python 3.14.
   The crash-adjacent SaveCommand node and three new tests also passed in three
   fresh subprocesses (four passed per run). Ruff and git diff --check passed.
+- Follow-up: run 41321318273 confirmed that a weak capture alone still crashes
+  in both Python 3.12 jobs. Explicit handler close now disconnects the parent's
+  destroyed signal callback before cyclic GC can invoke it. Added a fourth
+  regression that fails without this disconnection and preserves native-parent
+  fallback cleanup, logger isolation and engine reclamation.
+- The stronger repair passes 105 focused tests (one skipped) on both Python 3.12
+  and 3.14. Python 3.12 uses a project-local virtual environment with inherited
+  scientific dependencies and its own Qt/Python packages; no existing environment
+  was modified. The earlier weak-only revision passed 4,157 full-suite tests on
+  Python 3.14, illustrating why hosted Python 3.12 confirmation is required.
 - Full-suite coverage and the four hosted matrix jobs must validate the repair;
-  the local Python 3.12 environment does not have the required Qt dependencies.
+  the original Python 3.12 environment lacked the required Qt dependencies.
 
 ## 2026-11-01: Plot Points polar and surface failure recovery
 
