@@ -18,10 +18,11 @@ from stoner_measurement.core.plotting.service import submit_from_plugin
 from stoner_measurement.ui.widgets import SISpinBox
 
 
-def execute_polar_form(plugin, *, trace):
+def execute_polar_form(plugin, *, trace, evaluate=None):
     """Evaluate independent angle and dependent radius once per execution."""
-    angle = np.asarray(plugin.eval(plugin.polar_angle_expr), dtype=float)
-    radius = np.asarray(plugin.eval(plugin.polar_radius_expr), dtype=float)
+    evaluate = plugin.eval if evaluate is None else evaluate
+    angle = np.asarray(evaluate(plugin.polar_angle_expr), dtype=float)
+    radius = np.asarray(evaluate(plugin.polar_radius_expr), dtype=float)
     dimensions = 1 if trace else 0
     if angle.ndim != dimensions or radius.ndim != dimensions or angle.shape != radius.shape:
         raise ValueError(
@@ -50,14 +51,14 @@ def execute_polar_form(plugin, *, trace):
                 else ChannelMetadata(channel.title())
             )
         if error_expression:
-            error = np.asarray(plugin.eval(error_expression), dtype=float)
+            error = np.asarray(evaluate(error_expression), dtype=float)
             if error.shape != angle.shape:
                 raise ValueError("Polar uncertainties must match their source inputs.")
             errors[channel] = np.atleast_1d(error)
-    identity = plugin.eval(plugin.polar_id_expr)
+    identity = evaluate(plugin.polar_id_expr)
     if not isinstance(identity, str) or not identity.strip():
         raise ValueError("Polar series ID expression must produce a nonblank string.")
-    title = str(plugin.eval(plugin.polar_title_expr))
+    title = str(evaluate(plugin.polar_title_expr))
     update = SeriesUpdate(
         identity,
         PlotData(

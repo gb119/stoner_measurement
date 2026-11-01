@@ -529,7 +529,12 @@ class PlotTraceCommand(CommandPlugin):
             >>> engine.shutdown()
         """
         if self.plot_form != "xy":
-            execute_trace_form(self)
+            try:
+                execute_trace_form(self)
+            except (LookupError, AttributeError, NameError) as exc:
+                self.log.warning(
+                    "PlotTrace: expression data is unavailable — skipping plot: %s", exc
+                )
             return
         if self.advanced_mode:
             self._execute_advanced_xy()
@@ -543,7 +548,13 @@ class PlotTraceCommand(CommandPlugin):
             )
             return
         trace_expr = traces[self.trace_key]
-        trace_data = self.eval(trace_expr)
+        try:
+            trace_data = self.eval(trace_expr)
+        except (LookupError, AttributeError, NameError) as exc:
+            self.log.warning(
+                "PlotTrace: trace %r is unavailable — skipping plot: %s", self.trace_key, exc
+            )
+            return
         try:
             x_arr = np.asarray(trace_data.x, dtype=float)
         except AttributeError:
@@ -654,9 +665,17 @@ class PlotTraceCommand(CommandPlugin):
         if not self.x_expr or not self.y_expr:
             self.log.warning("PlotTrace: x_expr or y_expr is empty — skipping plot.")
             return
-        x_data = self.eval(self.x_expr)
-        y_data = self.eval(self.y_expr)
-        title = str(self.eval(self.title_expr)) if self.title_expr else "plot"
+        try:
+            x_data = self.eval(self.x_expr)
+            y_data = self.eval(self.y_expr)
+            title_data = self.eval(self.title_expr) if self.title_expr else "plot"
+        except (LookupError, AttributeError, NameError) as exc:
+            self.log.warning("PlotTrace: expression data is unavailable — skipping plot: %s", exc)
+            return
+        if x_data is None or y_data is None or title_data is None:
+            self.log.warning("PlotTrace: expression returned no data — skipping plot.")
+            return
+        title = str(title_data)
         if not self._wait_for_plot_ready(timeout=None):
             self.log.debug("PlotTrace: wait for plot readiness interrupted for %r.", title)
             return

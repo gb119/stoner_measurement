@@ -1028,7 +1028,7 @@ class CurveFitPlugin(TransformPlugin):
         ``scipy.optimize.curve_fit``.  Returns a dict whose keys are the
         parameter names and their ``_err`` counterparts.
 
-        If curve fitting fails (e.g. convergence failure, missing scipy) the
+        If preparation, curve fitting or result construction fails, the
         method logs an error and returns a dict of ``NaN`` values so that
         downstream code can still run.
 
@@ -1064,6 +1064,14 @@ class CurveFitPlugin(TransformPlugin):
             True
             >>> engine.shutdown()
         """
+        try:
+            return self._transform_fit()
+        except Exception as exc:
+            self.log.exception("CurveFit: fitting failed — %s", exc)
+            return {name: _NAN for name in self.output_value_names}
+
+    def _transform_fit(self) -> dict[str, Any]:
+        """Prepare, fit and build outputs within the transform error boundary."""
         nan_result = {n: _NAN for n in self.output_value_names}
 
         # ---- 1. Retrieve x / y / sigma from the engine namespace ---------

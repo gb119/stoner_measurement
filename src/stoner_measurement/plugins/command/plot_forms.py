@@ -1,6 +1,7 @@
 """Shared explicit surface bindings and display-aware plot command controls."""
 
 from copy import deepcopy
+from functools import partial
 from uuid import uuid4
 
 import numpy as np
@@ -140,16 +141,36 @@ def supported_forms(plugin) -> set[str]:
     return forms
 
 
-def scalar(plugin, expression: str) -> float:
+class UnavailablePointData(ValueError):
+    """A point expression failed or returned an unavailable scalar value."""
+
+
+def _evaluate_point_expression(plugin, expression):
+    """Resolve point inputs before submission, including failed-fit NaNs."""
+    try:
+        value = plugin.eval(expression)
+    except Exception as exc:
+        raise UnavailablePointData(f"{expression!r}: {exc}") from exc
+    if value is None:
+        raise UnavailablePointData(f"{expression!r} returned no value")
+    array = np.asarray(value)
+    if array.ndim == 0 and np.issubdtype(array.dtype, np.number) and not np.isfinite(array):
+        raise UnavailablePointData(f"{expression!r} returned {value!r}")
+    return value
+
+
+def scalar(plugin, expression: str, *, evaluate=None) -> float:
     """Evaluate one numeric scalar, rejecting arrays rather than coercing them."""
-    value = np.asarray(plugin.eval(expression), dtype=float)
+    evaluate = plugin.eval if evaluate is None else evaluate
+    value = np.asarray(evaluate(expression), dtype=float)
     if value.ndim != 0:
         raise ValueError("A fixed/point coordinate or value must be a scalar.")
     return float(value)
 
 
-def _identity(plugin, expression, description) -> str:
-    value = plugin.eval(expression)
+def _identity(plugin, expression, description, *, evaluate=None) -> str:
+    evaluate = plugin.eval if evaluate is None else evaluate
+    value = evaluate(expression)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{description} expression must produce a nonblank string.")
     return value
@@ -258,10 +279,11 @@ def _scalar_metadata(plugin, expression) -> ChannelMetadata:
 
 def execute_points_form(plugin, axis_label) -> None:
     """Resolve shared scalar coordinates once and append explicit measured Z cells."""
+    evaluate = partial(_evaluate_point_expression, plugin)
     if plugin.plot_form == "polar":
         from stoner_measurement.plugins.command.polar_forms import execute_polar_form
 
-        execute_polar_form(plugin, trace=False)
+        execute_polar_form(plugin, trace=False, evaluate=evaluate)
         return
     catalog = plugin.engine_namespace.get("_values", {})
 
@@ -271,17 +293,25 @@ def execute_points_form(plugin, axis_label) -> None:
         )
         return axis_label(key, catalog.get(key, expression))
 
-    x = scalar(plugin, plugin.new_x_expr)
-    y = scalar(plugin, plugin.coordinate_y_expr)
-    value = scalar(plugin, plugin.value_expr) if plugin.plot_form == "xyz_value" else None
-    acquisition = _identity(plugin, plugin.acquisition_id_expr, "Acquisition identity")
+    x = scalar(plugin, plugin.new_x_expr, evaluate=evaluate)
+    y = scalar(plugin, plugin.coordinate_y_expr, evaluate=evaluate)
+    value = (
+        scalar(plugin, plugin.value_expr, evaluate=evaluate)
+        if plugin.plot_form == "xyz_value"
+        else None
+    )
+    acquisition = _identity(
+        plugin, plugin.acquisition_id_expr, "Acquisition identity", evaluate=evaluate
+    )
     updates = []
     for entry in plugin.z_entries:
         expression = entry.get("expr") or catalog.get(entry.get("key"), "")
         if not expression:
             raise ValueError("Each measured Z entry requires a source or expression.")
-        z = scalar(plugin, expression)
-        surface_id = _identity(plugin, entry.get("surface_id_expr", ""), "Surface identity")
+        z = scalar(plugin, expression, evaluate=evaluate)
+        surface_id = _identity(
+            plugin, entry.get("surface_id_expr", ""), "Surface identity", evaluate=evaluate
+        )
         labels = {
             "x": label_for(plugin.new_x_expr),
             "y": label_for(plugin.coordinate_y_expr),
@@ -289,7 +319,11 @@ def execute_points_form(plugin, axis_label) -> None:
         }
         if value is not None:
             labels["value"] = label_for(plugin.value_expr)
-        errors = {"z": [scalar(plugin, entry["error_expr"])]} if entry.get("error_expr") else {}
+        errors = (
+            {"z": [scalar(plugin, entry["error_expr"], evaluate=evaluate)]}
+            if entry.get("error_expr")
+            else {}
+        )
         updates.append(
             generalised_update(
                 surface_id,

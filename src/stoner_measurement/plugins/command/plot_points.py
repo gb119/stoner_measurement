@@ -49,6 +49,7 @@ from stoner_measurement.plugins.command.plot_forms import (
     PlotFormPanel as _PlotFormPanel,
 )
 from stoner_measurement.plugins.command.plot_forms import (
+    UnavailablePointData,
     axis_names,
     execute_points_form,
     initialise_forms,
@@ -456,7 +457,8 @@ class PlotPointsCommand(CommandPlugin):
         it is created automatically (on the right-hand side).
 
         Missing or unconfigured keys are logged as warnings and the
-        corresponding series is skipped.
+        corresponding series is skipped. Polar and surface updates are skipped
+        when an input expression fails or returns an unavailable scalar value.
 
         Raises:
             TimeoutError:
@@ -484,7 +486,10 @@ class PlotPointsCommand(CommandPlugin):
             >>> engine.shutdown()
         """
         if self.plot_form != "xy":
-            execute_points_form(self, _axis_label)
+            try:
+                execute_points_form(self, _axis_label)
+            except UnavailablePointData as exc:
+                self.log.warning("PlotPoints: point data is unavailable — skipping plot: %s", exc)
             return
         if not self.x_key:
             self.log.warning("PlotPoints: x_key is not set — skipping.")

@@ -737,5 +737,47 @@ class TestPlotPointsCommand:
         assert len(spinboxes) >= 2
 
 
+
+@pytest.mark.parametrize("form", ["polar", "xyz"])
+def test_additional_points_preserve_display_failures(qapp, engine, monkeypatch, form):
+    from stoner_measurement.plugins.command import plot_forms, polar_forms
+
+    points = PlotPointsCommand()
+    points.plot_form = form
+    points.polar_angle_expr, points.polar_radius_expr = "0", "1"
+    points.new_x_expr, points.coordinate_y_expr = "0", "1"
+    points.z_entries = [{"expr": "2", "surface_id_expr": "'signal'"}]
+    engine.add_plugin("points", points)
+
+    def fail_display(*_args, **_kwargs):
+        raise TimeoutError("display failed")
+
+    if form == "polar":
+        engine.plot_client = object()
+        monkeypatch.setattr(points, "_wait_for_plot_ready", lambda **_: True)
+        monkeypatch.setattr(polar_forms, "submit_from_plugin", fail_display)
+    else:
+        monkeypatch.setattr(plot_forms, "_submit_updates", fail_display)
+    try:
+        with pytest.raises(TimeoutError, match="display failed"):
+            points.execute()
+    finally:
+        engine.plot_client = None
+
+
+@pytest.mark.parametrize("form", ["polar", "xyz"])
+def test_additional_points_preserve_keyboard_interrupt(qapp, engine, monkeypatch, form):
+    points = PlotPointsCommand()
+    points.plot_form = form
+    engine.add_plugin("points", points)
+
+    def interrupt(_expression):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(points, "eval", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        points.execute()
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))

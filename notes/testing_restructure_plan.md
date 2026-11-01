@@ -1,5 +1,30 @@
 # Testing Restructure Plan
 
+## 2026-11-01: Plot Points polar and surface failure recovery
+
+- Added 70 worker regression cases across polar, XYZ, XYZ + value and XY intensity
+  inputs, plus four unit cases preserving display-error and interruption behaviour.
+  No tests moved or removed.
+- Missing fit traces, NaN scalars/NumPy scalar arrays, absent attributes and
+  expression runtime errors are logged and skipped before submission. Worker
+  tests verify subsequent script statements run and surface updates remain atomic.
+- Validation: 277 passed across fit recovery, Plot Points, Plot Trace, polar and
+  surface suites, with offscreen PyQt5 in the project Conda environment using
+  --basetemp=.pytest-runtime/points-fit-recovery-final. Ruff and git diff --check
+  passed. Hosted CI and other Qt bindings were not run.
+
+## 2026-11-01: Curve-fit failure recovery
+
+- Added 49 regression cases across fitting, missing-expression and real-worker
+  fit/plot recovery tests. No tests moved or removed.
+- Covers invalid inputs and settings, result-construction errors, stale-output
+  replacement, keyboard interruption, missing XY/polar/surface fit outputs and
+  successful execution of subsequent script statements.
+- Validation: 286 passed in the affected curve-fit, Plot Trace, polar and surface
+  suites with offscreen PyQt5 in the stoner_measurement Conda environment, using
+  --basetemp=.pytest-runtime/curve-fit-recovery-complete. Ruff and git diff --check
+  passed. Hosted CI and other Qt bindings were not run.
+
 ## 2026-10-10: Polar display and angle-first plotting forms
 
 - Startup follow-up: added two attachment regressions for saved XY commands

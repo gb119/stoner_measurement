@@ -155,5 +155,58 @@ def test_existing_attributes_win_over_fitted_parameter_names(qapp):
     assert plugin.data == {"name": 12.0, "data": 34.0}
 
 
+@pytest.mark.parametrize("failure", ["x", "y", "sigma", "initial", "bounds", "p0", "results"])
+def test_preparation_and_result_errors_publish_nan_without_stale_outputs(
+    qapp, engine, caplog, monkeypatch, failure
+):
+    plugin = CurveFitPlugin()
+    _attach_linear_data(plugin, engine)
+    plugin.fit_code = "def fit(x, a, b): return a*x+b"
+    plugin.show_initial_trace = True
+    plugin.show_best_fit_trace = True
+    plugin.report_initial_values = True
+    plugin.run({})
+    assert "best_fit" in plugin.data
+
+    if failure in {"x", "y"}:
+        plugin.engine_namespace["_" + failure] = ["bad"] * 30
+    elif failure == "sigma":
+        plugin.engine_namespace["_sigma"] = ["bad"] * 30
+        plugin.y_error_expr = "_sigma"
+    elif failure in {"initial", "bounds"}:
+        plugin.param_settings = {"a": {"initial" if failure == "initial" else "min": "bad"}}
+    elif failure == "p0":
+        plugin.fit_code += "\ndef p0(x, y): return ['bad', 0]"
+    else:
+
+        def fail_results(*_args):
+            raise RuntimeError("result construction failed")
+
+        monkeypatch.setattr(plugin, "_build_scalar_results", fail_results)
+
+    emitted = []
+    plugin.transform_complete.connect(emitted.append)
+    with caplog.at_level(logging.ERROR, logger="stoner_measurement.sequence"):
+        result = plugin.run({})
+
+    assert set(result) == set(plugin.output_value_names)
+    assert all(np.isnan(value) for value in result.values())
+    assert plugin.data == result
+    assert emitted == [result]
+    assert any("CurveFit: fitting failed" in record.message for record in caplog.records)
+
+
+def test_fitting_boundary_preserves_keyboard_interrupt(qapp, engine, monkeypatch):
+    plugin = CurveFitPlugin()
+    _attach_linear_data(plugin, engine)
+
+    def interrupt():
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(plugin, "_get_data_arrays", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        plugin.run({})
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))

@@ -1247,5 +1247,34 @@ class TestPlotTraceCommand:
         assert pw._trace_style.get("t", {}).get("line") == "dash"
 
 
+
+@pytest.mark.parametrize("missing", ["data", "attribute", "name"])
+@pytest.mark.parametrize("target", ["x_expr", "y_expr", "title_expr"])
+def test_advanced_missing_expression_outputs_are_logged_and_skipped(
+    qapp, engine, caplog, missing, target
+):
+    from stoner_measurement.plugins.transform import CurveFitPlugin
+
+    fit = CurveFitPlugin()
+    engine.add_plugin("curve_fit", fit)
+    command = PlotTraceCommand()
+    command.advanced_mode = True
+    command.x_expr, command.y_expr, command.title_expr = "[0, 1]", "[1, 2]", "'fit'"
+    expressions = {
+        "data": "curve_fit.data['best_fit'].y",
+        "attribute": "curve_fit.best_fit.y",
+        "name": "unavailable_fit.y",
+    }
+    setattr(command, target, expressions[missing])
+    engine.add_plugin("plot_fit", command)
+    queued = []
+    command.plot_update_queued.connect(lambda: queued.append(True))
+
+    command.execute()
+
+    assert not queued
+    assert "skipping plot" in caplog.text
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "--pdb"]))
