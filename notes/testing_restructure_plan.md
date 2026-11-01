@@ -1,5 +1,22 @@
 # Testing Restructure Plan
 
+## 2026-11-01: Qt logging callback lifetime and Python 3.12 CI
+
+- Run 41319437556 crashed in both Python 3.12 Qt jobs during cyclic GC in
+  managed_qt_widget, inside SequenceEngine's parent-destroyed logging callback.
+  Both Python 3.14 jobs passed.
+- Replaced the callback's strong handler capture with a weak reference, preserving
+  logger detachment for live handlers without retaining or resurrecting cleared
+  handlers during native QObject teardown. No global cleanup changes.
+- Added three core lifecycle regressions for independent closed-handler collection,
+  native-parent deletion with logger isolation, and shutdown-engine reclamation.
+  The first test fails against the original callback. No tests moved or removed.
+- Focused validation: 207 passed, one skipped with offscreen PyQt5/Python 3.14.
+  The crash-adjacent SaveCommand node and three new tests also passed in three
+  fresh subprocesses (four passed per run). Ruff and git diff --check passed.
+- Full-suite coverage and the four hosted matrix jobs must validate the repair;
+  the local Python 3.12 environment does not have the required Qt dependencies.
+
 ## 2026-11-01: Plot Points polar and surface failure recovery
 
 - Added 70 worker regression cases across polar, XYZ, XYZ + value and XY intensity

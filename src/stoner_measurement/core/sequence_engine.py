@@ -52,6 +52,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import TextIOBase
 from subprocess import SubprocessError, run  # nosec B404
 from typing import TYPE_CHECKING, Any, Literal, overload
+from weakref import ref
 
 import numpy as np
 from qtpy.QtCore import QObject, QThread
@@ -147,7 +148,17 @@ class _QtLogHandler(logging.Handler):
         self._emitter = _QtLogEmitter(parent)
         self.record_emitted = self._emitter.record_emitted
         if parent is not None:
-            parent.destroyed.connect(lambda *_args: self._detach_from_loggers())
+            # Qt can emit destroyed while cyclic GC is clearing the engine's
+            # Python graph. Do not retain or resurrect a partially cleared
+            # handler through a strong-reference signal callback.
+            handler_ref = ref(self)
+
+            def detach_handler(*_args):
+                handler = handler_ref()
+                if handler is not None:
+                    handler._detach_from_loggers()
+
+            parent.destroyed.connect(detach_handler)
 
     def _detach_from_loggers(self) -> None:
         """Remove this handler from any logger that still references it."""
