@@ -3,6 +3,8 @@ items:
   items:
   - plugin: k6221_dc_iv
     label: 6221/2182 IV Trace
+  - plugin: k6221_pulse_delta
+    label: 6221/2182 Pulse Delta Trace
   - plugin: k6221_multi_sr830
     label: 6221/Lockins Trace
   - plugin: k2400_dc_iv

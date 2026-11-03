@@ -1,5 +1,18 @@
 # Testing Restructure Plan
 
+## 2026-11-03: Native Pulse Delta trace
+
+- Extended the focused plugin tests for integrated cycle feedback: 50/60 Hz
+  pre-pulse delay, post-pulse low time, duty-cycle changes, invalid short cycles
+  and expression previews. No existing tests moved or removed.
+
+- Added focused driver and trace-plugin modules for native Pulse Delta commands,
+  corrected buffer acquisition, repeated sweeps, persistence, failure cleanup and
+  the live pulse timing preview. No legacy tests were moved or removed.
+- Qt configuration pages use `managed_plugin_config_tabs` for deterministic
+  teardown. Evidence and bench checks are in
+  [the implementation note](2026-11-03-keithley-pulse-delta.md).
+
 ## 2026-11-01: Qt logging callback lifetime and Python 3.12 CI
 
 - Run 41319437556 crashed in both Python 3.12 Qt jobs during cyclic GC in

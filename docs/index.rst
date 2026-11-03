@@ -10,6 +10,7 @@ Stoner Measurement
    simulated_instruments
    temperature_controllers
    keithley_point_commands
+   keithley_pulse_delta
    xray_diffractometer
    round_dial_widget
    plugin_tab_ordering

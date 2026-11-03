@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import time
 from enum import Enum
 from time import sleep
@@ -710,6 +711,167 @@ class Keithley6221(CurrentSource):
         self.write(f":SOUR:PULS:WIDT {pulse.width}")
         self.write(f":SOUR:PULS:DEL {pulse.off_time}")
         self.write(f":SOUR:PULS:CURR:LOW {pulse.low_level}")
+
+    @staticmethod
+    def validate_pulse_delta_sweep(
+        values: tuple[float, ...],
+        *,
+        width: float,
+        source_delay: float,
+        period: float,
+        low_measurements: int,
+    ) -> None:
+        """Validate native Pulse Delta settings before any instrument writes.
+
+        Args:
+            values (tuple[float, ...]): High pulse currents in amps.
+
+        Keyword Parameters:
+            width (float): Pulse width, 50 microseconds to 12 milliseconds.
+            source_delay (float): Settling time within a pulse, in seconds.
+            period (float): Requested cycle period in seconds.
+            low_measurements (int): One or two baseline measurements.
+
+        Raises:
+            ValueError: If a list or timing setting is outside its limits.
+        """
+        if not 1 <= len(values) <= 65536:
+            raise ValueError("Pulse Delta requires 1 to 65536 current points.")
+        if any(not math.isfinite(v) or abs(v) > 0.105 for v in values):
+            raise ValueError("Pulse currents must be finite and within +/-105 mA.")
+        if not math.isfinite(width) or not 50e-6 <= width <= 12e-3:
+            raise ValueError("Pulse width must be between 50 us and 12 ms.")
+        if not math.isfinite(source_delay) or not 16e-6 <= source_delay <= 11.966e-3:
+            raise ValueError("Pulse source delay must be between 16 us and 11.966 ms.")
+        if source_delay >= width:
+            raise ValueError("Pulse source delay must be shorter than the pulse width.")
+        if not math.isfinite(period) or not 1e-3 <= period <= 999999.999 or period < width:
+            raise ValueError(
+                "Pulse cycle period must be 1 ms to 999999.999 s and exceed the width."
+            )
+        if type(low_measurements) is not int or low_measurements not in (1, 2):
+            raise ValueError("Pulse Delta requires one or two low measurements.")
+
+    def configure_pulse_delta_sweep(
+        self,
+        values: tuple[float, ...],
+        *,
+        width: float,
+        source_delay: float,
+        period: float,
+        low_measurements: int = 2,
+    ) -> None:
+        """Programme a native zero-baseline Pulse Delta custom sweep.
+
+        Requires a 2182A connected by RS-232 and Trigger Link. Does not arm
+        or start output. See reference manual sections 5-37 to 5-50.
+
+        Args:
+            values (tuple[float, ...]): High pulse currents in amps.
+
+        Keyword Parameters:
+            width (float): Pulse width in seconds.
+            source_delay (float): Settling delay within each pulse in seconds.
+            period (float): Requested complete cycle period in seconds.
+            low_measurements (int): Number of baseline measurements, 1 or 2.
+
+        Raises:
+            ValueError: If the current list or pulse timing is invalid.
+        """
+        self.validate_pulse_delta_sweep(
+            values,
+            width=width,
+            source_delay=source_delay,
+            period=period,
+            low_measurements=low_measurements,
+        )
+        with self._lock:
+            self.configure_custom_sweep(values, delay=float(period), count=1)
+            self.set_sweep_count(1)
+            self.write(":SOUR:PDEL:LOW 0")
+            self.write(f":SOUR:PDEL:WIDT {width}")
+            self.write(f":SOUR:PDEL:SDEL {source_delay}")
+            self.write(f":SOUR:PDEL:LME {low_measurements}")
+            self.write(":SOUR:PDEL:SWE ON")
+            self.write(":UNIT V")
+            self.write(":SENS:AVER:STAT OFF")
+
+    def pulse_delta_present(self) -> bool:
+        """Return whether a compatible 2182A is connected over RS-232."""
+        return self.query(":SOUR:PDEL:NVPR?").strip() == "1"
+
+    def set_pulse_delta_voltage_range(self, value: float) -> None:
+        """Set the 2182A range through serial; zero selects autorange.
+
+        Args:
+            value (float): Voltage range in volts, or zero for autorange.
+
+        Raises:
+            ValueError: If the voltage range is invalid.
+        """
+        if not math.isfinite(value) or value not in (0, 0.01, 0.1, 1, 10, 100):
+            raise ValueError("2182A range must be auto (0), 0.01, 0.1, 1, 10 or 100 V.")
+        with self._lock:
+            self.send_serial_command(f":SENS:VOLT:CHAN1:RANG:AUTO {int(value == 0)}")
+            if value:
+                self.send_serial_command(f":SENS:VOLT:CHAN1:RANG {value}")
+
+    def pulse_delta_arm(self) -> None:
+        """Arm Pulse Delta, allowing time for the internal sweep table build.
+
+        Raises:
+            RuntimeError: If the instrument does not confirm the armed state.
+        """
+        with self._lock:
+            timeout = self.transport.timeout
+            try:
+                self.transport.timeout = max(timeout, 120.0)
+                self.write(":SOUR:PDEL:ARM")
+                if self.query(":SOUR:PDEL:ARM?").strip() != "1":
+                    raise RuntimeError("6221 did not arm Pulse Delta.")
+            finally:
+                self.transport.timeout = timeout
+
+    def prepare_pulse_delta_buffer(self, count: int) -> None:
+        """Clear and enable the 6221 buffer for one complete pulse sweep.
+
+        Args:
+            count (int): Number of corrected voltages to store, 1 to 65536.
+
+        Raises:
+            ValueError: If the requested buffer size is invalid.
+        """
+        if type(count) is not int or not 1 <= count <= 65536:
+            raise ValueError("Pulse Delta buffer size must be 1 to 65536.")
+        with self._lock:
+            self.write(":TRAC:FEED:CONT NEV")
+            self.write(":TRAC:CLE")
+            self.write(f":TRAC:POIN {count}")
+            self.write(":FORM:DATA ASC")
+            self.write(":FORM:ELEM READ")
+            self.write(":TRAC:FEED SENS1")
+            self.write(":TRAC:FEED:CONT NEXT")
+
+    def pulse_delta_buffer_count(self) -> int:
+        """Return the number of corrected readings committed to the 6221 buffer."""
+        return int(self.query(":TRAC:POIN:ACT?").strip())
+
+    def read_pulse_delta_buffer(self, count: int) -> tuple[float, ...]:
+        """Read corrected voltages, rejecting incomplete or malformed buffers.
+
+        Args:
+            count (int): Expected number of readings.
+
+        Returns:
+            (tuple[float, ...]): Corrected pulse voltages in volts.
+
+        Raises:
+            ValueError: If the buffer response is malformed or incomplete.
+        """
+        values = tuple(float(v) for v in self.query(":TRAC:DATA?").strip().split(","))
+        if len(values) != count:
+            raise ValueError(f"Expected {count} Pulse Delta readings, received {len(values)}.")
+        return values
 
     def get_capabilities(self) -> CurrentSourceCapabilities:
         """Return static capabilities for Keithley 6221."""

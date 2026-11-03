@@ -36,6 +36,7 @@ from stoner_measurement.plugins.trace.k6221_multi_sr830 import (
     LockInOutput,
     WaveformScanMode,
 )
+from stoner_measurement.plugins.trace.k6221_pulse_delta import Keithley6221PulseDeltaPlugin
 from stoner_measurement.plugins.trace.keithley_2400 import (
     ConnectionMode as K2400ConnectionMode,
 )
@@ -69,6 +70,7 @@ __all__ = [
     "K2400TerminalMode",
     "Keithley2400SweepPlugin",
     "Keithley6221_2182APlugin",
+    "Keithley6221PulseDeltaPlugin",
     "Keithley6221_MultiSR830Plugin",
     "LockInModel",
     "SweepSourceMode",

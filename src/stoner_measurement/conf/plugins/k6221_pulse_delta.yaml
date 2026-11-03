@@ -1,0 +1,21 @@
+resource_6221: GPIB0::13::INSTR
+compliance: 10.0
+source_range_mode: BEST
+source_range: 0.001
+voltage_range: 0.0
+pulse_width: 0.000110
+pulse_source_delay: 0.000016
+pulse_period: 0.1
+low_measurements: 2
+preview_mains_frequency: 50
+scan_generator:
+  type: FunctionScanGenerator
+  waveform: Sine
+  amplitude: 0.001
+  offset: 0.0
+  phase: 0.0
+  exponent: 1.0
+  periods: 1.0
+  num_points: 100
+  units: A
+report_channel_statistics: false
