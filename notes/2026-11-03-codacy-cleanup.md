@@ -36,9 +36,21 @@ only a suppression and its explanation.
   method and helper; `git diff --check` passed.
 
 Commands ran through the project Conda environment with offscreen Qt and
-Windows fonts. Hosted Codacy clearance will be checked after pushing the fix.
+Windows fonts. Hosted Codacy results are recorded below.
 
 Codacy analysed `febf111957ab10590ce2cc9e9d1511f7ee6f2ea0` and cleared four
 findings. Its remaining E0710 showed that the first test suppression used the
 wrong symbolic rule name (`raising-bad-type`). Corrected it to the exact E0710
 code, preserving the guarded raise and discovery scenarios.
+
+
+## Hosted confirmation
+
+Codacy analysed `087b592f352f839235cda1dfba6bb97e2a049123` at
+2026-11-03T23:32:41.382Z and reports **zero active issues**. The full issue
+pull and repository metadata independently agree. Reports were refreshed after
+this verification; `resolved-issues.csv` preserves all five original diagnoses
+and their resolutions. No remote ignore states were changed.
+
+After correcting the final E0710 suppression, all 11 discovery tests passed;
+targeted Pylint also checked for invalid suppression names (`W0012`).
