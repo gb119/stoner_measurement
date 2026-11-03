@@ -1,0 +1,122 @@
+{
+  "repository": {
+    "repository": {
+      "provider": "gh",
+      "owner": "gb119",
+      "name": "stoner_measurement",
+      "visibility": "Public",
+      "defaultBranch": {
+        "name": "main"
+      },
+      "lastUpdated": "2026-11-03T23:13:14.018Z",
+      "languages": [
+        "JSON",
+        "Markdown",
+        "Python",
+        "YAML"
+      ],
+      "standards": [],
+      "problems": []
+    },
+    "lastAnalysedCommit": {
+      "sha": "5ba9cce32c21ca7e24e2ad63a14b8777e030ecfb",
+      "startedAnalysis": "2026-11-03T23:13:22.046Z",
+      "endedAnalysis": "2026-11-03T23:13:46.427Z"
+    },
+    "issuesCount": 5,
+    "loc": 96677,
+    "fileCount": 588,
+    "coverage": {
+      "coveragePercentage": 86,
+      "status": "Waiting",
+      "lastCommitWithCoverage": "b631ca8c7b3620ebeb7ab0b42394fd766737e898",
+      "statusUpdatedAt": "2026-11-03T23:13:46.809878Z",
+      "valueUpdatedAt": "2026-11-01T15:51:59.340018Z"
+    },
+    "complexFilesPercentage": 29,
+    "goals": {
+      "maxIssuePercentage": 2,
+      "maxDuplicatedFilesPercentage": 10,
+      "minCoveragePercentage": 85,
+      "maxComplexFilesPercentage": 30,
+      "fileDuplicationBlockThreshold": 1,
+      "fileComplexityValueThreshold": 20
+    }
+  },
+  "pullRequests": [],
+  "issuesOverview": {
+    "categories": [
+      {
+        "name": "BestPractice",
+        "total": 2
+      },
+      {
+        "name": "ErrorProne",
+        "total": 2
+      },
+      {
+        "name": "Complexity",
+        "total": 1
+      }
+    ],
+    "languages": [
+      {
+        "name": "Python",
+        "total": 5
+      }
+    ],
+    "levels": [
+      {
+        "name": "High",
+        "total": 1
+      },
+      {
+        "name": "Warning",
+        "total": 3
+      },
+      {
+        "name": "Error",
+        "total": 1
+      }
+    ],
+    "tags": [],
+    "patterns": [
+      {
+        "id": "Prospector_mccabe",
+        "title": "Enforce Cyclomatic Complexity Threshold",
+        "total": 1
+      },
+      {
+        "id": "PyLintPython3_C0123",
+        "title": "Use isinstance() for Type Checking",
+        "total": 2
+      },
+      {
+        "id": "PyLintPython3_E0710",
+        "title": "Avoid Raising Non-Exception Classes",
+        "total": 1
+      },
+      {
+        "id": "PyLintPython3_E1102",
+        "title": "Avoid Calling Non-Callable Objects",
+        "total": 1
+      }
+    ],
+    "authors": [
+      {
+        "name": "g.burnell@leeds.ac.uk",
+        "total": 5
+      }
+    ],
+    "potentialFalsePositives": [
+      {
+        "name": "equalOrAboveThreshold",
+        "total": 0
+      },
+      {
+        "name": "belowThreshold",
+        "total": 5
+      }
+    ]
+  }
+}

@@ -539,7 +539,10 @@ class PlotTraceCommand(CommandPlugin):
         if self.advanced_mode:
             self._execute_advanced_xy()
             return
-        # Simple mode
+        self._execute_simple_xy()
+
+    def _execute_simple_xy(self) -> None:
+        """Resolve and plot simple XY traces with positional errors and axis labels."""
         traces = self.engine_namespace.get("_traces", {})
         if not self.trace_key or self.trace_key not in traces:
             self.log.warning(

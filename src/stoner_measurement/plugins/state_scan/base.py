@@ -676,7 +676,8 @@ class StateScanPlugin(StatePlugin):
         timeout = self.settle_timeout
         deadline = time.monotonic() + timeout
         engine_factory = getattr(self, "_engine", None)
-        controller = engine_factory() if callable(engine_factory) else None
+        # The runtime guard handles absent/non-callable providers; Astroid cannot narrow this attribute.
+        controller = engine_factory() if callable(engine_factory) else None  # pylint: disable=not-callable
         owner = getattr(controller, "_service", None) or controller
         updates = getattr(owner, "_state_updates", None)
         if updates is not None:

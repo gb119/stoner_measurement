@@ -749,6 +749,8 @@ class Keithley6221(CurrentSource):
             raise ValueError(
                 "Pulse cycle period must be 1 ms to 999999.999 s and exceed the width."
             )
+        # Exact ints exclude booleans and subclasses with custom SCPI formatting.
+        # pylint: disable-next=unidiomatic-typecheck
         if type(low_measurements) is not int or low_measurements not in (1, 2):
             raise ValueError("Pulse Delta requires one or two low measurements.")
 
@@ -841,6 +843,8 @@ class Keithley6221(CurrentSource):
         Raises:
             ValueError: If the requested buffer size is invalid.
         """
+        # Exact ints exclude booleans and subclasses with custom SCPI formatting.
+        # pylint: disable-next=unidiomatic-typecheck
         if type(count) is not int or not 1 <= count <= 65536:
             raise ValueError("Pulse Delta buffer size must be 1 to 65536.")
         with self._lock:

@@ -2,15 +2,15 @@
   "issues": [
     {
       "patternInfo": {
-        "id": "Agentlinter_clarity_escape-hatch-missing",
+        "id": "PyLintPython3_C0123",
         "severityLevel": "Warning",
         "category": "BestPractice"
       },
-      "message": "Absolute rule without escape hatch: \"- Never use `C:\\ProgramData\\Miniconda3\\Scripts\\conda.exe` for this rep\"",
-      "filePath": "AGENTS.md",
-      "lineNumber": 179,
-      "lineText": "- Never use `C:\\ProgramData\\Miniconda3\\Scripts\\conda.exe` for this repository.",
-      "resultDataId": 131534874076,
+      "message": "Use isinstance() rather than type() for a typecheck.",
+      "filePath": "src/stoner_measurement/instruments/keithley/k6221.py",
+      "lineNumber": 752,
+      "lineText": "        if type(low_measurements) is not int or low_measurements not in (1, 2):",
+      "resultDataId": 131558956747,
       "falsePositiveThreshold": 80
     },
     {
@@ -19,89 +19,24 @@
         "severityLevel": "Warning",
         "category": "Complexity"
       },
-      "message": "CartesianPlotBridge.validate is too complex (17) (MC0001)",
-      "filePath": "src/stoner_measurement/ui/plotting_bridge.py",
-      "lineNumber": 108,
-      "lineText": "    def validate(self, payload) -> None:",
-      "resultDataId": 131545788799,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Agentlinter_clarity_escape-hatch-missing",
-        "severityLevel": "Warning",
-        "category": "BestPractice"
-      },
-      "message": "Absolute rule without escape hatch: \"`C:\\ProgramData\\Miniforge3\\Scripts`, depending on the machine. Never u\"",
-      "filePath": "AGENTS.md",
-      "lineNumber": 28,
-      "lineText": "`C:\\ProgramData\\Miniforge3\\Scripts`, depending on the machine. Never use the",
-      "resultDataId": 131534874074,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Prospector_mccabe",
-        "severityLevel": "Warning",
-        "category": "Complexity"
-      },
-      "message": "PlotTraceCommand._wire_config_signals is too complex (17) (MC0001)",
+      "message": "PlotTraceCommand.execute is too complex (16) (MC0001)",
       "filePath": "src/stoner_measurement/plugins/command/plot_trace.py",
-      "lineNumber": 1220,
-      "lineText": "    def _wire_config_signals(  # pylint: disable=too-many-arguments,too-many-positional-arguments",
-      "resultDataId": 131548930563,
+      "lineNumber": 478,
+      "lineText": "    def execute(self) -> None:",
+      "resultDataId": 131545788801,
       "falsePositiveThreshold": 80
     },
     {
       "patternInfo": {
-        "id": "Prospector_mccabe",
+        "id": "PyLintPython3_C0123",
         "severityLevel": "Warning",
-        "category": "Complexity"
+        "category": "BestPractice"
       },
-      "message": "SurfaceGrid.validate is too complex (20) (MC0001)",
-      "filePath": "src/stoner_measurement/core/plotting/surfaces.py",
-      "lineNumber": 29,
-      "lineText": "    def validate(self, update: SeriesUpdate) -> tuple[tuple[float, float], ...]:",
-      "resultDataId": 131548930560,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Prospector_mccabe",
-        "severityLevel": "Warning",
-        "category": "Complexity"
-      },
-      "message": "PlotDisplayHost._create is too complex (17) (MC0001)",
-      "filePath": "src/stoner_measurement/ui/plotting/host.py",
-      "lineNumber": 86,
-      "lineText": "    def _create(self, factory_id: str):",
-      "resultDataId": 131545788802,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Prospector_mccabe",
-        "severityLevel": "Warning",
-        "category": "Complexity"
-      },
-      "message": "PlotDisplayHost.switch_display is too complex (16) (MC0001)",
-      "filePath": "src/stoner_measurement/ui/plotting/host.py",
-      "lineNumber": 257,
-      "lineText": "    def switch_display(self, factory_id: str, *, force=False, reset=False) -> bool:",
-      "resultDataId": 131548930561,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Prospector_mccabe",
-        "severityLevel": "Warning",
-        "category": "Complexity"
-      },
-      "message": "PlotService._apply is too complex (17) (MC0001)",
-      "filePath": "src/stoner_measurement/core/plotting/service.py",
-      "lineNumber": 216,
-      "lineText": "    def _apply(self, request: PlotRequest, legacy: LegacyCall | None) -> None:",
-      "resultDataId": 131548930562,
+      "message": "Use isinstance() rather than type() for a typecheck.",
+      "filePath": "src/stoner_measurement/instruments/keithley/k6221.py",
+      "lineNumber": 844,
+      "lineText": "        if type(count) is not int or not 1 <= count <= 65536:",
+      "resultDataId": 131558956746,
       "falsePositiveThreshold": 80
     },
     {
@@ -110,24 +45,11 @@
         "severityLevel": "Error",
         "category": "ErrorProne"
       },
-      "message": "importer is not callable",
-      "filePath": "src/stoner_measurement/ui/plotting/host.py",
-      "lineNumber": 294,
-      "lineText": "                importer(state)",
-      "resultDataId": 131545788804,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Prospector_mccabe",
-        "severityLevel": "Warning",
-        "category": "Complexity"
-      },
-      "message": "PlotPointsCommand.execute is too complex (16) (MC0001)",
-      "filePath": "src/stoner_measurement/plugins/command/plot_points.py",
-      "lineNumber": 417,
-      "lineText": "    def execute(self) -> None:",
-      "resultDataId": 131473671183,
+      "message": "engine_factory is not callable",
+      "filePath": "src/stoner_measurement/plugins/state_scan/base.py",
+      "lineNumber": 679,
+      "lineText": "        controller = engine_factory() if callable(engine_factory) else None",
+      "resultDataId": 131548945898,
       "falsePositiveThreshold": 80
     },
     {
@@ -138,126 +60,9 @@
       },
       "message": "Raising a class which doesn't inherit from BaseException",
       "filePath": "tests/unit/ui/test_plot_display_registry.py",
-      "lineNumber": 33,
-      "lineText": "            raise self.factory",
-      "resultDataId": 131545788803,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Prospector_mccabe",
-        "severityLevel": "Warning",
-        "category": "Complexity"
-      },
-      "message": "PlotTraceCommand.execute is too complex (17) (MC0001)",
-      "filePath": "src/stoner_measurement/plugins/command/plot_trace.py",
-      "lineNumber": 446,
-      "lineText": "    def execute(self) -> None:",
-      "resultDataId": 131545788801,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Prospector_mccabe",
-        "severityLevel": "Warning",
-        "category": "Complexity"
-      },
-      "message": "SurfaceCanvasDisplay.validate is too complex (27) (MC0001)",
-      "filePath": "src/stoner_measurement/ui/plotting/surface_canvas.py",
-      "lineNumber": 131,
-      "lineText": "    def validate(self, payload):",
-      "resultDataId": 131548930559,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Agentlinter_clarity_escape-hatch-missing",
-        "severityLevel": "Warning",
-        "category": "BestPractice"
-      },
-      "message": "Absolute rule without escape hatch: \"including after a partially failed attempt. Resource-owning plugins mu\"",
-      "filePath": "AGENTS.md",
-      "lineNumber": 162,
-      "lineText": "  including after a partially failed attempt. Resource-owning plugins must",
-      "resultDataId": 131538906077,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Agentlinter_clarity_escape-hatch-missing",
-        "severityLevel": "Warning",
-        "category": "BestPractice"
-      },
-      "message": "Absolute rule without escape hatch: \"Plugins borrow this shared service and must not close its sessions on \"",
-      "filePath": "AGENTS.md",
-      "lineNumber": 146,
-      "lineText": "  Plugins borrow this shared service and must not close its sessions on cleanup.",
-      "resultDataId": 131541346807,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Agentlinter_clarity_escape-hatch-missing",
-        "severityLevel": "Warning",
-        "category": "BestPractice"
-      },
-      "message": "Absolute rule without escape hatch: \"list mode. The point scan must hold DC throughout child steps; do not\"",
-      "filePath": "AGENTS.md",
-      "lineNumber": 154,
-      "lineText": "  list mode. The point scan must hold DC throughout child steps; do not",
-      "resultDataId": 131541971887,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Agentlinter_structure_modular-files",
-        "severityLevel": "Warning",
-        "category": "BestPractice"
-      },
-      "message": "Only 1 file found with 100+ lines. Consider splitting into modular files for better organization.",
-      "filePath": "AGENTS.md",
-      "lineNumber": 1,
-      "lineText": "# Codex Instructions",
-      "resultDataId": 131525566549,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Agentlinter_clarity_undefined-term",
-        "severityLevel": "Info",
-        "category": "Comprehensibility"
-      },
-      "message": "Undefined acronym \"LIST\" — define on first use or add to glossary.",
-      "filePath": "AGENTS.md",
-      "lineNumber": 153,
-      "lineText": "  sequence cleanup. On the Keithley 6221, `LIST` means its programmed-current",
-      "resultDataId": 131541971886,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Prospector_mccabe",
-        "severityLevel": "Warning",
-        "category": "Complexity"
-      },
-      "message": "CartesianPlotBridge.apply is too complex (17) (MC0001)",
-      "filePath": "src/stoner_measurement/ui/plotting_bridge.py",
-      "lineNumber": 171,
-      "lineText": "    def apply(self, payload):",
-      "resultDataId": 131545788800,
-      "falsePositiveThreshold": 80
-    },
-    {
-      "patternInfo": {
-        "id": "Agentlinter_clarity_escape-hatch-missing",
-        "severityLevel": "Warning",
-        "category": "BestPractice"
-      },
-      "message": "Absolute rule without escape hatch: \"- Plugin lifecycle contract: repeated `connect()` calls must release t\"",
-      "filePath": "AGENTS.md",
-      "lineNumber": 159,
-      "lineText": "- Plugin lifecycle contract: repeated `connect()` calls must release the",
-      "resultDataId": 131538906078,
+      "lineNumber": 35,
+      "lineText": "            raise factory",
+      "resultDataId": 131548934880,
       "falsePositiveThreshold": 80
     }
   ]
