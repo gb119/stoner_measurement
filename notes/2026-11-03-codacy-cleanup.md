@@ -18,7 +18,7 @@ Added documented Pylint suppressions at the four reported lines only:
 - `unidiomatic-typecheck` for exact integer validation in the 6221 driver.
   Booleans and custom-formatting integer subclasses must remain rejected.
 - `not-callable` for the engine-provider call guarded by `callable()`.
-- `raising-bad-type` for the discovery fake's `isinstance(..., Exception)` raise.
+- `E0710` for the discovery fake's `isinstance(..., Exception)` raise.
 
 No runtime guards, analysis exclusions or remote ignore flags were changed.
 No tests or assertions were added, moved or removed; the test-double edit is
@@ -37,3 +37,8 @@ only a suppression and its explanation.
 
 Commands ran through the project Conda environment with offscreen Qt and
 Windows fonts. Hosted Codacy clearance will be checked after pushing the fix.
+
+Codacy analysed `febf111957ab10590ce2cc9e9d1511f7ee6f2ea0` and cleared four
+findings. Its remaining E0710 showed that the first test suppression used the
+wrong symbolic rule name (`raising-bad-type`). Corrected it to the exact E0710
+code, preserving the guarded raise and discovery scenarios.

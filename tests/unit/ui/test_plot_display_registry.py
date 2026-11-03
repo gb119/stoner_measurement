@@ -33,7 +33,7 @@ class Entry:
         factory = self.factory
         if isinstance(factory, Exception):
             # The guard guarantees an Exception instance despite the object-valued field.
-            raise factory  # pylint: disable=raising-bad-type
+            raise factory  # pylint: disable=E0710
         return factory
 
 
