@@ -55,6 +55,26 @@ Building and running a sequence
 3. Configure each step via the corresponding tab in the **right panel**.
 4. Click *Run* to start the sequence.
 
+Running selected steps
+~~~~~~~~~~~~~~~~~~~~~~
+
+To check part of a measurement, select one or more steps in the sequence
+tree, right-click the selection and choose **Run Selection...**, or press
+:kbd:`Shift+F5`. The selected
+steps run in sequence order as a one-off script. Selecting a container such
+as an if, scan or sweep includes its complete sub-sequence. Children of a
+selected ancestor are included only once. Selecting a child on its own runs
+that child without its enclosing container or unselected siblings.
+
+The script uses the usual connection, configuration and cleanup behaviour.
+Include any setup steps required by the selection. Pause and Stop work as
+they do for a full sequence.
+
+On successful completion, the temporary script tab is discarded without
+saving. If execution fails or is stopped, the script remains in the Script
+Editor for inspection. A temporary script that you edit or save is also kept.
+The source sequence and existing script tabs are preserved.
+
 Writing a plugin
 ----------------
 

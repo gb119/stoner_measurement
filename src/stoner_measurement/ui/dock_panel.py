@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from qtpy.QtCore import QMimeData, QPoint, Qt
 from qtpy.QtGui import (
+    QAction,
     QBrush,
     QDragEnterEvent,
     QDragMoveEvent,
@@ -1043,6 +1044,7 @@ class DockPanel(QWidget):
     #: are selected simultaneously.
     plugin_selected = pyqtSignal(object)
     sequence_structure_changed = pyqtSignal()
+    run_selection_requested = pyqtSignal()
 
     def __init__(
         self,
@@ -1101,6 +1103,11 @@ class DockPanel(QWidget):
         sequence_layout.addLayout(self._sequence_tab_layout)
 
         self._sequence_tree = _SequenceTreeWidget(plugin_manager=plugin_manager)
+        self._act_run_selection = QAction("Run Selection...", self)
+        self._act_run_selection.setShortcut(QKeySequence("Shift+F5"))
+        self._act_run_selection.setEnabled(False)
+        self._act_run_selection.triggered.connect(self.run_selection_requested.emit)
+        self.addAction(self._act_run_selection)
         self._sequence_tree.setObjectName("sequenceTree")
         sequence_layout.addWidget(self._sequence_tree, 1)
         # Wire the factory so that plugin-list drops create new step items.
@@ -1555,6 +1562,7 @@ class DockPanel(QWidget):
         the panel cannot show ambiguous settings for multiple different plugins).
         """
         selected = self._sequence_tree.selectedItems()
+        self._act_run_selection.setEnabled(bool(selected))
         if len(selected) == 1:
             plugin = selected[0].data(0, _PLUGIN_INSTANCE_ROLE)
             self.plugin_selected.emit(plugin)
@@ -1797,17 +1805,31 @@ class DockPanel(QWidget):
             []
         """
 
-        def _item_to_step(item: QTreeWidgetItem) -> _SequenceStep:
-            """Recursively convert a tree item to its _SequenceStep representation."""
-            plugin: BasePlugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
-            if item.childCount() == 0:
-                return plugin
-            return (plugin, [_item_to_step(item.child(j)) for j in range(item.childCount())])
-
         return [
-            _item_to_step(self._sequence_tree.topLevelItem(i))
+            self._item_to_step(self._sequence_tree.topLevelItem(i))
             for i in range(self._sequence_tree.topLevelItemCount())
         ]
+
+    @staticmethod
+    def _item_to_step(item: QTreeWidgetItem) -> _SequenceStep:
+        """Convert a tree item and its complete sub-sequence to a step."""
+        plugin: BasePlugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
+        if item.childCount() == 0:
+            return plugin
+        return (plugin, [DockPanel._item_to_step(item.child(j)) for j in range(item.childCount())])
+
+    @property
+    def selected_sequence_steps(self) -> list[_SequenceStep]:
+        """Return selected roots with full sub-sequences, in tree order."""
+        roots = self._sequence_tree._selected_roots()  # noqa: SLF001
+
+        def tree_path(item: QTreeWidgetItem) -> tuple[int, ...]:
+            parent = item.parent()
+            if parent is None:
+                return (self._sequence_tree.indexOfTopLevelItem(item),)
+            return (*tree_path(parent), parent.indexOfChild(item))
+
+        return [self._item_to_step(item) for item in sorted(roots, key=tree_path)]
 
     def load_sequence(self, steps: list[_SequenceStep]) -> None:
         """Replace the current sequence tree with *steps*.
@@ -2371,6 +2393,9 @@ class DockPanel(QWidget):
         has_selection = bool(self._sequence_tree.selectedItems())
 
         menu = QMenu(self)
+
+        menu.addAction(self._act_run_selection)
+        menu.addSeparator()
 
         act_copy = menu.addAction("&Copy Step")
         act_copy.setShortcut(QKeySequence.StandardKey.Copy)

@@ -195,8 +195,8 @@ class MeasurementApp(QMainWindow):
         self._engine.plot_widget = LegacyPlotFacade(self._plot_service)
         self._engine.plot_display_host = self._main_window.plot_display_host
         self._engine.preferred_display_plugin = self._main_window.plot_display_host.factory_id
-        self._main_window.dock_panel.sequence_display_plugin = (
-            lambda: self._engine.preferred_display_plugin
+        self._main_window.dock_panel.sequence_display_plugin = lambda: (
+            self._engine.preferred_display_plugin
         )
 
         # Log viewer (created before actions so actions can reference it) ------
@@ -244,6 +244,8 @@ class MeasurementApp(QMainWindow):
         self._show_status_message("Ready")
         self._engine.status_changed.connect(self._on_engine_status_changed)
         self._engine.execution_progress.connect(self._on_engine_status_changed)
+        self._selection_script_pane = None
+        self._engine.script_finished.connect(self._discard_selection_script)
 
         # Wire the console to the engine --------------------------------------
         console = self._main_window.script_tab.console
@@ -257,6 +259,7 @@ class MeasurementApp(QMainWindow):
         # Use an intermediate slot so step plugins are synced into the engine
         # namespace (and _traces rebuilt) before the config widget is shown.
         self._main_window.dock_panel.plugin_selected.connect(self._on_plugin_selected_for_config)
+        self._main_window.dock_panel.run_selection_requested.connect(self._on_run_selection)
         self._main_window.dock_panel.sequence_structure_changed.connect(
             self._sync_sequence_steps_to_engine
         )
@@ -666,6 +669,10 @@ class MeasurementApp(QMainWindow):
                 break
         sequence_tabs_enabled = not (status.startswith("Running") or status.startswith("Paused"))
         self._main_window.sequence_tabs.setEnabled(sequence_tabs_enabled)
+        if status in {"Error", "Stopped"}:
+            # Keep unsuccessful one-off scripts for inspection, but never let
+            # a later successful run discard them.
+            self._selection_script_pane = None
         self._show_status_message(status, background_colour)
 
     def _build_file_actions(self, style: QStyle) -> None:
@@ -1370,7 +1377,8 @@ class MeasurementApp(QMainWindow):
             if not self._activate_sequence_document(document.document_id):
                 previous_index = (
                     self._sequence_tab_index(self._active_sequence_id)
-                    if self._active_sequence_id is not None else -1
+                    if self._active_sequence_id is not None
+                    else -1
                 )
                 self._sequence_switching = True
                 try:
@@ -1458,7 +1466,9 @@ class MeasurementApp(QMainWindow):
             "state and retains acquired data. If you ignore the difference, the "
             "generated script will still select the sequence's requested display."
         )
-        use_current = dialog.addButton("Use current display for sequence", QMessageBox.ButtonRole.AcceptRole)
+        use_current = dialog.addButton(
+            "Use current display for sequence", QMessageBox.ButtonRole.AcceptRole
+        )
         switch = dialog.addButton("Switch to sequence display", QMessageBox.ButtonRole.ActionRole)
         ignore = dialog.addButton("Ignore", QMessageBox.ButtonRole.RejectRole)
         dialog.setDefaultButton(switch)
@@ -1606,7 +1616,14 @@ class MeasurementApp(QMainWindow):
                 self._engine.select_display_plugin(data.get("display_plugin", "cartesian"))
                 self._main_window.dock_panel.load_sequence(steps)
                 return migrated
-            except (OSError, json.JSONDecodeError, KeyError, ImportError, AttributeError, RuntimeError):
+            except (
+                OSError,
+                json.JSONDecodeError,
+                KeyError,
+                ImportError,
+                AttributeError,
+                RuntimeError,
+            ):
                 pass
         self._main_window.dock_panel.load_sequence([])
         return False
@@ -1999,6 +2016,43 @@ class MeasurementApp(QMainWindow):
         code, line_map = generated
         self._engine.run_script(code, customised=False, line_map=line_map)
 
+    def _on_run_selection(self) -> None:
+        """Generate and run selected sequence roots as a one-off script."""
+        if self._engine.is_running or self._selection_script_pane is not None:
+            return
+        self._main_window.config_panel.commit_pending_changes()
+        steps = self._main_window.dock_panel.selected_sequence_steps
+        if not steps:
+            return
+        generated = self._generate_sequence_code(steps)
+        if generated is None:
+            return
+        code, line_map = generated
+        script_tab = self._main_window.script_tab
+        pane = script_tab.add_tab(code, customised=True)
+        error_message = self._engine.validate_script_syntax(
+            code, customised=False, line_map=line_map
+        )
+        if error_message is not None:
+            self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
+            QMessageBox.warning(self, "Generated Script Syntax Error", error_message)
+            return
+        self._selection_script_pane = pane
+        self._engine.run_script(code, customised=False, line_map=line_map)
+
+    def _discard_selection_script(self) -> None:
+        """Discard a successful one-off script unless the user edited or saved it."""
+        pane = self._selection_script_pane
+        self._selection_script_pane = None
+        if pane is None:
+            return
+        script_tab = self._main_window.script_tab
+        index = script_tab._find_pane_index(pane)  # noqa: SLF001
+        if index >= 0 and not pane.dirty and pane.path is None:
+            script_tab._on_close_tab(index)  # noqa: SLF001
+            if script_tab._find_pane_index(pane) < 0:  # noqa: SLF001
+                pane.deleteLater()
+
     def _on_pause(self) -> None:
         """Pause or resume the running sequence."""
         if self._engine.is_paused:
@@ -2055,42 +2109,11 @@ class MeasurementApp(QMainWindow):
                   :meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.generate_sequence_code`
                   with ``return_line_map=True``.
         """
-        from stoner_measurement.plugins.base_plugin import BasePlugin
-
         dock = self._main_window.dock_panel
-        steps = dock.sequence_steps
-        plugins = self._plugin_manager.plugins
-
-        # Sync step plugins into the engine namespace so that sequence_engine
-        # is set on all step plugins (including PlotTraceCommand instances) and
-        # the _traces/_values catalogs are up to date before code generation.
-        # This ensures PlotTraceCommand step plugins have their plot signals
-        # connected to the plot widget before the script runs.
-        self._sync_sequence_steps_to_engine()
-
-        # Inject per-step plugin instances into the engine namespace so the
-        # generated script can reference them by their instance_name variable.
-        def _inject_step(step: object) -> None:
-            if isinstance(step, tuple):
-                plugin_or_name, sub_steps = step
-            else:
-                plugin_or_name = step
-                sub_steps = []
-            if isinstance(plugin_or_name, BasePlugin):
-                self._engine._namespace[plugin_or_name.instance_name] = plugin_or_name  # noqa: SLF001
-            for sub in sub_steps:
-                _inject_step(sub)
-
-        for step in steps:
-            _inject_step(step)
-
-        try:
-            code, line_map = self._engine.generate_sequence_code(
-                steps, plugins, return_line_map=True
-            )
-        except Exception:  # noqa: BLE001 - keep Qt action exceptions out of the terminal
-            logger.exception("Unable to generate sequence code")
+        generated = self._generate_sequence_code(dock.sequence_steps)
+        if generated is None:
             return None
+        code, line_map = generated
         script_tab = self._main_window.script_tab
         pane = script_tab.current_pane()
         if pane is None or pane.customised:
@@ -2109,6 +2132,32 @@ class MeasurementApp(QMainWindow):
         if switch_to_editor:
             self._main_window.tabs.setCurrentIndex(self._TAB_EDITOR)
         return code, line_map
+
+    def _generate_sequence_code(self, steps: list) -> tuple[str, dict] | None:
+        """Prepare step instances and generate code using the normal engine path."""
+        from stoner_measurement.plugins.base_plugin import BasePlugin
+
+        self._sync_sequence_steps_to_engine()
+
+        def inject_step(step: object) -> None:
+            if isinstance(step, tuple):
+                plugin, children = step
+            else:
+                plugin, children = step, []
+            if isinstance(plugin, BasePlugin):
+                self._engine._namespace[plugin.instance_name] = plugin  # noqa: SLF001
+            for child in children:
+                inject_step(child)
+
+        for step in steps:
+            inject_step(step)
+        try:
+            return self._engine.generate_sequence_code(
+                steps, self._plugin_manager.plugins, return_line_map=True
+            )
+        except Exception:  # noqa: BLE001 - keep Qt action exceptions out of the terminal
+            logger.exception("Unable to generate sequence code")
+            return None
 
     def _on_show_temp_panel(self) -> None:
         """Show the temperature control panel, raising it if already open."""

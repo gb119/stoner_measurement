@@ -1,5 +1,29 @@
 # Testing Restructure Plan
 
+## 2026-11-04: Run selected sequence steps
+
+- Added the previously unused Shift+F5 shortcut to the shared Run Selection
+  action. Extended the existing context-menu test with a real Qt keypress;
+  the selection and dock-panel modules passed together (95 tests). No tests
+  moved or removed.
+- Added `tests/integration/app/test_run_selection.py` with 10 focused checks
+  covering tree order, complete nested selections without duplicates, child-only
+  execution, context-menu dispatch, empty selections, duplicate submission,
+  successful disposal, failure/stop retention, and edited/saved/closed panes.
+- No existing tests moved or removed. Widgets use `managed_measurement_app`
+  for deterministic shutdown and Qt teardown.
+- Pre-push full local suite: 4,212 passed, two skipped, and two Multi-SR830
+  UI selection tests failed in the combined run. All 96 Multi-SR830 tests
+  passed in a fresh process; these order-sensitive failures are not counted
+  as a clean full-suite result. Hosted CI and unchanged-source comparison
+  are checked separately.
+- Offscreen Python 3.14 / PyQt5 regression selection: 232 passed, covering the
+  new module, multiple sequences, unsaved changes, sequence display preferences,
+  dock panel/clipboard, and sequence engine. Used the project Conda environment,
+  Windows fonts, `-p no:cacheprovider`, and a workspace `--basetemp` because the
+  system pytest temporary directory was inaccessible. Ruff check/format and
+  `git diff --check` passed. Hardware and other Qt bindings were not tested.
+
 ## 2026-11-03: Native Pulse Delta trace
 
 - Extended the focused plugin tests for integrated cycle feedback: 50/60 Hz
