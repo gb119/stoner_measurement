@@ -1810,14 +1810,6 @@ class DockPanel(QWidget):
             for i in range(self._sequence_tree.topLevelItemCount())
         ]
 
-    @staticmethod
-    def _item_to_step(item: QTreeWidgetItem) -> _SequenceStep:
-        """Convert a tree item and its complete sub-sequence to a step."""
-        plugin: BasePlugin = item.data(0, _PLUGIN_INSTANCE_ROLE)
-        if item.childCount() == 0:
-            return plugin
-        return (plugin, [DockPanel._item_to_step(item.child(j)) for j in range(item.childCount())])
-
     @property
     def selected_sequence_steps(self) -> list[_SequenceStep]:
         """Return selected roots with full sub-sequences, in tree order."""

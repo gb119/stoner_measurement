@@ -180,6 +180,9 @@ def test_empty_selection_and_context_menu(managed_measurement_app, monkeypatch, 
     dock._sequence_tree.setFocus()
     qtbot.waitUntil(dock._sequence_tree.hasFocus)
     qtbot.keyClick(dock._sequence_tree, Qt.Key.Key_F5, Qt.KeyboardModifier.ShiftModifier)
+    # Offscreen Qt can retain the synthetic modifier after shortcut dispatch;
+    # release it so later table selections do not inherit Shift.
+    qtbot.keyRelease(dock._sequence_tree, Qt.Key.Key_Shift)
     assert len(submissions) == 2
 
 

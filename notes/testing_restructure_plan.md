@@ -13,10 +13,14 @@
 - No existing tests moved or removed. Widgets use `managed_measurement_app`
   for deterministic shutdown and Qt teardown.
 - Pre-push full local suite: 4,212 passed, two skipped, and two Multi-SR830
-  UI selection tests failed in the combined run. All 96 Multi-SR830 tests
-  passed in a fresh process; these order-sensitive failures are not counted
-  as a clean full-suite result. Hosted CI and unchanged-source comparison
-  are checked separately.
+  UI selection tests failed in the combined run. Isolated the cause to the
+  shortcut test retaining synthetic Shift state in offscreen Qt. Explicitly
+  releasing Shift restored both tests; the new module followed by all 96
+  Multi-SR830 tests passed together (106 tests).
+- Codacy found a redundant `_item_to_step` definition shadowed by the existing
+  helper later in DockPanel. Removed the duplicate and reused the existing
+  conversion helper. The selection/dock/clipboard regression selection passed
+  (98 tests), as did targeted Pylint E1120 and Ruff checks.
 - Offscreen Python 3.14 / PyQt5 regression selection: 232 passed, covering the
   new module, multiple sequences, unsaved changes, sequence display preferences,
   dock panel/clipboard, and sequence engine. Used the project Conda environment,
