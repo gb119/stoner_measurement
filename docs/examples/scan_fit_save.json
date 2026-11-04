@@ -1,0 +1,420 @@
+{
+  "version": "0.1.0",
+  "display_plugin": "cartesian",
+  "steps": [
+    {
+      "plugin": {
+        "type": "command",
+        "class": "stoner_measurement.plugins.command.details:DetailsCommand",
+        "instance_name": "details",
+        "user": "Demo user",
+        "sample": "Simulated Josephson junction",
+        "project": "Getting started",
+        "notes": "Hardware-free example for the user guide.",
+        "metadata_expressions": []
+      }
+    },
+    {
+      "plugin": {
+        "type": "state_scan",
+        "class": "stoner_measurement.plugins.state_scan.counter:CounterPlugin",
+        "instance_name": "scan",
+        "collect_data": true,
+        "clear_on_start": true,
+        "start_from_current_value": false,
+        "collect_filter": "scan.meas_flag",
+        "clear_filter": "True",
+        "collect_outputs": [
+          "scan:Value",
+          "curve_fit:Ic",
+          "curve_fit:Ic_err",
+          "curve_fit:Rn",
+          "curve_fit:Rn_err"
+        ],
+        "collect_output_roles": {
+          "scan:Value": "x",
+          "curve_fit:Ic": "y",
+          "curve_fit:Ic_err": "e",
+          "curve_fit:Rn": "y",
+          "curve_fit:Rn_err": "e"
+        },
+        "scan_generator": {
+          "type": "ListScanGenerator",
+          "stages": [
+            [
+              0.0,
+              true
+            ],
+            [
+              1.0,
+              true
+            ],
+            [
+              2.0,
+              true
+            ],
+            [
+              3.0,
+              true
+            ],
+            [
+              4.0,
+              true
+            ],
+            [
+              5.0,
+              true
+            ]
+          ],
+          "units": ""
+        }
+      },
+      "sub_steps": [
+        {
+          "plugin": {
+            "type": "trace",
+            "class": "stoner_measurement.plugins.trace.dummy:DummyPlugin",
+            "instance_name": "iv",
+            "scan_generator": {
+              "type": "FunctionScanGenerator",
+              "waveform": "Sine",
+              "amplitude": "5e-6",
+              "offset": 0.0,
+              "phase": 0.0,
+              "exponent": 1.0,
+              "periods": 1.0,
+              "num_points": 201,
+              "units": ""
+            },
+            "report_channel_statistics": false,
+            "transpose": false,
+            "critical_current": "1e-6 * (1 + 0.2 * scan.value)",
+            "normal_resistance": "100.0",
+            "noise_level": "2e-6",
+            "rounding_level": "1.0",
+            "voltage_offset_scale": "0.0"
+          }
+        },
+        {
+          "plugin": {
+            "type": "transform",
+            "class": "stoner_measurement.plugins.transform.window_filter:WindowFilterPlugin",
+            "instance_name": "filter_",
+            "trace_key": "iv:Dummy",
+            "column_key": "",
+            "advanced_mode": false,
+            "x_expr": "",
+            "y_expr": "",
+            "window_name": "hann",
+            "window_length": 9,
+            "window_parameters": "",
+            "symmetric_window": true,
+            "normalise_kernel": true
+          }
+        },
+        {
+          "plugin": {
+            "type": "transform",
+            "class": "stoner_measurement.plugins.transform.curve_fit:CurveFitPlugin",
+            "instance_name": "curve_fit",
+            "trace_key": "filter_:filtered",
+            "column_key": "",
+            "advanced_mode": false,
+            "x_expr": "",
+            "y_expr": "",
+            "y_error_expr": "",
+            "fit_code": "def fit(I, Ic, Rn):\n    voltage = Rn * np.sign(I) * np.sqrt(np.abs(I**2 - Ic**2))\n    return np.where(np.abs(I) < Ic, 0.0, voltage)\n\ndef p0(I, V):\n    return 1e-6, 100.0\n",
+            "fit_module_name": "",
+            "param_names": [
+              "Ic",
+              "Rn"
+            ],
+            "param_settings": {
+              "Ic": {
+                "min": 0.0,
+                "initial": null,
+                "max": 5e-06
+              },
+              "Rn": {
+                "min": 0.0,
+                "initial": null,
+                "max": 1000.0
+              }
+            },
+            "report_initial_values": false,
+            "show_initial_trace": true,
+            "show_best_fit_trace": true
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand",
+            "instance_name": "plot_raw",
+            "plot_form": "xy",
+            "new_x_expr": "",
+            "fixed_y_expr": "0",
+            "z_expr": "",
+            "value_expr": "",
+            "coordinate_y_expr": "0",
+            "fixed_y_label": "",
+            "fixed_y_unit": "",
+            "surface_id_expr": "'2e5fcec7b0cf430698c1ca34efc79150'",
+            "acquisition_id_expr": "'default'",
+            "slice_id_expr": "",
+            "duplicate_policy": "reject",
+            "reset_on_change": false,
+            "coordinate_settings": {},
+            "z_entries": [],
+            "new_x_error_expr": "",
+            "z_error_expr": "",
+            "regrid_policy": "mean",
+            "regrid_bounds": "nearest",
+            "polar_angle_expr": "",
+            "polar_radius_expr": "",
+            "polar_angle_error_expr": "",
+            "polar_radius_error_expr": "",
+            "polar_id_expr": "'506ae72ccd014df4b91c5b7a421c07d7'",
+            "polar_title_expr": "'Angular signal'",
+            "polar_settings": {
+              "angular_unit": "degrees",
+              "angular_origin": 90.0,
+              "clockwise": true
+            },
+            "polar_style": {},
+            "trace_key": "iv:Dummy",
+            "column_key": "",
+            "transpose": false,
+            "advanced_mode": false,
+            "x_expr": "",
+            "y_expr": "",
+            "title_expr": "'plot'",
+            "x_axis_name": "bottom",
+            "y_axis_name": "left",
+            "colour": "#8a8a8a",
+            "line_style": "",
+            "point_style": "",
+            "line_width": 2.0,
+            "point_size": 0.0
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand",
+            "instance_name": "plot_filtered",
+            "plot_form": "xy",
+            "new_x_expr": "",
+            "fixed_y_expr": "0",
+            "z_expr": "",
+            "value_expr": "",
+            "coordinate_y_expr": "0",
+            "fixed_y_label": "",
+            "fixed_y_unit": "",
+            "surface_id_expr": "'de9a996e85e447f6b14322674d9d41e1'",
+            "acquisition_id_expr": "'default'",
+            "slice_id_expr": "",
+            "duplicate_policy": "reject",
+            "reset_on_change": false,
+            "coordinate_settings": {},
+            "z_entries": [],
+            "new_x_error_expr": "",
+            "z_error_expr": "",
+            "regrid_policy": "mean",
+            "regrid_bounds": "nearest",
+            "polar_angle_expr": "",
+            "polar_radius_expr": "",
+            "polar_angle_error_expr": "",
+            "polar_radius_error_expr": "",
+            "polar_id_expr": "'9f7a2ffe94b94c5f84fbbb188a3a0670'",
+            "polar_title_expr": "'Angular signal'",
+            "polar_settings": {
+              "angular_unit": "degrees",
+              "angular_origin": 90.0,
+              "clockwise": true
+            },
+            "polar_style": {},
+            "trace_key": "filter_:filtered",
+            "column_key": "",
+            "transpose": false,
+            "advanced_mode": false,
+            "x_expr": "",
+            "y_expr": "",
+            "title_expr": "'plot'",
+            "x_axis_name": "bottom",
+            "y_axis_name": "left",
+            "colour": "#6bdcff",
+            "line_style": "",
+            "point_style": "",
+            "line_width": 2.0,
+            "point_size": 0.0
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand",
+            "instance_name": "plot_fit",
+            "plot_form": "xy",
+            "new_x_expr": "",
+            "fixed_y_expr": "0",
+            "z_expr": "",
+            "value_expr": "",
+            "coordinate_y_expr": "0",
+            "fixed_y_label": "",
+            "fixed_y_unit": "",
+            "surface_id_expr": "'8a21d04c353846978660b117b0b7af0b'",
+            "acquisition_id_expr": "'default'",
+            "slice_id_expr": "",
+            "duplicate_policy": "reject",
+            "reset_on_change": false,
+            "coordinate_settings": {},
+            "z_entries": [],
+            "new_x_error_expr": "",
+            "z_error_expr": "",
+            "regrid_policy": "mean",
+            "regrid_bounds": "nearest",
+            "polar_angle_expr": "",
+            "polar_radius_expr": "",
+            "polar_angle_error_expr": "",
+            "polar_radius_error_expr": "",
+            "polar_id_expr": "'8cf0c716ae0e426fa8e3712bd27d260e'",
+            "polar_title_expr": "'Angular signal'",
+            "polar_settings": {
+              "angular_unit": "degrees",
+              "angular_origin": 90.0,
+              "clockwise": true
+            },
+            "polar_style": {},
+            "trace_key": "curve_fit:best_fit",
+            "column_key": "",
+            "transpose": false,
+            "advanced_mode": false,
+            "x_expr": "",
+            "y_expr": "",
+            "title_expr": "'plot'",
+            "x_axis_name": "bottom",
+            "y_axis_name": "left",
+            "colour": "#ffcf5c",
+            "line_style": "",
+            "point_style": "",
+            "line_width": 2.0,
+            "point_size": 0.0
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_points:PlotPointsCommand",
+            "instance_name": "plot_points",
+            "plot_form": "xy",
+            "new_x_expr": "",
+            "fixed_y_expr": "0",
+            "z_expr": "",
+            "value_expr": "",
+            "coordinate_y_expr": "0",
+            "fixed_y_label": "",
+            "fixed_y_unit": "",
+            "surface_id_expr": "'a1d451c3b5964fe299adf8ba309bb2ff'",
+            "acquisition_id_expr": "'default'",
+            "slice_id_expr": "",
+            "duplicate_policy": "reject",
+            "reset_on_change": false,
+            "coordinate_settings": {},
+            "z_entries": [],
+            "new_x_error_expr": "",
+            "z_error_expr": "",
+            "regrid_policy": "mean",
+            "regrid_bounds": "nearest",
+            "polar_angle_expr": "",
+            "polar_radius_expr": "",
+            "polar_angle_error_expr": "",
+            "polar_radius_error_expr": "",
+            "polar_id_expr": "'bacf04d19c164cadaed89927f7411636'",
+            "polar_title_expr": "'Angular signal'",
+            "polar_settings": {
+              "angular_unit": "degrees",
+              "angular_origin": 90.0,
+              "clockwise": true
+            },
+            "polar_style": {},
+            "x_key": "scan:Value",
+            "x_axis_name": "top",
+            "y_entries": [
+              {
+                "key": "curve_fit:Ic",
+                "label": "Ic",
+                "y_axis": "Ic",
+                "colour": "#ffcf5c",
+                "point_style": "circle",
+                "line_style": "none"
+              },
+              {
+                "key": "curve_fit:Rn",
+                "label": "Rn",
+                "y_axis": "Rn",
+                "colour": "#6bdcff",
+                "point_style": "plus",
+                "line_style": "none"
+              }
+            ]
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.save:SaveCommand",
+            "instance_name": "save_traces",
+            "path_expr": "f'guide/trace_{scan.ix:03d}.txt'",
+            "trace_selection": {
+              "scan.data": false,
+              "iv:Dummy": true,
+              "filter_:filtered": true,
+              "curve_fit:initial_fit": false,
+              "curve_fit:best_fit": true
+            },
+            "no_overwrite": true,
+            "save_format": "tdi",
+            "incremental_save": false
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.save:SaveCommand",
+            "instance_name": "save_live",
+            "path_expr": "'guide/scan_live.txt'",
+            "trace_selection": {
+              "scan.data": true,
+              "iv:Dummy": false,
+              "filter_:filtered": false,
+              "curve_fit:initial_fit": false,
+              "curve_fit:best_fit": false
+            },
+            "no_overwrite": true,
+            "save_format": "tdi",
+            "incremental_save": true
+          }
+        }
+      ]
+    },
+    {
+      "plugin": {
+        "type": "command",
+        "class": "stoner_measurement.plugins.command.save:SaveCommand",
+        "instance_name": "save_complete",
+        "path_expr": "'guide/scan_complete.txt'",
+        "trace_selection": {
+          "scan.data": true,
+          "iv:Dummy": false,
+          "filter_:filtered": false,
+          "curve_fit:initial_fit": false,
+          "curve_fit:best_fit": false
+        },
+        "no_overwrite": true,
+        "save_format": "tdi",
+        "incremental_save": false
+      }
+    }
+  ]
+}

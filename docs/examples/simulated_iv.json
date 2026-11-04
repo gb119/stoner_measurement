@@ -1,0 +1,105 @@
+{
+  "version": "0.1.0",
+  "display_plugin": "cartesian",
+  "steps": [
+    {
+      "plugin": {
+        "type": "command",
+        "class": "stoner_measurement.plugins.command.details:DetailsCommand",
+        "instance_name": "details",
+        "user": "Demo user",
+        "sample": "Simulated Josephson junction",
+        "project": "Getting started",
+        "notes": "Hardware-free example for the user guide.",
+        "metadata_expressions": []
+      }
+    },
+    {
+      "plugin": {
+        "type": "sequence",
+        "class": "stoner_measurement.plugins.sequence.containers:RunSequentiallyPlugin",
+        "instance_name": "measurement",
+        "comment": "Acquire and plot a simulated I-V trace"
+      },
+      "sub_steps": [
+        {
+          "plugin": {
+            "type": "trace",
+            "class": "stoner_measurement.plugins.trace.dummy:DummyPlugin",
+            "instance_name": "iv_trace",
+            "scan_generator": {
+              "type": "FunctionScanGenerator",
+              "waveform": "Sine",
+              "amplitude": "5e-6",
+              "offset": 0.0,
+              "phase": 0.0,
+              "exponent": 1.0,
+              "periods": 1.0,
+              "num_points": 201,
+              "units": ""
+            },
+            "report_channel_statistics": false,
+            "transpose": false,
+            "critical_current": "1e-6",
+            "normal_resistance": "100.0",
+            "noise_level": "0.0",
+            "rounding_level": "1.0",
+            "voltage_offset_scale": "0.0"
+          }
+        },
+        {
+          "plugin": {
+            "type": "command",
+            "class": "stoner_measurement.plugins.command.plot_trace:PlotTraceCommand",
+            "instance_name": "plot_iv",
+            "plot_form": "xy",
+            "new_x_expr": "",
+            "fixed_y_expr": "0",
+            "z_expr": "",
+            "value_expr": "",
+            "coordinate_y_expr": "0",
+            "fixed_y_label": "",
+            "fixed_y_unit": "",
+            "surface_id_expr": "'71740a83f1f94608bff832162603fb0b'",
+            "acquisition_id_expr": "'default'",
+            "slice_id_expr": "",
+            "duplicate_policy": "reject",
+            "reset_on_change": false,
+            "coordinate_settings": {},
+            "z_entries": [],
+            "new_x_error_expr": "",
+            "z_error_expr": "",
+            "regrid_policy": "mean",
+            "regrid_bounds": "nearest",
+            "polar_angle_expr": "",
+            "polar_radius_expr": "",
+            "polar_angle_error_expr": "",
+            "polar_radius_error_expr": "",
+            "polar_id_expr": "'5694a5aa08924fe08c2cea6b2775bca3'",
+            "polar_title_expr": "'Angular signal'",
+            "polar_settings": {
+              "angular_unit": "degrees",
+              "angular_origin": 90.0,
+              "clockwise": true
+            },
+            "polar_style": {},
+            "trace_key": "iv_trace:Dummy",
+            "column_key": "",
+            "transpose": false,
+            "advanced_mode": false,
+            "x_expr": "iv_trace.data['Dummy'].df['x'].to_numpy()",
+            "y_expr": "iv_trace.data['Dummy'].df['V'].to_numpy()",
+            "title_expr": "'Simulated I-V'",
+            "x_axis_name": "bottom",
+            "y_axis_name": "left",
+            "colour": "",
+            "line_style": "",
+            "point_style": "",
+            "line_width": 2.0,
+            "point_size": 0.0
+          }
+        }
+      ]
+    }
+  ]
+}

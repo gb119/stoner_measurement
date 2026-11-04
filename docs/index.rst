@@ -7,6 +7,7 @@ Stoner Measurement
 
    installation
    usage
+   data_workflows
    simulated_instruments
    temperature_controllers
    keithley_point_commands
