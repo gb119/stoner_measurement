@@ -1,134 +1,149 @@
-Console and Script Engine API
+Console and script reference
 =============================
 
-The application embeds a Python console connected to the live sequence engine
-namespace. Objects exposed in the console are the same objects used by the UI
-and sequence engine, so changes made in the console take effect immediately.
+This reference is for experienced users inspecting results or developing Python
+measurement scripts. The console on **Script Editor** shares the sequence
+engine's live namespace. Examples below assume the named steps are present;
+use the downloadable sequences in :doc:`usage` and :doc:`data_workflows`.
+For implementing an external plugin, follow :doc:`third_party_plugins`.
 
-Sequence access
----------------
+Inspecting the active sequence
+-------------------------------
 
-A live view of the current sequence is available as:
-
-.. code-block:: python
-
-    sequence
-
-The object reflects the current sequence editor contents and is not a snapshot.
-
-Inspecting the sequence
-~~~~~~~~~~~~~~~~~~~~~~~
-
-The nested sequence structure:
+The application exposes a live ``sequence`` view, not a snapshot:
 
 .. code-block:: python
 
-    sequence.steps
+   sequence.steps              # nested plugin/(plugin, children) descriptors
+   sequence.top_level_plugins  # root instances only
+   sequence.plugins            # instances at every depth, in tree order
+   [(p.instance_name, p.name) for p in sequence.plugins]
 
-Top-level plugin instances:
+Instances are also bound by their names, for example ``iv_trace`` or
+``curve_fit``. The first step may be Details or a command; do not assume
+``sequence.plugins[0]`` is an instrument or has a scan generator.
 
-.. code-block:: python
+Runtime names and expressions
+------------------------------
 
-    sequence.top_level_plugins
-
-All plugin instances in the sequence tree, including plugins nested inside
-state scans and other container plugins:
-
-.. code-block:: python
-
-    sequence.plugins
-
-Examples:
-
-.. code-block:: python
-
-    sequence.plugins[0]
-    sequence.plugins[0].name
-
-Refreshing the UI
------------------
-
-When plugin attributes are modified directly in the console, configuration
-widgets may need to be synchronised with the updated values.
-
-Refresh a single plugin:
+The namespace contains ``np``/``numpy``, exported NumPy functions, ``log``,
+plugin instance variables and the ``_traces``/``_values`` catalogues. A
+catalogue maps a selectable identity to an expression rather than containing
+the measurement itself. The ``sequence`` view is provided by the application;
+a standalone SequenceEngine does not automatically have an editor tree.
 
 .. code-block:: python
 
-    plugin.refresh()
+   _traces
+   _values
+   iv_trace.data['Dummy'].df.head()
+   iv_trace.log.info("Inspecting the current trace")
 
-Refresh a plugin and all nested child plugins:
+Use actual instance names from the active sequence. A result is available only
+after its producing step has completed, and a failed measurement/fit may expose
+empty data or NaNs. Plot tables and scalar outputs are described in
+:doc:`trace_data`.
 
-.. code-block:: python
+Editing settings and refreshing controls
+-----------------------------------------
 
-    plugin.full_refresh()
+Make configuration edits while execution is idle. A direct attribute edit can
+affect the next execution without immediately rebuilding its cached widgets.
+Use ``plugin.refresh()`` after edits, ``plugin.full_refresh()`` for that
+container and its descendants, or ``sequence.full_refresh()`` for the tree.
+These refreshes synchronise configuration UI; they do not acquire new data.
 
-Refresh the entire sequence tree:
-
-.. code-block:: python
-
-    sequence.full_refresh()
-
-Scan generators
----------------
-
-Many plugins expose a scan generator through:
-
-.. code-block:: python
-
-    plugin.scan_generator
-
-For convenience, all plugins also provide the alias:
+For the Function Scan Generator in the basic I-V example:
 
 .. code-block:: python
 
-    plugin.scan
+   iv_trace.scan.amplitude = "5e-6"
+   iv_trace.scan.num_points = 201
+   iv_trace.refresh()
 
-Examples:
-
-.. code-block:: python
-
-    plugin.scan.num_points = 201
-    plugin.scan.start = 0
-    plugin.scan.end = 10
-
-    plugin.refresh()
-
-Because ``scan`` is an alias for ``scan_generator``, all existing APIs and
-attributes of the scan generator remain available.
-
-Engine namespace
-----------------
-
-Plugins have access to the live sequence engine namespace via:
+``scan`` is an alias for ``scan_generator`` only when the plugin has one.
+Generator properties differ: a function generator has waveform parameters,
+a list generator has ``stages``, and a stepped generator has its own stage
+definition. Inspect the actual generator rather than assigning generic
+``start``/``end`` fields to every type. For the Counter list in the workflow:
 
 .. code-block:: python
 
-    plugin.engine_namespace
+   scan.scan.stages = [(0.0, True), (1.0, True), (2.0, True)]
+   scan.refresh()
 
-The namespace contains variables created by sequence scripts, injected plugin
-instances, NumPy functions seeded by the engine, and the shared logger.
+A state sweep uses ``sweep_generator`` instead. Preserve the boolean measurement
+flag when editing stages. If settings change reported output names, refresh
+data catalogues through the attached engine as described in
+:doc:`third_party_plugins`.
 
-Examples:
+Running code and lifecycle readiness
+-------------------------------------
+
+Console method calls are real actions on shared objects. They can move hardware
+or write files. For a repeatable check with normal setup and cleanup, use
+**Run Selection…**; for a modified full script, use **Generate Code** and run
+the edited script on Script Editor. See :doc:`sequence_execution`.
+
+After generated cleanup, a lifecycle-managed instance is no longer ready for
+arbitrary action calls. Reconnecting begins a new session and may reset
+per-run state. In particular, finish an incremental Save before cleanup if it
+must retain the original destination; see :doc:`data_workflows`.
+
+Selecting a plot display
+-------------------------
+
+The application injects a display-selection helper:
 
 .. code-block:: python
 
-    plugin.engine_namespace["field_max"]
-    plugin.log.info("Hello from a plugin")
+   select_display_plugin('polar')
 
-Examples
---------
+Selecting the current display preserves it. A different selection is dispatched
+to the GUI and can clear incompatible plotted state; acquired tables remain
+available. An unavailable requested display raises an error. Generated scripts
+use this helper before plugin setup to select the sequence's preferred display.
+Use :doc:`plot_displays` for coordinate forms and user controls, and
+:doc:`plotting_contracts` for direct producer requests.
 
-Adjust the scan range of the first plugin in the sequence and update the UI:
+.. _temperature-console:
+
+Temperature controller scripting
+---------------------------------
+
+The shared controller service is separate from the sequence engine. Obtain it
+explicitly; ``engine`` is not an automatically injected controller variable:
 
 .. code-block:: python
 
-    sequence.plugins[0].scan.start = 0
-    sequence.plugins[0].scan.end = 10
-    sequence.plugins[0].refresh()
+   from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+   from stoner_measurement.temperature_control import LoopRef, ChannelRef
 
-Refresh every plugin configuration widget in the sequence:
+   temperature = TemperatureControllerEngine.instance()
+   temperature.set_setpoint(1, 300.0)  # primary controller, native loop 1
+   temperature.set_setpoint(LoopRef('secondary', 1), 275.0)
+   temperature.set_input_channel(
+       LoopRef('secondary', 1), ChannelRef('secondary', 'B')
+   )
+   state = temperature.get_engine_state()
+   state.all_readings[ChannelRef('secondary', 'A')].value
+   state.loop_values('setpoints')[LoopRef('secondary', 1)]
+
+These examples require the corresponding connected controllers and supported
+channels. ``temperature.controller('secondary')`` exposes controller-local
+settings. Legacy integer-keyed state dictionaries and ``state.readings`` remain
+primary views; ``state.secondary`` contains the secondary snapshot.
+``cache_ages`` and ``controller_statuses`` distinguish freshness and status.
+
+For a Set Temperature step and a temperature-monitor instance:
 
 .. code-block:: python
 
-    sequence.full_refresh()
+   set_temperature.controller_id = 'secondary'
+   set_temperature.control_loop = 1
+   set_temperature.setpoint_expr = '275'
+   temperature_monitor.temperature({'controller_id': 'secondary', 'channel': 'A'})
+
+Use the actual step names and refresh their UI after edits. Do not close the
+shared service as cleanup for a plugin that merely borrows it. The connection,
+stability and migration controls are covered in :doc:`temperature_controllers`.

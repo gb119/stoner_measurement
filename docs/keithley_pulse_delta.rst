@@ -1,14 +1,25 @@
 6221/2182 Pulse Delta trace
 ===========================
 
+This user reference covers wiring, pulse configuration and returned data for
+the native Pulse Delta acquisition. For held DC during nested measurements,
+use :doc:`keithley_point_commands`. For processing and saving returned traces,
+see :doc:`data_workflows`.
+
 Select **6221/2182 Pulse Delta Trace** from the Keithleys catalogue to acquire
 a custom current list using the 6221's native Pulse Delta mode. **Scan** selects
 the high pulse currents using the same generators as the ordinary IV trace.
+
+Connection
+------------
 
 Connect the 2182A to the 6221 using both RS-232 and Trigger Link, with the
 factory Trigger Link assignments. Set both serial interfaces to 19.2 kbaud,
 with no flow control, and select GPIB for communication between the PC and 6221.
 The plugin owns one GPIB session to the source.
+
+Timing controls
+----------------
 
 **Settings** contains pulse width, settling delay within the pulse, complete
 cycle period, and one or two baseline measurements. The live diagram shows
@@ -23,6 +34,9 @@ A cycle too short for the nominal mains-spaced sequence shows an explanation
 instead of an impossible waveform. Timing expressions
 are evaluated during configuration, and are not evaluated by the preview.
 The 6221 sets the 2182A integration time; there is no independent NPLC control.
+
+Results and acquisition lifecycle
+----------------------------------
 
 The baseline is zero current. With two baseline measurements, voltage is
 ``Vhigh - (Vbefore + Vafter)/2``; with one, it is ``Vhigh - Vbefore``.

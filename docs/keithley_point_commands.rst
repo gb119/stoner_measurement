@@ -1,8 +1,11 @@
 Keithley point scans and set commands
-====================================
+=====================================
 
 The IV catalogue includes **6221/2182 Point by Point Scan**, **Set 2400**,
 and **Set 6221/2182** alongside the existing trace and 2400 point-scan plugins.
+This is a user reference for their configuration, outputs and current-holding
+behavior. Use :doc:`data_workflows` for collecting/plotting/saving their results
+and :doc:`third_party_plugins` for implementation contracts.
 
 6221 DC point scan
 ------------------
@@ -53,14 +56,17 @@ Set 6221/2182 uses the DC point-scan settings and optional-meter outputs above.
 These commands connect and configure during sequence startup. Each execution
 sets the source and takes the selected readings; output remains active for
 subsequent steps. Sequence cleanup disables the output and closes the owned
-connections. Reconfigure can defer their setup until a particular step.
+connections. :ref:`sequence-reconfiguration` explains how to defer their setup
+until a particular step.
 Use one owning instance per physical source during a sequence.
 
-Triggering and future pulsed measurements
-----------------------------------------
+Triggering and Pulse Delta
+---------------------------
 
 The 2400 retains its existing Trigger Link output options. The 6221 DC plugin
 does not emit output triggers or use its sweep/pulse model, so the programmed
 current can remain applied during child steps. Trigger output without disturbing
-DC current requires further hardware verification. Separate pulsed-current
-plugins are deferred. No bench validation has been performed for these plugins.
+DC current requires further hardware verification. A separate native Pulse Delta
+trace is implemented; see :doc:`keithley_pulse_delta`. It does not change this
+point scan's held-DC contract. No bench validation has been performed for the
+DC point/set plugins documented here.

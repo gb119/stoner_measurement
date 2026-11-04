@@ -8,8 +8,9 @@ stable ``PlotDisplayHost``. The bundled Cartesian factory provides the default
 display. ``PlotClient`` and ``PlotTicket`` define the producer interfaces.
 Factories are discovered independently of sequence plugins. Idle replacement
 validates and hydrates a candidate before committing it.
-For a complete external factory example and packaging guidance, see
-:doc:`plot_display_plugins`.
+This page is a protocol reference for producer and renderer developers.
+For a complete external factory example, see :doc:`plot_display_plugins`;
+for operating the bundled displays, see :doc:`plot_displays`.
 
 Generalised coordinates
 -----------------------
@@ -145,7 +146,8 @@ Rectilinear surface assembly
 Its extension version is negotiated through
 ``PlotCapabilities.surface_versions`` (empty by default). Supporting three
 coordinates or a value channel alone does not imply surface assembly support.
-Existing factories and the bundled Cartesian display reject this extension.
+The bundled 2D Cartesian and summary-example factories reject this extension;
+the bundled XYZ and intensity factories opt into version one.
 Factories opting into version one must support all the following semantics:
 
 * ``surface_id`` equals ``series_id`` and identifies the whole surface.
@@ -155,19 +157,13 @@ Factories opting into version one must support all the following semantics:
   evaluate to nonblank strings.
 * ``kind="slice"`` inserts/replaces a whole fixed-Y trace atomically, with an
   explicit ``slice_id`` and the same exact X grid as earlier slices.
-  Each submitted X occurs once within a slice. Plot Trace prepares these rows
-  automatically using its **Surface X grid** control: it sorts X and averages
-  repeated coordinates by default, including floating-point round-off repeats.
-  First/last-sample modes select repeated samples in acquisition order; strict
-  mode retains the original unique, exactly matching X requirement.
-  Later rows are linearly interpolated onto the first row's X grid.
-  **Outside X range** defaults to holding the nearest valid boundary value;
-  **Leave gaps** uses NaN instead. Internal missing samples remain gaps.
-  This preparation changes plotted samples only; acquired trace tables remain
-  intact. Averaging merges sweep branches, including any hysteresis. Supplied
-  uncertainties use independent-error propagation, without inferring errors
-  from branch differences. The repeated-slice policy controls reacquisition
-  separately from preparation of repeated X within a row.
+  Each submitted X occurs once within a slice.
+  Producers must prepare a compatible grid before submission; the
+  accumulator does not interpolate or tolerance-merge coordinates. Plot Trace
+  provides optional preparation controls, documented in :doc:`plot_displays`.
+  Supplied uncertainties use independent-error propagation when preparation
+  merges/interpolates samples. Duplicate-slice policy is independent of that
+  preparation.
 * ``kind="cells"`` inserts individual X/Y cells independently of traversal
   order. Missing cells stay absent; measured NaNs remain missing data.
 * ``duplicates="reject"`` rejects repeats before mutation. Explicit
@@ -233,9 +229,8 @@ work. Asynchronous dispatch coalesces wake events and yields between bounded
 turns; ``apply_now`` retains immediate logical completion on the GUI thread.
 
 Public ``axes()``, ``series()`` and ``capabilities()`` queries return descriptions
-without exposing renderer objects. Ownership, compatibility and migration gates
-are recorded in ``notes/2026-10-01-plot-contract-stage1.md`` and
-``notes/2026-10-01-plot-service-stage2.md`` in the source tree.
+without exposing renderer objects. The service owns canonical plotted snapshots; acquisition tables remain
+owned by measurement plugins. See :doc:`trace_data` for that boundary.
 
 The application's host owns the service and selected display, including the
 Cartesian widget's graphics lifecycle.
@@ -313,11 +308,9 @@ Embedded controller plots retain their standalone ``PlotWidget`` API.
 Switching display
 -----------------
 
-Choose **View → Plot display** to select an installed display factory. The current
-selection is checked. Bundled displays include Cartesian traces, Polar traces,
-Cartesian XYZ and XY intensity;
-installed third-party factories add choices to this menu. A refused replacement
-shows its diagnostic and retains the previous selection.
+User controls and per-sequence display preferences are described in
+:doc:`plot_displays`. The host contract below applies to programmatic
+replacement and its failure/ownership guarantees.
 
 ``host.switch_display(factory_id)`` returns True on success or False with a
 diagnostic. Replacement requires both an idle engine (including queued scripts
@@ -348,3 +341,28 @@ series. Unsupported or malformed saved settings fall back to Cartesian defaults.
 ``host.save_preferences()`` persists current controls; close and successful
 replacement also save them. Shared plots remain application-wide across sequence
 documents.
+
+Polar producer example
+-----------------------
+
+In scripts, polar bindings use ``x=angle`` and ``y=radius``. This is distinct
+from cylindrical and spherical bindings, which remain radius first::
+
+    from stoner_measurement.core.plotting.contracts import (
+        AngularUnit, CoordinateBinding, CoordinateDescriptor,
+        CoordinateSystem, PlotData, PlotRequest, SeriesUpdate,
+    )
+    update = SeriesUpdate(
+        "angular-response",
+        PlotData({"angle": [0, 90, 180], "radius": [2, 3, 4]}),
+        CoordinateBinding("angle", "radius"),
+        CoordinateDescriptor(
+            CoordinateSystem.POLAR, AngularUnit.DEGREES,
+            angular_origin=90, clockwise=True,
+        ),
+    )
+    ticket = engine.plot_client.submit(PlotRequest(update))
+
+The submission example assumes an existing ``engine`` with Polar traces
+selected. Worker callers wait using ``engine.wait_for_plot_ticket(ticket)``;
+GUI callers submit without blocking or use ``apply_now``.

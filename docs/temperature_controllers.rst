@@ -1,6 +1,11 @@
 Temperature controllers
 =======================
 
+This is the user and rig-administrator reference for the Temperature Control
+panel, loop selections and shared stability settings. For qualified Python
+calls see :ref:`temperature-console`; for plugin contracts see
+:doc:`third_party_plugins`.
+
 A rig can use one temperature controller or a primary controller plus an
 optional secondary controller. The secondary controller is disabled by default.
 Existing single-controller settings and sequences continue to select primary.
@@ -76,39 +81,9 @@ Sensor and monitor-loop lists have catalogue pickers. Editable lists accept
 entries mean primary. An empty sensor list includes all available sensors.
 The monitor leaves the shared controller connections running when it stops.
 
-Existing console calls retain their primary meaning::
-
-    engine.set_setpoint(1, 300.0)
-
-Qualified references select secondary explicitly::
-
-    from stoner_measurement.temperature_control import LoopRef, ChannelRef
-
-    engine.set_setpoint(LoopRef("secondary", 1), 275.0)
-    engine.set_input_channel(
-        LoopRef("secondary", 1), ChannelRef("secondary", "B")
-    )
-    state = engine.get_engine_state()
-    state.all_readings[ChannelRef("secondary", "A")].value
-    state.loop_values("setpoints")[LoopRef("secondary", 1)]
-
-Controller-local settings are available through ``engine.controller("secondary")``.
-``state.readings`` and the existing integer-keyed state dictionaries remain primary
-views; ``state.secondary`` holds the secondary snapshot. ``cache_ages`` and
-``controller_statuses`` describe each controller independently. Published channel
-readings include ``controller_id`` to distinguish identical native channel names.
-
-For a sequence command::
-
-    set_temperature.controller_id = "secondary"
-    set_temperature.control_loop = 1
-    set_temperature.setpoint_expr = "275"
-
-Monitor accessors accept structured references as well as legacy primary arguments::
-
-    temperature_monitor.temperature(
-        {"controller_id": "secondary", "channel": "A"}
-    )
+For controller-qualified Python calls and state inspection, see
+:ref:`temperature-console`. Legacy unqualified loop numbers and sensor names
+continue to mean primary; use qualified references for the secondary device.
 
 Make Safe attempts output shutdown on every advertised loop of both connected
 controllers, including after a failure on the first. Stopping the temperature
@@ -135,6 +110,8 @@ structured references. Sequence JSON and saved-data sequence metadata retain
 those identities. Two-controller sequences require a release supporting this
 schema; older releases cannot be expected to read them.
 
-Polling is synchronous. A slow or timing-out instrument may delay the next poll
-of its peer. Transport timing, actual sensor assignments and output shutdown must
+Timer-driven polling is dispatched to a controller worker so device I/O does
+not block the GUI event loop. Shared-state reads still need controller data;
+a slow or failed instrument can delay fresh readings and invalidate dependent
+stability criteria. Transport timing, actual sensor assignments and output shutdown must
 be checked on the measurement rig before relying on a new hardware configuration.

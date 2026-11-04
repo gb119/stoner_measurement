@@ -1,611 +1,356 @@
-Third-party plugin packages
-===========================
+Writing sequence plugins
+=========================
 
-Any Python package can contribute new plugins — including new sequence-engine
-commands — to the Stoner Measurement application without modifying the
-application's source code or configuration files.  The mechanism is the
-standard Python *entry-points* system; once a third-party package is installed
-in the same Python environment as the application, its plugins are
-automatically discovered at start-up.
+This is the implementation contract for an external Python package that adds
+measurement steps to Stoner Measurement. It covers discovery, execution,
+resource ownership, published data, configuration widgets and persistence.
+It is also a checklist for coding assistants implementing those integrations.
+Use :doc:`usage` and :doc:`data_workflows` for operating existing plugins.
 
-Measurement display factories use the separate
-``stoner_measurement.plot_displays`` entry-point group and do not inherit
-``BasePlugin``. See :doc:`plotting_contracts` for their factory, widget ownership
-and communications interfaces. See :doc:`plot_display_plugins` for a complete
-external factory example and authoring guidance.
+Sequence plugins inherit ``BasePlugin``. Plot display factories have a
+separate entry-point group and contract: see :doc:`plot_display_plugins` and
+:doc:`plotting_contracts`. Instrument drivers implement device protocols;
+sequence plugins orchestrate them or borrow application controller services.
 
 .. contents:: On this page
    :local:
    :depth: 2
 
-How plugin discovery works
---------------------------
+Discovery and identity
+-----------------------
 
-When the application starts it creates a
-:class:`~stoner_measurement.core.plugin_manager.PluginManager` and calls its
-:meth:`~stoner_measurement.core.plugin_manager.PluginManager.discover` method.
-That method calls :func:`importlib.metadata.entry_points` with the group name
-``stoner_measurement.plugins`` and instantiates every class that is
-registered under that group.
-
-The result is that **any installed package** that declares one or more
-entry-points in the ``stoner_measurement.plugins`` group will have its plugin
-classes loaded and made available in the application.  No changes to the
-application's own ``pyproject.toml``, source code, or configuration files
-are required.
-
-Lifecycle and runtime reconfiguration
-------------------------------------
-
-``connect()`` must release an instance's existing resources before opening
-replacements. The shared ``BasePlugin`` lifecycle wrapper calls ``disconnect()``
-before a repeated connection attempt, including retrying a partially failed
-attempt. Implement ``disconnect()`` as an idempotent operation: close all owned
-resources, including any partially opened resources, and clear their references.
-Do not close resources owned by another plugin or shared controller service.
-If cleanup fails, propagate the error so a replacement connection is not opened.
-Calls through ``super().connect()`` are part of the same connection attempt.
-
-Generated sequences track successful connection and configuration phases and
-raise ``RuntimeError`` if a step is reached before its meaningful setup phases
-have succeeded. Failed setup and disconnection invalidate readiness. The checks
-run at execution time; conditional statements and loops are not analysed for
-reachability. The default no-op setup methods do not impose readiness requirements.
-Legacy direct calls outside a generated sequence retain their plugin-specific
-checks unless the instance has deferred setup enabled.
-
-The **Reconfigure** command presents a flat checklist of sequence instances.
-Each execution reconnects the selected instances and applies their configuration,
-in sequence order. **Suppress connect and configure at startup** defaults to on;
-turn it off to retain normal startup setup and apply settings again later.
-Selections in any enabled Reconfigure with suppression on set the targets'
-derived ``delay_configuration`` flag. Changing selections, suppression, enabled
-state, or sequence membership rebuilds those flags. The flag has no direct UI
-editor and is not saved separately from the Reconfigure selections.
-
-For example, with two instances controlling the same instruments, use::
-
-    Reconfigure (select measurement_a)
-    measurement_a
-    Reconfigure (select measurement_b)
-    measurement_b
-
-Leave suppression enabled on both commands. Put another Reconfigure before
-returning to ``measurement_a`` so that its settings are applied again. A
-Reconfigure inside a loop reconnects and configures on every iteration.
-Disabled steps are skipped; selecting a removed target raises a runtime error.
-
-Choosing a plugin base class
------------------------------
-
-All plugins must ultimately subclass
-:class:`~stoner_measurement.plugins.base_plugin.BasePlugin`.  In practice you
-will subclass one of the six specialised base classes:
-
-.. list-table::
-   :header-rows: 1
-   :widths: 25 75
-
-   * - Base class
-     - Use when …
-   * - :class:`~stoner_measurement.plugins.command.CommandPlugin`
-     - The step performs a single action (e.g. save data, send a notification,
-       trigger an external event) and has no instrument lifecycle.
-   * - :class:`~stoner_measurement.plugins.trace.TracePlugin`
-     - The step acquires ``(x, y)`` data traces from an instrument.
-   * - :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
-     - The step drives hardware to a series of set-points (field, temperature,
-       motor position, etc.) and may contain nested sub-steps.
-   * - :class:`~stoner_measurement.plugins.monitor.MonitorPlugin`
-     - The step passively records auxiliary quantities by polling hardware at a
-       configurable interval.
-   * - :class:`~stoner_measurement.plugins.transform.TransformPlugin`
-     - The step performs a pure-computation transform or reduction on already
-       collected data without accessing hardware.
-   * - :class:`~stoner_measurement.plugins.sequence.base.SequencePlugin`
-     - The step acts as a generic container (branch node) in the sequence tree,
-       holding nested sub-steps.
-
-The remainder of this page focuses on
-:class:`~stoner_measurement.plugins.command.CommandPlugin` because it is the
-most common choice for new sequence-engine commands that do not require a
-dedicated hardware instrument.
-
-Writing a TransformPlugin
--------------------------
-
-A :class:`~stoner_measurement.plugins.transform.TransformPlugin` should satisfy
-the following contract so it integrates correctly with sequence execution,
-catalogue reporting, serialisation, and configuration UI.
-
-Required properties and methods
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Implement these members on every transform plugin:
-
-* :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name`
-  (``str``): display name shown in the UI.
-* :attr:`~stoner_measurement.plugins.transform.TransformPlugin.required_inputs`
-  (``list[str]``): names that must be present in the dict passed to
-  :meth:`~stoner_measurement.plugins.transform.TransformPlugin.run`.
-* :attr:`~stoner_measurement.plugins.transform.TransformPlugin.output_names`
-  (``list[str]``): all output keys produced by
-  :meth:`~stoner_measurement.plugins.transform.TransformPlugin.transform`.
-* :meth:`~stoner_measurement.plugins.transform.TransformPlugin.transform`
-  (``dict[str, Any] -> dict[str, Any]``): pure computation that returns output
-  data without hardware lifecycle operations.
-
-Output-reporting contract
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Declare output roles so the sequence engine populates catalogues correctly:
-
-* Override
-  :attr:`~stoner_measurement.plugins.transform.TransformPlugin.output_trace_names`
-  for outputs that should appear in ``_traces``.
-* Override
-  :attr:`~stoner_measurement.plugins.transform.TransformPlugin.output_value_names`
-  for scalar outputs that should appear in ``_values``.
-* Ensure both are subsets of ``output_names`` and stable across runs.
-
-Configuration and persistence contract
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-For plugins with configurable settings:
-
-* Override :meth:`~stoner_measurement.plugins.transform.TransformPlugin._build_data_tab`
-  to provide trace/value selection controls.
-* Override :meth:`~stoner_measurement.plugins.transform.TransformPlugin.config_tabs`
-  when multiple tabs are needed:
-
-  1. Start from ``super(<YourPluginClass>, self).config_tabs(parent)``.
-  2. Insert plugin-specific tabs before any optional *About* tab.
-  3. Return tabs via ``self._get_cached_config_tabs(...)`` so widget state is
-     preserved while selecting/deselecting steps.
-
-* Override :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
-  and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._restore_from_json`
-  for every user-editable attribute so saved sequences reload correctly.
-
-Runtime expectations
-~~~~~~~~~~~~~~~~~~~~
-
-Transform plugins are expected to:
-
-* Use :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`
-  and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` when
-  reading upstream trace/value expressions.
-* Return deterministic output keys and data shapes for a given configuration.
-* Report recoverable problems through ``self.log`` and return an empty result
-  dict when no valid output can be produced.
-
-Writing a CommandPlugin
-------------------------
-
-A :class:`~stoner_measurement.plugins.command.CommandPlugin` must implement
-two things:
-
-1. The :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.name`
-   property — a unique human-readable string shown in the sequence builder.
-2. The :meth:`~stoner_measurement.plugins.command.CommandPlugin.execute`
-   method — the action to perform when the sequence step is reached.
-
-Inside :meth:`execute` you have access to:
-
-* :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`
-  — the full sequence engine namespace (a ``dict``).  It contains all
-  registered plugin instances, ``np``/``numpy`` and every name in
-  ``numpy.__all__``, as well as the ``_traces`` and ``_values`` data
-  catalogs built up by earlier sequence steps.
-* :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` — evaluate
-  a Python expression string against the engine namespace using
-  :mod:`asteval`.
-* :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.log` — a
-  :class:`logging.Logger` whose records are forwarded to the application's
-  log viewer.
-
-Example: a "Send notification" command
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The following example sends a brief notification to a remote HTTP endpoint
-(using the standard-library :mod:`urllib`) whenever the step is executed:
-
-.. code-block:: python
-
-    # src/my_measurement_extras/notify.py
-
-    import json
-    import urllib.request
-    from PyQt6.QtWidgets import QFormLayout, QLineEdit, QWidget
-
-    from stoner_measurement.plugins.command import CommandPlugin
-
-
-    class NotifyCommand(CommandPlugin):
-        """Send a JSON notification to a configurable HTTP endpoint.
-
-        Evaluates ``message_expr`` against the engine namespace and POSTs the
-        resulting string as JSON to ``endpoint``.
-        """
-
-        def __init__(self, parent=None):
-            super().__init__(parent)
-            self.endpoint: str = "http://localhost:9000/notify"
-            self.message_expr: str = "'Sequence step reached'"
-
-        @property
-        def name(self) -> str:
-            return "Notify"
-
-        def execute(self) -> None:
-            message = self.eval(self.message_expr)
-            payload = json.dumps({"message": str(message)}).encode()
-            req = urllib.request.Request(
-                self.endpoint,
-                data=payload,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=5):
-                    self.log.info("Notification sent to %s", self.endpoint)
-            except OSError as exc:
-                self.log.warning("Notification failed: %s", exc)
-
-        def config_widget(self, parent: QWidget | None = None) -> QWidget:
-            widget = QWidget(parent)
-            layout = QFormLayout(widget)
-
-            endpoint_edit = QLineEdit(self.endpoint, widget)
-            message_edit = QLineEdit(self.message_expr, widget)
-
-            def _apply():
-                self.endpoint = endpoint_edit.text().strip()
-                self.message_expr = message_edit.text().strip()
-
-            endpoint_edit.editingFinished.connect(_apply)
-            message_edit.editingFinished.connect(_apply)
-
-            layout.addRow("Endpoint URL:", endpoint_edit)
-            layout.addRow("Message expression:", message_edit)
-            widget.setLayout(layout)
-            return widget
-
-        def to_json(self):
-            d = super().to_json()
-            d["endpoint"] = self.endpoint
-            d["message_expr"] = self.message_expr
-            return d
-
-        def _restore_from_json(self, data):
-            self.endpoint = data.get("endpoint", self.endpoint)
-            self.message_expr = data.get("message_expr", self.message_expr)
-
-The :meth:`config_widget` override provides a settings tab in the right-hand
-configuration panel.  The :meth:`to_json` and :meth:`_restore_from_json`
-overrides ensure that the configuration is preserved when a sequence is saved
-and reloaded.
-
-Packaging the plugin
----------------------
-
-Place the plugin class inside a normal Python package and declare it as an
-entry-point in the package's ``pyproject.toml``.
-
-Minimal package layout
-~~~~~~~~~~~~~~~~~~~~~~~
-
-.. code-block:: text
-
-    my_measurement_extras/
-    ├── pyproject.toml
-    └── src/
-        └── my_measurement_extras/
-            ├── __init__.py
-            └── notify.py
-
-``pyproject.toml``
-~~~~~~~~~~~~~~~~~~~
+Install the external package into the same Python environment as the
+application. Register no-argument plugin classes in your package's
+``pyproject.toml``:
 
 .. code-block:: toml
 
-    [build-system]
-    requires = ["setuptools>=61"]
-    build-backend = "setuptools.build_meta"
+   [project.entry-points."stoner_measurement.plugins"]
+   my_lab_record_value = "my_measurement_extras.record_value:RecordValueCommand"
 
-    [project]
-    name = "my-measurement-extras"
-    version = "0.1.0"
-    requires-python = ">=3.12"
-    dependencies = ["stoner_measurement"]
+``PluginManager.discover()`` loads each entry point and constructs its class.
+The sequence editor creates separate instances for individual steps. Therefore:
 
-    [tool.setuptools.packages.find]
-    where = ["src"]
+* Modules and constructors must be inexpensive and work without connected
+  hardware. Create widgets in UI hooks and open devices in lifecycle hooks.
+* Accept ``parent=None`` and call ``super().__init__(parent)`` when the chosen
+  base class supports Qt ownership.
+* Use a distinctive entry-point name. Duplicate registry names can replace
+  each other; discovery is not a collision-resolution service.
+* Implement ``name`` as a human-readable plugin-type label. Use
+  ``instance_name`` for the identity of a particular step and its namespace
+  variable. Let the shared setter/editor validate identifiers and reserved
+  names; do not assign the private backing attribute.
+* Keep public module/class paths importable across releases. Saved sequences
+  contain those paths, independently of the entry-point name.
 
-    [project.entry-points."stoner_measurement.plugins"]
-    notify = "my_measurement_extras.notify:NotifyCommand"
+Restart the application after installing or changing entry-point metadata.
+Editable installs expose source edits, but an already running process retains
+its imported classes. Discovery failures are logged and isolated from other
+entry points.
 
-The entry-point declaration has the form::
+Choose the execution contract
+-------------------------------
 
-    <entry_point_name> = "<importable.module.path>:<ClassName>"
+Use the narrowest suitable base. These are the current interfaces, not the
+older generator-based trace API or the compatibility ``state_control`` alias.
 
-* ``<entry_point_name>`` is an arbitrary lower-case identifier used
-  internally by the plugin manager.  It must be unique across all installed
-  packages (choose a name specific enough to avoid collisions).
-* The right-hand side is the fully qualified import path to the class,
-  separated from the class name by a colon.
+.. list-table:: Plugin families
+   :header-rows: 1
+   :widths: 25 40 35
 
-You can register **multiple plugins** from the same package by adding one line
-per plugin:
+   * - Import
+     - Implement
+     - Execution responsibility
+   * - ``plugins.command.CommandPlugin``
+     - ``name`` and ``execute()``
+     - One action. Generated code calls ``instance()``; its callable delegates
+       to ``execute()``. Lifecycle is off by default, but resource-owning
+       commands can override ``has_lifecycle``.
+   * - ``plugins.trace.TracePlugin``
+     - ``name`` and ``_measure(parameters)``
+     - Acquire complete trace tables. The public ``measure()`` wrapper owns
+       status, result storage and optional channel statistics.
+   * - ``plugins.state_scan.StateScanPlugin``
+     - ``name``, ``state_name``, ``units``, ``set_state(value)``,
+       ``get_state()`` and ``is_at_target()``
+     - Move through discrete points and execute nested steps at those points.
+   * - ``plugins.state_sweep.StateSweepPlugin``
+     - ``name``, ``state_name`` and ``units``; override the relevant hardware
+       hooks ``set_state``, ``get_state``, ``set_target``, ``set_rate`` and
+       ``is_at_target``
+     - Integrate a sweep generator with actual state/rate control. Default
+       hardware hooks are no-ops and do not drive an instrument.
+   * - ``plugins.monitor.MonitorPlugin``
+     - ``name``, ``quantity_names``, ``units`` and ``read()``
+     - Return a mapping of quantity names to scalar readings. ``units`` maps
+       those names to unit strings. Use the base monitoring machinery.
+   * - ``plugins.transform.TransformPlugin``
+     - ``name``, ``required_inputs``, ``output_names`` and ``transform(data)``
+     - Compute named outputs from existing data. The public ``run(data)``
+       wrapper validates required inputs and stores results.
+   * - ``plugins.sequence.SequencePlugin``
+     - ``name`` and ``execute_sequence(sub_steps)``; define appropriate
+       ``generate_action_code`` when execution changes child control flow
+     - Own orchestration, not the sequence editor. Direct execution and
+       generated-script execution must agree.
+
+All imports in the table are relative to ``stoner_measurement``. See the
+corresponding classes in :doc:`api/plugins` for detailed signatures. Use
+``state_scan`` in new code; ``StateControlPlugin`` remains a compatibility alias.
+
+Lifecycle and resource ownership
+---------------------------------
+
+``has_lifecycle`` determines participation in generated connection,
+configuration and cleanup phases. It is a resource/setup decision, not a
+synonym for the plugin family: some leaf commands need a lifecycle.
+
+``connect()``
+   Open or borrow the resources needed by this instance. Repeated calls must
+   release this instance's previous resources before replacing them. The base
+   wrapper invokes ``disconnect()`` before a repeated or partially failed
+   connection attempt. Calls through ``super().connect()`` belong to the same
+   attempt. Do not duplicate that tracking or clear its private state.
+
+``configure()``
+   Apply this instance's settings. Evaluate runtime setup expressions here,
+   rather than while constructing the plugin or its configuration widgets.
+   Propagate failed setup so the instance is not considered ready.
+
+``disconnect()``
+   Be idempotent after both successful and partial connection. Release owned
+   handles, return owned outputs to the appropriate safe state, and clear
+   references. Propagate cleanup failures. Never close another instance's
+   resources or a borrowed shared controller service.
+
+Generated sequences reset per-run state with ``start()`` and check meaningful
+setup phases at runtime. Disconnection and failed setup invalidate readiness.
+The checks also apply inside conditional branches and loops; do not substitute
+static reachability assumptions or bypass ``require_ready()``.
+
+An instance may be configured again during execution. Reconfigure derives
+``delay_configuration`` from its sequence selections: do not add an editor
+for that flag or persist it independently. A plugin must tolerate deferred
+setup and reconnect through the same lifecycle hooks. User instructions for
+placing Reconfigure belong in :ref:`sequence-reconfiguration`.
+
+Keep transport commands and protocol details in instrument drivers. Plugins
+using the shared temperature, magnet, motor, pressure or X-ray engines borrow
+their sessions. For temperature selections, preserve controller-qualified
+``LoopRef``/``ChannelRef`` identities; a loop's input choices belong to its
+own controller. See :doc:`temperature_controllers` for the user-visible model.
+
+Namespace, expressions and logging
+-----------------------------------
+
+Use the attached ``sequence_engine`` and its public services. Access current
+runtime state through ``self.engine_namespace``; it is an empty mapping while
+detached. Do not retain a private copy of the engine namespace or inspect
+sequence-tree widgets from execution code.
+
+``self.eval(expression)`` and ``self.eval_float(expression)`` evaluate settings
+against the live namespace. Keep expression text in configuration and evaluate
+at the documented phase, so expressions can use the current loop value or an
+upstream result. The namespace includes ``np``/``numpy``, exported NumPy names,
+plugin instance variables, ``log``, and trace/value catalogue expressions.
+The application also exposes a live ``sequence`` view; see :doc:`console_api`.
+
+Use ``self.log`` for diagnostics. Let errors that prevent a valid action
+propagate to the engine. When intentionally recovering, log the problem and
+publish a defined invalid/empty result rather than leaving an earlier success
+as though it were current. Do not catch ``KeyboardInterrupt`` or cancellation
+indiscriminately. Bound hardware I/O and waits: stopping Python execution
+cannot reliably interrupt an indefinitely blocked device call.
+
+Sequence actions run on the engine worker. Create and update Qt widgets on the
+GUI thread, using queued Qt signals or the application's service boundaries
+for cross-thread requests. Import Qt through ``qtpy`` and signals through
+``stoner_measurement.qt_compat``; do not force a particular Qt binding.
+
+Publishing data for other steps
+--------------------------------
+
+``reported_traces()`` and ``reported_values()`` return mappings of display keys
+to expressions, not the current arrays or scalar values. The expressions
+resolve in the engine namespace:
+
+.. code-block:: python
+
+   def reported_values(self):
+       return {f"{self.instance_name}:Value": f"{self.instance_name}.value"}
+
+   def reported_value_units(self):
+       return {f"{self.instance_name}:Value": "V"}
+
+Common identities are ``instance:channel`` for acquired/transformed traces and
+scalar quantities, and ``instance.data`` for a state scan/sweep's collected
+table. Keep output keys stable for a configuration and ensure their expressions
+resolve after execution. Declare output units with matching keys.
+
+The ``_traces`` and ``_values`` catalogues describe steps in the current
+sequence, not all installed plugin templates. ``engine.traces_catalog`` and
+``engine.values_catalog`` and their change-signal arguments are snapshots.
+Use snapshots to populate controls and evaluate the selected expression when
+an action needs current data.
+
+If a setting changes reported outputs or units, call
+``self.sequence_engine.refresh_data_catalogs()`` when attached. Consumers
+should use ``bind_trace_catalog_updates`` or ``bind_value_catalog_updates``
+from ``stoner_measurement.plugins.trace_catalog_ui`` to scope updates to a
+widget's lifetime. Preserve valid selections, handle empty catalogues, and
+refresh when a producer changes or is removed. The base
+``remap_trace_reference`` handles common trace-key/expression attributes;
+override it, calling ``super()``, when storing additional trace references.
+
+Trace and transform result shapes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A trace plugin's ``_measure(parameters)`` returns
+``dict[str, TraceData]`` with keys matching ``trace_names``. Acquire each
+instrument once per requested acquisition. Do not update ``status``, ``data``
+or channel statistics inside ``_measure``: ``measure`` handles those duties.
+
+Each ``TraceData`` is one shared-row table with an ordinary integer DataFrame
+index. Independent coordinates are columns carrying the ``x`` role; multiple
+simultaneously acquired channels sharing that coordinate belong in columns of
+one table. Return separate tables for genuinely different coordinates.
+Preserve column roles, names and units through transforms. See
+:doc:`trace_data` for constructors and the full data contract.
+
+A transform's ``transform(data)`` returns a mapping with its declared output
+names. Declare ``output_trace_names`` and ``output_value_names`` explicitly
+when mixing tables and scalars. The default treats all output names as scalar
+values; returning a table alone does not publish it as a trace. Use the base
+``run`` path so input validation, result storage and completion signals remain
+consistent. Trace selection can evaluate catalogue expressions inside a
+transform with ``required_inputs=[]``; inputs declared there must instead be
+supplied in the mapping passed to ``run``.
+
+State scan/sweep bases already collect configured scalar outputs after their
+child actions and publish their table as ``instance.data``. Reuse those hooks;
+do not build a second collection table or assume a Save child sees the row
+that will be collected after it. The execution-order example is in
+:doc:`data_workflows`.
+
+Configuration UI and persistence
+---------------------------------
+
+``config_widget(parent=None)`` supplies a settings page.
+``config_tabs(parent=None)`` supplies ``(title, QWidget)`` pairs. Prefer the
+chosen base's tab hooks and caching instead of replacing its identity,
+scan/sweep/data, or help pages. When constructing a complete custom tab set,
+use ``self._get_cached_config_tabs(builder)`` and preserve the inherited
+settings/persistence behavior. See :doc:`plugin_tab_ordering`.
+
+Widgets edit plugin attributes; execution reads those attributes, not a live
+widget. Bind pending edits with the usual editing signals so committing
+configuration before generation captures them. Tolerate detached instances
+and empty data catalogues. Use the shared ``stoner_measurement.ui`` widgets:
+``FontAwareTabWidget``/``FontAwareTabBar`` for tabs and ``SISpinBox`` for
+physical quantities supporting units or SI prefixes. Keep pages top-packed,
+with one bottom stretch and explicit bounds for expanding controls.
+
+Override ``to_json()`` to extend ``super().to_json()`` with JSON-compatible
+settings. Override ``_restore_from_json(data)`` to call its superclass and
+restore those settings with compatible defaults for older files. The inherited
+loader constructs the concrete class named in the saved data, restores
+identity and settings, then reapplies machine-only configuration where defined.
+Keep device handles, widgets, engine references, acquired arrays and derived
+readiness/deferred-setup flags out of the configuration payload.
+
+Round-trip expressions as strings, selected output identities and roles as
+configuration, and generator settings through their existing serializers.
+Use ``BasePlugin.from_json`` for reconstruction; overriding that loader is
+rarely necessary. Renaming a public class/module requires a compatibility
+import or migration for previously saved sequences.
+
+``monitor_widget(parent=None)`` optionally exposes a monitoring panel. Its
+widget follows GUI ownership rules; it must not acquire an unmanaged second
+session or keep polling callbacks connected after destruction.
+
+Generated execution and plotting
+---------------------------------
+
+The engine generates instantiation, startup setup, actions and final cleanup.
+Usually inherit the action generator. If overriding
+``generate_action_code(indent, sub_steps, render_sub_step)``, return Python
+source lines with four spaces per indentation level, use the actual
+``instance_name``, and render children through the supplied callback. Do not
+duplicate whole-sequence setup/cleanup or assume neighbouring steps exist:
+Run Selection can generate a script from only this subtree.
+
+Overriding ``execute_sequence`` alone does not change the default transparent
+``SequencePlugin`` action generator. A container that changes control flow
+must implement generated actions with the same semantics as direct execution.
+Use ``validate_sequence_position(sequence_steps)`` for genuine placement
+constraints and ``is_loop_container`` for a container that generates a loop.
+
+Plot producers submit portable requests through ``engine.plot_client`` and
+negotiate capabilities. Keep renderer objects out of plugin execution code.
+Use ``engine.wait_for_plot_ticket`` from workers when completion is required;
+do not block the GUI on pending plot tickets. See :doc:`plotting_contracts`
+for data ownership, cancellation, completion and surface assembly. The legacy
+``engine.plot_widget`` facade is not a requirement for a new renderer.
+
+A complete minimal package
+---------------------------
+
+The downloadable :download:`record_value_plugin.py
+<examples/record_value_plugin.py>` demonstrates a lifecycle-free command,
+runtime expressions, a scalar output, a configuration page and persistence.
+Copy it to ``src/my_measurement_extras/record_value.py`` in your package:
+
+.. literalinclude:: examples/record_value_plugin.py
+   :language: python
+
+Include an ``__init__.py`` in ``src/my_measurement_extras/`` and this metadata:
 
 .. code-block:: toml
 
-    [project.entry-points."stoner_measurement.plugins"]
-    notify    = "my_measurement_extras.notify:NotifyCommand"
-    export_hdf5 = "my_measurement_extras.export:HDF5ExportCommand"
-    apply_gain  = "my_measurement_extras.transforms:GainTransform"
+   [build-system]
+   requires = ["setuptools>=61"]
+   build-backend = "setuptools.build_meta"
 
-Installing and verifying
--------------------------
+   [project]
+   name = "my-measurement-extras"
+   version = "0.1.0"
+   requires-python = ">=3.12"
+   dependencies = ["stoner_measurement"]
 
-Development install (editable)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   [tool.setuptools.packages.find]
+   where = ["src"]
 
-During development, install your package in editable mode so that changes
-take effect immediately without reinstalling:
+   [project.entry-points."stoner_measurement.plugins"]
+   my_lab_record_value = "my_measurement_extras.record_value:RecordValueCommand"
 
-.. code-block:: bash
+Declare the application-version range your package actually supports and test
+against it. In the environment used to run the application, install with
+``python -m pip install -e .``. For the repository's Conda environment this is
+``conda run -n stoner_measurement python -m pip install -e .``.
 
-    cd my_measurement_extras
-    pip install -e .
-
-Verifying discovery
-~~~~~~~~~~~~~~~~~~~~
-
-You can verify that the application will find your plugin before launching
-the full GUI:
-
-.. code-block:: python
-
-    import importlib.metadata
-
-    eps = importlib.metadata.entry_points(group="stoner_measurement.plugins")
-    for ep in eps:
-        print(ep.name, "→", ep.value)
-
-This should list your new entry-points alongside the built-in ones.
-Save the snippet to a file (e.g. ``check_plugins.py``) and run it
-as a script if a multi-statement shell command is inconvenient:
-
-.. code-block:: bash
-
-    python check_plugins.py
-
-Once installed, launch the application normally:
-
-.. code-block:: bash
-
-    stoner-measurement
-
-Your plugin will appear in the sequence builder's plugin list and can be
-dragged into the sequence tree like any built-in plugin.
-
-Sequence engine services
+Verification checklist
 ------------------------
 
-The :class:`~stoner_measurement.core.sequence_engine.SequenceEngine` is the
-shared integration boundary between sequence-step plugins. Plugin code should
-use the public services below rather than retaining private copies of engine
-state or inspecting the sequence editor directly.
+Before distributing a plugin, verify:
 
-Attachment and shared namespace
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+* Entry-point metadata loads the class, and construction needs neither
+  widgets nor hardware. A clean environment can import the saved class path.
+* Two instances keep independent configuration, identity and owned resources.
+* Every editable setting survives JSON reconstruction, including defaults for
+  older data, without persisting runtime state.
+* Generated Python compiles and actually runs through the engine. Test the
+  plugin inside loops/branches and as a one-off selected subtree where valid.
+* Published keys, units, data shapes and failed-result behavior match the
+  declared contract. Downstream Plot Points/Plot Trace/Save can consume them.
+* Owned-resource cleanup works after partial setup, failed configuration,
+  repeated connection and stop. Borrowed controller sessions remain open.
+* Configuration pages survive selection changes, missing catalogues and
+  producer renames/removal, and release signal connections on destruction.
+* Supported Qt bindings and rendering backends work in your deployment.
+  Fake drivers verify software behavior; they do not establish bench behavior.
 
-When an instance is attached with
-:meth:`~stoner_measurement.core.sequence_engine.SequenceEngine.add_plugin`, the
-engine sets :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
-and binds the plugin's ``instance_name`` in the execution namespace. Use:
-
-* :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.engine_namespace`
-  for a live view of that namespace;
-* :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` to evaluate a
-  user-configured expression against it; and
-* :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.log` for messages
-  routed through the sequence log and application log viewer.
-
-``engine_namespace`` returns an empty dict while detached. Configuration
-widgets must therefore tolerate being built before an engine is attached.
-
-Published data catalogues
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Plugins publish discoverable data by implementing
-:meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_traces` and
-:meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_values`.
-Each method returns ``{display_key: expression}``, where the expression resolves
-against the engine namespace. The engine merges those mappings into the live
-``_traces`` and ``_values`` dictionaries.
-
-The catalogues describe **instances currently present in the measurement
-sequence**. Installed plugin-manager singletons are deliberately excluded.
-Consequently, a consumer must not cache a catalogue at construction time and
-assume that it remains complete.
-
-If a plugin setting changes what ``reported_traces()`` or ``reported_values()``
-returns without changing the sequence tree, call
-``self.sequence_engine.refresh_data_catalogs()`` after applying the setting.
-The state scan/sweep ``collect_data`` property already does this.
-
-Common trace-key conventions are:
-
-* ``"{instance_name}:{channel}"`` for named instrument or transform channels;
-* ``"{instance_name}.data"`` for the one collected table owned by a state scan
-  or state sweep plugin.
-
-Catalogue change signals
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-The engine emits a snapshot whenever it rebuilds either catalogue:
-
-* ``SequenceEngine.traces_catalog_changed`` emits ``dict[str, str]`` for
-  ``_traces``;
-* ``SequenceEngine.values_catalog_changed`` emits ``dict[str, str]`` for
-  ``_values``; and
-* ``SequenceEngine.namespace_updated`` indicates a more general namespace
-  mutation.
-
-Trace-consuming configuration widgets should subscribe to
-``traces_catalog_changed`` so their dropdowns or checkboxes update when steps
-are inserted, removed, renamed, or change what they report. Built-in plugins
-use ``bind_trace_catalog_updates`` from
-``stoner_measurement.plugins.trace_catalog_ui`` to scope the connection to the
-widget lifetime:
-
-.. code-block:: python
-
-    from qtpy.QtWidgets import QWidget
-
-    from stoner_measurement.plugins.trace_catalog_ui import (
-        bind_trace_catalog_updates,
-    )
-
-    def config_widget(self, parent=None):
-        widget = QWidget(parent)
-        # Build controls, then populate them from the current snapshot.
-        self._refresh_traces(self.engine_namespace.get("_traces", {}))
-        bind_trace_catalog_updates(self, widget, self._refresh_traces)
-        return widget
-
-The callback must preserve a still-valid user selection, choose a sensible
-default if that selection disappears, and show an empty-state item when the
-catalogue becomes empty. Do not add independent polling or a separate refresh
-button for this purpose.
-
-Snapshots versus live state
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-``engine.traces_catalog``, ``engine.values_catalog``, and the dict arguments
-emitted by the catalogue signals are snapshot copies. Use them for display and
-selection. Use ``engine_namespace`` or
-:meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` when execution
-needs the current value of an expression.
-
-Execution and lifecycle services
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The engine also provides these boundaries to sequence plugins:
-
-* ``has_lifecycle`` plus ``connect()``, ``configure()``, and ``disconnect()``
-  for hardware resources managed around sequence execution;
-* :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.generate_action_code`
-  for rendering the plugin's executable sequence step;
-* ``wait_for_plot_ready`` in the namespace for ordering data production with
-  queued plot updates; and
-* central stop, error, and logging handling during generated-script execution.
-
-Command and transform plugins should normally remain lifecycle-free. Hardware
-plugins should keep transport ownership inside their lifecycle methods rather
-than acquiring devices while building configuration widgets.
-
-Accessing the sequence engine namespace
-----------------------------------------
-
-The sequence engine seeds the following names into its namespace before
-running a sequence.  Your plugin's :meth:`execute` method (or any method
-that uses :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`)
-can reference them directly:
-
-.. list-table::
-   :header-rows: 1
-   :widths: 25 75
-
-   * - Name
-     - Description
-   * - ``np``, ``numpy``
-     - The NumPy module, so sequence scripts and :meth:`eval` calls can use
-       functions such as ``np.linspace()``, ``np.sqrt()``, etc.
-   * - *All names in* ``numpy.__all__``
-     - Every name exported by NumPy (e.g. ``sin``, ``sqrt``, ``linspace``,
-       ``array``) is available without a ``np.`` prefix.
-   * - ``log``
-     - A :class:`logging.Logger` named ``stoner_measurement.sequence``,
-       seeded into the namespace so that sequence scripts can call
-       ``log.info(…)`` directly.  Inside a plugin method the same logger
-       is also available as ``self.log`` for convenience.
-       Records are forwarded to the application's log viewer.
-   * - ``_traces``
-     - Mapping of display keys to expressions resolving to
-       :class:`~stoner_measurement.core.TraceData` objects. Instrument and
-       transform channels normally use ``"{instance_name}:{channel}"``;
-       collected state scan/sweep tables use ``"{instance_name}.data"``.
-   * - ``_values``
-     - Mapping of ``"{instance_name}:{quantity}"`` to scalar Python
-       expressions (as strings) for every scalar value reported by a plugin.
-   * - *plugin instance names*
-     - Each registered plugin's
-       :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.instance_name`
-       is bound to the plugin instance.  For example, a plugin whose
-       ``instance_name`` is ``"thermometer"`` can be accessed as
-       ``ns["thermometer"]``.
-
-Advanced topics
-----------------
-
-Persisting configuration (serialisation)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-If your plugin has configuration that should survive a save/reload cycle,
-override :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
-and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin._restore_from_json`.
-Both methods receive or return a plain Python ``dict`` (JSON-serialisable).
-Always call ``super().to_json()`` first and extend the returned dict:
-
-.. code-block:: python
-
-    def to_json(self):
-        d = super().to_json()  # includes "type", "class", "instance_name"
-        d["my_setting"] = self.my_setting
-        return d
-
-    def _restore_from_json(self, data):
-        self.my_setting = data.get("my_setting", self.my_setting)
-
-Providing a UI configuration widget
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Override :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_widget`
-to return a :class:`~PyQt6.QtWidgets.QWidget` that will appear as a tab in the
-right-hand configuration panel.  For multiple tabs, override
-:meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.config_tabs` instead
-and return a list of ``(tab_title, widget)`` pairs.
-
-Live monitoring widget
-~~~~~~~~~~~~~~~~~~~~~~~
-
-Override :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.monitor_widget`
-to return a :class:`~PyQt6.QtWidgets.QWidget` that will be displayed in the
-*Monitoring* section of the left dock panel whilst the plugin is registered.
-Return ``None`` (the default) if no monitoring widget is needed.
-
-Custom code generation
-~~~~~~~~~~~~~~~~~~~~~~~
-
-The sequence engine calls
-:meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.generate_action_code`
-on each plugin to generate the Python script that is executed by the sequence
-engine.  The default :class:`~stoner_measurement.plugins.command.CommandPlugin`
-implementation emits a single ``{instance_name}.execute()`` call.  If your
-command requires additional boilerplate in the generated script (for example
-it needs to loop over a result), override this method:
-
-.. code-block:: python
-
-    def generate_action_code(self, indent, sub_steps, render_sub_step):
-        prefix = "    " * indent
-        lines = [
-            f"{prefix}{self.instance_name}.prepare()",
-            f"{prefix}for _item in {self.instance_name}.items():",
-            f"{prefix}    {self.instance_name}.process(_item)",
-            "",
-        ]
-        return lines
+Use the repository's managed widget/configuration fixtures when contributing
+tests here, following :doc:`contributing`. A coding assistant should identify
+the relevant base contract, the closest current implementation, resource
+ownership and persistence requirements before writing a new plugin.

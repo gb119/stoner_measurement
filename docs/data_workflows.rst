@@ -4,6 +4,9 @@ Collecting, fitting and saving data
 This walkthrough extends the basic measurement in :doc:`usage` with a scan,
 selected scalar outputs, filtering, curve fitting, live plots, and data files.
 The same data-selection and saving controls are available for state sweeps.
+It is a guided user workflow. For the result schema use :doc:`trace_data`, for
+execution/reconfiguration use :doc:`sequence_execution`, and for implementing
+new steps use :doc:`third_party_plugins`.
 
 A complete example
 ------------------
@@ -238,7 +241,8 @@ already exists.
 
 **TDI Format 2.0** saves tab-delimited numerical columns and a metadata
 snapshot, including the sequence configuration and evaluated outputs.
-**NeXus/HDF5** is also available when its optional dependency is installed.
+**NeXus/HDF5** uses ``h5py``, which is declared in the application dependencies;
+the selector marks that writer unavailable if the module cannot be imported.
 Use separate Save steps for full acquisition traces and the collected scan
 table so their different row counts remain easy to interpret.
 

@@ -2,6 +2,8 @@ Plugin Tab Ordering
 ===================
 
 This page defines the expected configuration-tab ordering for plugin developers.
+Use it alongside :doc:`third_party_plugins` when implementing UI hooks; it is
+not an instruction sequence for operating a measurement.
 
 Principles
 ----------
@@ -39,6 +41,10 @@ When extending ``config_tabs()``:
 - Insert additional workflow-specific tabs after the primary tab.
 - Place advanced settings after core configuration tabs.
 - Keep the About tab at the end of the tab list.
+- Preserve the chosen base's cached pages and identity/scan/data controls.
+- Use the shared font-aware tab widgets when implementing a custom tab host.
+- Top-pack controls with one bottom stretch; bound tables/editors that should
+  not consume unused vertical space.
 
 This convention is intended as guidance for maintaining a consistent user
 experience across monitor, trace, scan, sweep, transform, and command plugins.

@@ -4,6 +4,9 @@ X-ray Diffractometer Control
 The X-ray control panel operates a legacy two-axis diffractometer and scalar
 detector counter. Open it from **Engines > X-ray**. The panel supports a native
 FTDI USB instrument labelled **Wharfedale**, and a built-in simulator.
+This page is for operators configuring and using that rig. Use
+:doc:`data_workflows` for general collection/plotting/saving and
+:doc:`third_party_plugins` for extension contracts.
 
 Safety and first connection
 ---------------------------
@@ -83,8 +86,8 @@ Simulation
 Select **Simulated** to exercise the same abstract driver contract, engine and
 panel without hardware. The simulator supports all three motion sets and
 generates a deterministic powder-diffraction pattern with several peaks as the
-2-theta arm moves. It is intended for UI development and future scan/set plugin
-tests, not as a physical model of a particular sample. Simulated movement uses
+2-theta arm moves. It supports the implemented scan/set/read workflow without
+representing the physical response of a particular sample. Simulated movement uses
 the configured real angular rate: for example, a 5 degree move at 5 degrees per
 minute takes one minute while the live position and synoptic update.
 

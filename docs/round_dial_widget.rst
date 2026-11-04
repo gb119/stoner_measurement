@@ -1,9 +1,9 @@
 Round dial widget
 =================
 
-The application now includes a reusable round dial display widget for angular
-or scalar readback. It is intended as a **display** rather than an interactive
-knob control.
+This is a developer reference for embedding a reusable angular/scalar readback
+widget. It displays values rather than accepting movement commands. For using
+the motor control panel, see :doc:`rig_controls`.
 
 Available classes
 -----------------
@@ -51,9 +51,10 @@ Basic example
 
 .. code-block:: python
 
-   from qtpy.QtWidgets import QVBoxLayout, QWidget
+   from qtpy.QtWidgets import QApplication, QVBoxLayout, QWidget
    from stoner_measurement.ui import RoundDialWidget
 
+   app = QApplication.instance() or QApplication([])
    panel = QWidget()
    layout = QVBoxLayout(panel)
 
@@ -67,6 +68,11 @@ Basic example
    dial.setValue(15.0)
 
    layout.addWidget(dial)
+   panel.show()
+   app.exec()
+
+The remaining snippets assume an existing QApplication, as above. Embedded
+application widgets reuse its event loop instead of starting another one.
 
 Partial-arc example
 -------------------
@@ -91,7 +97,7 @@ The widget provides a few convenience presets:
    dial.setAngleValueMode()         # 0..360°, full circle
    dial.setCompassMode()            # compass-style direction display
    dial.setBidirectionalAngleMode() # -180..180°
-    dial.setClockMode()              # 12-hour clock-face display
+   dial.setClockMode()              # 12-hour clock-face display
 
 Theme support
 -------------
