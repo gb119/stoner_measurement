@@ -43,7 +43,6 @@ findings. Its remaining E0710 showed that the first test suppression used the
 wrong symbolic rule name (`raising-bad-type`). Corrected it to the exact E0710
 code, preserving the guarded raise and discovery scenarios.
 
-
 ## Hosted confirmation
 
 Codacy analysed `087b592f352f839235cda1dfba6bb97e2a049123` at

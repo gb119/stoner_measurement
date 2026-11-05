@@ -6,7 +6,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from stoner_measurement.core.sequence_engine import SequenceEngine
-from stoner_measurement.core.validation import ValidationError, validate_expression, validate_sequence
+from stoner_measurement.core.validation import (
+    ValidationError,
+    validate_expression,
+    validate_sequence,
+)
 from stoner_measurement.plugins.trace import DummyPlugin
 from stoner_measurement.plugins.trace.k6221_pulse_delta import Keithley6221PulseDeltaPlugin
 from stoner_measurement.scan.list_generator import ListScanGenerator
@@ -24,6 +28,31 @@ def test_expression_names_respect_scopes_and_do_not_execute(caplog):
     assert "current" in caplog.text
     with pytest.raises(ValidationError, match="invalid expression"):
         validate_expression("offset **", namespace, label="current")
+
+
+@pytest.mark.parametrize(
+    ("expression", "missing"),
+    [
+        ("[x + offset for x in source()]", "offset"),
+        ("{x: y for x, y in source() if x > threshold}", "threshold"),
+        ("{x for x in source()}", None),
+        ("sum(x + offset for x in source())", "offset"),
+        ("[y for x in source() for y in x if y > threshold]", "threshold"),
+        ("(lambda x: x + offset)(1)", "offset"),
+        ("[x for x in x]", "x"),
+        ("[x for x in source()] + [x]", "x"),
+    ],
+)
+def test_expression_scope_diagnostics(expression, missing, caplog):
+    source = MagicMock()
+    assert validate_expression(expression, {"source": source}, label="scan")
+    source.assert_not_called()
+    messages = [record.getMessage() for record in caplog.records]
+    if missing is None:
+        assert not messages
+    else:
+        assert len(messages) == 1
+        assert f"unknown expression name(s): {missing}." in messages[0]
 
 
 def test_validation_collects_failures_with_step_names():
@@ -70,7 +99,8 @@ def test_generated_preflight_blocks_connections_in_nested_sequence(qapp):
         namespace = dict(engine.namespace)
         namespace["select_display_plugin"] = lambda *_: None
         with pytest.raises(ValidationError, match="pulse"):
-            exec(code, namespace)
+            # Exercise trusted, application-generated code to verify preflight ordering.
+            exec(code, namespace)  # nosec B102  # pylint: disable=exec-used
         plugin.connect.assert_not_called()
         parent.connect.assert_not_called()
     finally:

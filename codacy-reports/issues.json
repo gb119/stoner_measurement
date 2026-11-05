@@ -1,3 +1,45 @@
 {
-  "issues": []
+  "issues": [
+    {
+      "patternInfo": {
+        "id": "markdownlint_MD012",
+        "severityLevel": "Info",
+        "category": "CodeStyle"
+      },
+      "message": "Expected: 1; Actual: 2",
+      "filePath": "notes/2026-11-03-codacy-cleanup.md",
+      "lineNumber": 46,
+      "lineText": "",
+      "resultDataId": 131558957299,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "Bandit_B102",
+        "severityLevel": "Warning",
+        "category": "Security",
+        "subCategory": "CommandInjection"
+      },
+      "message": "Use of exec detected.",
+      "filePath": "tests/unit/core/test_sequence_validation.py",
+      "lineNumber": 73,
+      "lineText": "            exec(code, namespace)",
+      "resultDataId": 131560732043,
+      "falsePositiveThreshold": 80
+    },
+    {
+      "patternInfo": {
+        "id": "PyLintPython3_W0122",
+        "severityLevel": "High",
+        "category": "Security",
+        "subCategory": "InsecureModulesLibraries"
+      },
+      "message": "Use of exec",
+      "filePath": "tests/unit/core/test_sequence_validation.py",
+      "lineNumber": 73,
+      "lineText": "            exec(code, namespace)",
+      "resultDataId": 131560732046,
+      "falsePositiveThreshold": 80
+    }
+  ]
 }

@@ -43,7 +43,8 @@ def validate_expression(expression: str, namespace: Mapping[str, Any], *, label:
             for symbol in scope.get_symbols()
             if symbol.is_referenced()
             and symbol.is_global()
-            and not getattr(symbol, "is_comp_iter", lambda: False)()
+            # Inlined comprehension targets can be both local and global on 3.12.
+            and not symbol.is_local()
         }
         for child in scope.get_children():
             names.update(globals_read(child))

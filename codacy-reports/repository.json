@@ -8,7 +8,7 @@
       "defaultBranch": {
         "name": "main"
       },
-      "lastUpdated": "2026-11-03T23:32:14.016Z",
+      "lastUpdated": "2026-11-05T18:04:14.671Z",
       "languages": [
         "JSON",
         "Markdown",
@@ -19,21 +19,21 @@
       "problems": []
     },
     "lastAnalysedCommit": {
-      "sha": "087b592f352f839235cda1dfba6bb97e2a049123",
-      "startedAnalysis": "2026-11-03T23:32:23.852Z",
-      "endedAnalysis": "2026-11-03T23:32:41.382Z"
+      "sha": "0a7f2d5f36d3aa459047752a26b1a006c451614f",
+      "startedAnalysis": "2026-11-05T18:04:24.030Z",
+      "endedAnalysis": "2026-11-05T18:04:48.536Z"
     },
-    "issuesCount": 0,
-    "loc": 96690,
-    "fileCount": 593,
+    "issuesCount": 3,
+    "loc": 97931,
+    "fileCount": 602,
     "coverage": {
       "coveragePercentage": 86,
       "status": "Waiting",
-      "lastCommitWithCoverage": "5ba9cce32c21ca7e24e2ad63a14b8777e030ecfb",
-      "statusUpdatedAt": "2026-11-03T23:30:49.483806Z",
-      "valueUpdatedAt": "2026-11-03T23:25:27.599388Z"
+      "lastCommitWithCoverage": "1ce75a97641b847ed303fe3951a3934e4a2c0286",
+      "statusUpdatedAt": "2026-11-05T18:04:48.989940Z",
+      "valueUpdatedAt": "2026-11-04T23:39:17.150691Z"
     },
-    "complexFilesPercentage": 29,
+    "complexFilesPercentage": 28,
     "goals": {
       "maxIssuePercentage": 2,
       "maxDuplicatedFilesPercentage": 10,
@@ -45,12 +45,73 @@
   },
   "pullRequests": [],
   "issuesOverview": {
-    "categories": [],
-    "languages": [],
-    "levels": [],
-    "tags": [],
-    "patterns": [],
-    "authors": [],
+    "categories": [
+      {
+        "name": "CodeStyle",
+        "total": 1
+      },
+      {
+        "name": "Security",
+        "total": 2
+      }
+    ],
+    "languages": [
+      {
+        "name": "Markdown",
+        "total": 1
+      },
+      {
+        "name": "Python",
+        "total": 2
+      }
+    ],
+    "levels": [
+      {
+        "name": "High",
+        "total": 1
+      },
+      {
+        "name": "Warning",
+        "total": 1
+      },
+      {
+        "name": "Info",
+        "total": 1
+      }
+    ],
+    "tags": [
+      {
+        "name": "whitespace",
+        "total": 1
+      },
+      {
+        "name": "blanklines",
+        "total": 1
+      }
+    ],
+    "patterns": [
+      {
+        "id": "markdownlint_MD012",
+        "title": "Disallow Multiple Consecutive Blank Lines",
+        "total": 1
+      },
+      {
+        "id": "Bandit_B102",
+        "title": "Avoid use of exec",
+        "total": 1
+      },
+      {
+        "id": "PyLintPython3_W0122",
+        "title": "Avoid use of exec",
+        "total": 1
+      }
+    ],
+    "authors": [
+      {
+        "name": "g.burnell@leeds.ac.uk",
+        "total": 3
+      }
+    ],
     "potentialFalsePositives": [
       {
         "name": "equalOrAboveThreshold",
@@ -58,7 +119,7 @@
       },
       {
         "name": "belowThreshold",
-        "total": 0
+        "total": 3
       }
     ]
   }

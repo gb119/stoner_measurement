@@ -1,5 +1,18 @@
 # Testing Restructure Plan
 
+## 2026-11-05: Expression preflight on Python 3.12
+
+- Fixed the CI failure in `test_sequence_validation.py`: Python 3.12 marks
+  inlined comprehension targets as both local and global, but does not expose
+  the newer `Symbol.is_comp_iter()` method. Exclude local symbols when finding
+  global reads, including on Python versions that expose the newer flag.
+- Added eight scope cases covering list/set/dict comprehensions, generator
+  expressions, nested iteration, lambda arguments and true global reads of a
+  name also used as a comprehension target. The expressions remain unevaluated.
+- All 12 focused tests passed on Python 3.12.14 and 3.14.7 with offscreen
+  PyQt5. The full Python 3.12 suite passed: 4,238 passed, two skipped in
+  240.29 seconds. No tests moved or removed.
+
 ## 2026-11-04: Run selected sequence steps
 
 - Added the previously unused Shift+F5 shortcut to the shared Run Selection
