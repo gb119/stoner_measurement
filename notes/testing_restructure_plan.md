@@ -1665,3 +1665,48 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
 - Full single-process validation with coverage and JUnit reporting: 4031 passed,
   2 skipped, zero failures/errors, clean exit on offscreen PyQt5 / Python 3.14.
   Ruff check/format and whitespace checks pass. Hosted matrix confirmation remains.
+
+## 2026-11-05: Pulse Delta differential mode
+
+- Extended the existing focused pulse-plugin module; no tests moved or removed.
+- Added offset-list, differential R/G, expression persistence, control enablement,
+  legacy restore and invalid-current coverage. Focused pulse, shared differential
+  and pulse-driver selection: 65 passed on Python 3.14.10 / PyQt5 5.15.11.
+- Used Miniforge3 stoner_measurement through conda run with explicit environment
+  Python because inherited PATH selected Miniconda Python. Ruff is unavailable
+  in this environment. Hardware validation remains outstanding.
+
+## 2026-11-05: pulse timing feedback
+
+- Extended the existing pulse-plugin tests for hardware width bounds, invalid
+  delay feedback, recovery and expressions. No tests moved or removed.
+- Pulse-plugin and pulse-driver selection: 54 passed on offscreen PyQt5.
+
+## 2026-11-05: lazy list-scan expressions
+
+- Extended the existing list-scan module with per-point live namespace evaluation,
+  repeated iteration, uncached expression values, expression persistence and
+  editor deferral coverage. No tests moved or removed.
+- List, shared scan and pulse-plugin selection: 202 passed on offscreen PyQt5.
+- List iteration now resolves only the requested target; full-list generate
+  remains available for waveform programming. Preview plots numeric targets
+  without executing expressions. Existing stage numbering remains unchanged.
+
+## 2026-11-05: sequence preflight validation
+
+- Added focused core validation tests for syntax, name warnings, lexical scopes,
+  non-execution of expressions, collected step failures and generated-script
+  rejection before instrument connection. No legacy tests moved or removed.
+- Engine, preflight, list and pulse selection: 210 passed on offscreen PyQt5.
+- Generated scripts call the default-passing BasePlugin.validate hook and
+  optional generator validators before connection. Initial overrides cover
+  list targets and pulse literals/expressions. Unknown names warn; invalid
+  syntax and invalid numeric literals block. Dynamic values remain runtime checks.
+
+## 2026-11-05: validation during script generation
+
+- Added app integration coverage for a nested invalid expression showing a
+  validation dialog while preserving editor content, and unknown names warning
+  without expression execution or a blocking dialog. No tests moved or removed.
+- App generation, preflight and engine selection: 112 passed on offscreen PyQt5.
+- Script generation validates prepared enabled steps; runtime checks remain.

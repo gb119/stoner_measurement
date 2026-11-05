@@ -88,3 +88,14 @@ conda run -n stoner_measurement pytest `
     tests/unit/plugins/trace/test_trace_plugin.py tests/test_plugin_manager.py `
     -q --tb=short -p no:cacheprovider --basetemp=.pytest-runtime/pulse-delta-final
 ```
+
+## 2026-11-05: timing validation feedback
+
+- Rechecked reference manual section 5-40 (PDF page 162): pulse width is
+  50 us to 12 ms; source delay is 16 us to 11.966 ms. The 25 ms width
+  rejection is correct. A 5 ms delay requires a pulse wider than 5 ms.
+- Settings now show hardware limits and persistent accessible timing feedback
+  above the preview. Numeric preview validation reuses the driver validator.
+  Expression previews are labelled unavailable rather than invalid.
+- Focused pulse-plugin and pulse-driver tests: 54 passed on offscreen PyQt5.
+  No hardware commands or limits changed.

@@ -16,6 +16,7 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -49,12 +50,19 @@ class ListScanGenerator(BaseScanGenerator):
     points are produced.  The *measure* flag controls whether a given point
     is recorded as a measurement.
 
+    Targets may be Python expression strings resolved through the owning
+    plugin's live sequence namespace. Iteration evaluates each target only
+    when its point is requested, so earlier child steps can update variables
+    used by later points. Expressions remain unchanged in saved files.
+    ``generate()`` evaluates the complete list on demand for hardware sweeps.
+    The editor preview plots numeric targets only and defers expressions.
+
     Attributes:
-        stages (list[tuple[float, bool]]):
+        stages (list[tuple[float | str, bool]]):
             Ordered list of ``(target, measure)`` stage definitions.
 
     Keyword Parameters:
-        stages (list[tuple[float, bool]] | None):
+        stages (list[tuple[float | str, bool]] | None):
             Initial stage list.  Defaults to an empty list.
         parent (QObject | None):
             Optional Qt parent object.
@@ -118,6 +126,21 @@ class ListScanGenerator(BaseScanGenerator):
             return np.array([], dtype=float)
         return np.array([self.eval_float(t) for t, _ in self._stages], dtype=float)
 
+    def validate(self, namespace, *, label: str = "list scan") -> bool:
+        """Check target syntax and literal types without resolving expressions."""
+        from stoner_measurement.core.validation import ValidationError, validate_expression
+
+        for index, (target, _) in enumerate(self._stages):
+            point_label = f"{label} point {index + 1}"
+            if isinstance(target, str):
+                validate_expression(target, namespace, label=point_label)
+            else:
+                try:
+                    float(target)
+                except (TypeError, ValueError) as exc:
+                    raise ValidationError(f"{point_label}: target must be numeric or an expression") from exc
+        return True
+
     def measure_flags(self) -> np.ndarray:
         """Return per-point measure flags for the list sequence.
 
@@ -136,6 +159,29 @@ class ListScanGenerator(BaseScanGenerator):
         if not self._stages:
             return np.array([], dtype=bool)
         return np.array([m for _, m in self._stages], dtype=bool)
+
+    def __len__(self) -> int:
+        """Return the point count without evaluating target expressions."""
+        return len(self._stages)
+
+    def __next__(self) -> tuple[int, float, bool, int]:
+        """Evaluate and yield only the requested point using the live namespace."""
+        if self._index >= len(self._stages):
+            raise StopIteration
+        index = self._index
+        target, measure = self._stages[index]
+        value = self.eval_float(target)
+        self._index += 1
+        self.current_value_changed.emit(value)
+        self.current_point_changed.emit(index, value)
+        return index, value, measure, 0
+
+    @property
+    def values(self) -> np.ndarray:
+        """Return current values, avoiding stale cached expression results."""
+        if any(isinstance(target, str) for target, _ in self._stages):
+            return self.generate()
+        return super().values
 
     def _representation_details(self) -> str:
         """Return the number of explicitly configured points."""
@@ -296,6 +342,9 @@ class ListScanWidget(QWidget):
         # --- Preview tab ---
         preview_widget = QWidget()
         preview_layout = QVBoxLayout(preview_widget)
+        self._preview_note = QLabel()
+        self._preview_note.setWordWrap(True)
+        preview_layout.addWidget(self._preview_note)
         self._plot_widget = pg.PlotWidget()
         self._plot_widget.setLabel("bottom", "Point index")
         self._plot_widget.setLabel("left", "Value")
@@ -376,7 +425,7 @@ class ListScanWidget(QWidget):
 
     def _add_row(
         self,
-        target: float = _DEFAULT_TARGET,
+        target: float | str = _DEFAULT_TARGET,
         measure: bool = True,
         *,
         update: bool = True,
@@ -396,7 +445,7 @@ class ListScanWidget(QWidget):
                 suffix=self._generator.units,
             )
             target_spin.setValue(target)
-            target_spin.valueChanged.connect(self._on_table_changed)
+            target_spin.sigValueChanged.connect(self._on_table_changed)
             self._table.setCellWidget(row, 0, target_spin)
 
             measure_cb = QCheckBox()
@@ -426,7 +475,7 @@ class ListScanWidget(QWidget):
         """Rebuild generator stages from the current table contents."""
         if self._updating:
             return
-        stages: list[tuple[float, bool]] = []
+        stages: list[tuple[float | str, bool]] = []
         for row in range(self._table.rowCount()):
             target_w: SISpinBox | None = self._table.cellWidget(row, 0)
             measure_cb: QCheckBox | None = self._table.cellWidget(row, 1)
@@ -437,7 +486,16 @@ class ListScanWidget(QWidget):
 
     def _refresh_plot(self) -> None:
         """Re-render the scatter plot from the current generator values."""
-        values = self._generator.values
+        stages = self._generator.stages
+        values = np.array([
+            np.nan if isinstance(target, str) else float(target)
+            for target, _ in stages
+        ], dtype=float)
+        deferred = sum(isinstance(target, str) for target, _ in stages)
+        self._preview_note.setText(
+            f"{deferred} expression target(s) deferred until execution; only numeric targets are plotted."
+            if deferred else ""
+        )
         flags = self._generator.flags
         self._clear_current_row_highlight()
         if len(values) == 0:
@@ -445,8 +503,8 @@ class ListScanWidget(QWidget):
             self._red_scatter.setData(x=np.array([], dtype=float), y=np.array([], dtype=float))
             return
         indices = np.arange(len(values), dtype=float)
-        green_mask = flags
-        red_mask = ~flags
+        green_mask = flags & np.isfinite(values)
+        red_mask = ~flags & np.isfinite(values)
         if green_mask.any():
             self._green_scatter.setData(x=indices[green_mask], y=values[green_mask])
         else:

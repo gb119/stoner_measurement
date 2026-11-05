@@ -659,6 +659,20 @@ class BasePlugin(ABC):
         """
         return False
 
+    def validate(self) -> bool:
+        """Check configuration before connection without evaluating expressions.
+
+        Override to check literal settings and expression syntax. Do not access
+        hardware, evaluate runtime expressions or modify configuration.
+
+        Returns:
+            (bool): True when configuration passes preflight checks.
+
+        Raises:
+            ValidationError: If configuration is invalid.
+        """
+        return True
+
     def validate_sequence_position(self, sequence_steps: list) -> None:
         """Validate this plugin's position in *sequence_steps*.
 

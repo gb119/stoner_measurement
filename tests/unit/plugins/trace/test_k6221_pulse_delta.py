@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from qtpy.QtWidgets import QComboBox
+from qtpy.QtWidgets import QCheckBox, QComboBox, QLabel
 
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -45,7 +45,7 @@ def test_round_trip_preserves_expressions_and_excludes_dc_settings(qapp):
     assert restored._pulse_width == "pulse_width"
     assert restored._low_measurements == 1
     assert (
-        not {"nplc", "secondary_nanovoltmeter", "differential_mode", "connection_mode"}
+        not {"nplc", "secondary_nanovoltmeter", "connection_mode"}
         & data.keys()
     )
 
@@ -125,7 +125,7 @@ def test_invalid_configuration_cannot_reuse_old_sweep(plugin):
         plugin.measure({})
 
 
-@pytest.mark.parametrize("field", ["_secondary_enabled", "_differential_mode"])
+@pytest.mark.parametrize("field", ["_secondary_enabled"])
 def test_unsupported_modes_rejected_before_connection(qapp, field):
     instance = Keithley6221PulseDeltaPlugin()
     setattr(instance, field, True)
@@ -217,6 +217,19 @@ def test_settings_controls_preview_and_about(qapp, managed_plugin_config_tabs):
     ranging = settings.findChild(QComboBox, "source_range_mode")
     ranging.setCurrentIndex(ranging.findData(SourceRangeMode.FIXED))
     assert fixed_range.isEnabled()
+    differential = settings.findChild(QCheckBox, "differential_mode")
+    delta = settings.findChild(SISpinBox, "delta_current")
+    conductance = settings.findChild(QCheckBox, "differential_conductance")
+    assert not delta.isEnabled()
+    assert not conductance.isEnabled()
+    differential.setChecked(True)
+    assert delta.isEnabled() and conductance.isEnabled()
+    delta.setValue("delta_i")
+    conductance.setChecked(True)
+    restored = BasePlugin.from_json(instance.to_json())
+    assert restored._differential_mode
+    assert restored._differential_conductance
+    assert restored._delta_current == "delta_i"
     assert not preview.grab().isNull()
     assert "Pulse Delta" in instance._about_html()
     assert "secondary_nplc" not in {
@@ -250,7 +263,8 @@ def test_cycle_feedback_includes_mains_delay_and_low_tail(
     "field,value,message",
     [
         ("_pulse_period", 0.03, "Cycle too short"),
-        ("_pulse_source_delay", 0.002, "shorter settling"),
+        ("_pulse_source_delay", 0.002, "must be shorter"),
+        ("_pulse_width", 0.025, "50 us and 12 ms"),
         ("_pulse_period", "cycle_time", "expressions"),
         ("_pulse_width", float("nan"), "finite"),
     ],
@@ -264,6 +278,77 @@ def test_preview_reports_unavailable_or_invalid_timing(
     with pytest.raises(ValueError, match=message):
         preview.cycle_timing()
     assert not preview.grab().isNull()
+
+
+@pytest.mark.parametrize("conductance", [False, True])
+def test_differential_pulses_reduce_corrected_voltages(plugin, conductance):
+    plugin.scan_generator.generate.return_value = [-0.002, -0.001, 0, 0.001, 0.002]
+    plugin._differential_mode = True
+    plugin._differential_conductance = conductance
+    plugin._delta_current = "delta_i"
+    plugin.eval_float = lambda value: 0.0001 if value == "delta_i" else float(value)
+    plugin.configure()
+    source = plugin._k6221
+    np.testing.assert_allclose(
+        source.configure_pulse_delta_sweep.call_args.args[0],
+        [-0.0019, -0.0011, 0.0001, 0.0009, 0.0021],
+    )
+    source.pulse_delta_buffer_count.return_value = 5
+    source.read_pulse_delta_buffer.return_value = [-0.019, -0.011, 0.001, 0.009, 0.021]
+    for _ in range(2):
+        trace = plugin.measure({})["IV"]
+        np.testing.assert_allclose(trace.x, [-0.002, -0.001, 0, 0.001, 0.002])
+        np.testing.assert_allclose(trace.df["V"], [-0.02, -0.01, 0, 0.01, 0.02], atol=1e-16)
+        np.testing.assert_allclose(trace.df["G" if conductance else "R"], 0.1 if conductance else 10)
+        np.testing.assert_allclose(trace.df["P"], 1e-7)
+
+
+@pytest.mark.parametrize(
+    "currents,delta",
+    [
+        ([0, 0.001], 1e-4),
+        ([0, 0.001, 0.002], 0),
+        ([0, 0.001, 0.002], float("nan")),
+        ([0.105, 0, -0.1], 0.001),
+    ],
+)
+def test_invalid_differential_list_is_rejected_before_programming(plugin, currents, delta):
+    plugin._differential_mode = True
+    plugin._delta_current = delta
+    plugin.scan_generator.generate.return_value = currents
+    with pytest.raises(ValueError):
+        plugin.configure()
+    plugin._k6221.configure_pulse_delta_sweep.assert_not_called()
+    assert plugin._sweep_values is None
+
+
+def test_old_pulse_settings_restore_without_differential_mode(qapp):
+    instance = Keithley6221PulseDeltaPlugin()
+    data = instance.to_json()
+    for key in ("differential_mode", "differential_conductance", "delta_current"):
+        data.pop(key)
+    restored = BasePlugin.from_json(data)
+    assert not restored._differential_mode
+
+
+def test_timing_feedback_explains_invalid_delay_and_recovers(qapp, managed_plugin_config_tabs):
+    instance = Keithley6221PulseDeltaPlugin()
+    settings = dict(managed_plugin_config_tabs(instance))["Settings"]
+    width = settings.findChild(SISpinBox, "pulse_width")
+    delay = settings.findChild(SISpinBox, "pulse_source_delay")
+    feedback = settings.findChild(QLabel, "pulse_timing_feedback")
+    width.setValue(0.025)
+    assert width.value() == pytest.approx(0.012)
+    width.setValue(110e-6)
+    delay.setValue(0.005)
+    assert "Invalid pulse timing" in feedback.text()
+    assert "5 ms" in feedback.text()
+    assert "must be shorter" in feedback.text()
+    width.setValue(0.012)
+    assert "Invalid" not in feedback.text()
+    assert settings.findChild(_PulsePreview).cycle_timing().delay == pytest.approx(0.005)
+    width.setValue("pulse_width")
+    assert "Preview unavailable" in feedback.text()
 
 
 if __name__ == "__main__":

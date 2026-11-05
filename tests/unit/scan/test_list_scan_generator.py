@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 from qtpy.QtWidgets import QWidget
 
 import stoner_measurement.ui.generator_json as generator_json_module
+from stoner_measurement.plugins.trace.k6221_pulse_delta import Keithley6221PulseDeltaPlugin
 from stoner_measurement.scan import BaseScanGenerator, ListScanGenerator, ListScanWidget
 
 
@@ -531,6 +534,45 @@ class TestListScanWidget:
         d.pop("units", None)
         restored = ListScanGenerator._from_json_data(d)
         assert restored.units == ""
+
+
+def test_expression_targets_are_evaluated_per_point_and_per_iteration(qapp):
+    namespace = {"target": 2.0}
+    owner = Keithley6221PulseDeltaPlugin()
+    owner.sequence_engine = SimpleNamespace(_namespace=namespace)
+    gen = ListScanGenerator(stages=[("target", True), ("target * 2", False)], parent=owner)
+    assert len(gen) == 2
+    iterator = iter(gen)
+    assert next(iterator) == (0, 2.0, True, 0)
+    namespace["target"] = 5.0
+    assert next(iterator) == (1, 10.0, False, 0)
+    with pytest.raises(StopIteration):
+        next(iterator)
+    assert next(iter(gen)) == (0, 5.0, True, 0)
+    np.testing.assert_allclose(gen.values, [5, 10])
+    namespace["target"] = 7.0
+    np.testing.assert_allclose(gen.values, [7, 14])
+    restored = BaseScanGenerator.from_json(gen.to_json(), parent=owner)
+    assert restored.stages == gen.stages
+    np.testing.assert_allclose(restored.generate(), [7, 14])
+
+
+def test_editor_preserves_expressions_without_evaluating_them(qapp, managed_qt_widget, monkeypatch):
+    gen = ListScanGenerator(stages=[(1.0, True), ("not_defined_yet", False)])
+
+    def unexpected_evaluation(*args):
+        pytest.fail("The editor must not evaluate runtime targets")
+
+    monkeypatch.setattr(gen, "eval_float", unexpected_evaluation)
+    widget = managed_qt_widget(ListScanWidget(generator=gen))
+    assert "deferred until execution" in widget._preview_note.text()
+    target = widget._table.cellWidget(1, 0)
+    target.setValue("later_value * 2")
+    assert gen.stages[1] == ("later_value * 2", False)
+    widget.refresh()
+    assert widget._table.cellWidget(1, 0).value() == "later_value * 2"
+    np.testing.assert_allclose(widget._green_scatter.getData()[1], [1])
+    assert len(widget._red_scatter.getData()[0]) == 0
 
 
 if __name__ == "__main__":

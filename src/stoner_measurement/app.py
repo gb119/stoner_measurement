@@ -2135,6 +2135,7 @@ class MeasurementApp(QMainWindow):
 
     def _generate_sequence_code(self, steps: list) -> tuple[str, dict] | None:
         """Prepare step instances and generate code using the normal engine path."""
+        from stoner_measurement.core.validation import ValidationError
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
         self._sync_sequence_steps_to_engine()
@@ -2152,9 +2153,15 @@ class MeasurementApp(QMainWindow):
         for step in steps:
             inject_step(step)
         try:
-            return self._engine.generate_sequence_code(
+            generated = self._engine.generate_sequence_code(
                 steps, self._plugin_manager.plugins, return_line_map=True
             )
+            self._engine.validate_generated_sequence()
+            return generated
+        except ValidationError as exc:
+            logger.error("%s", exc)
+            QMessageBox.warning(self, "Sequence Validation Error", str(exc))
+            return None
         except Exception:  # noqa: BLE001 - keep Qt action exceptions out of the terminal
             logger.exception("Unable to generate sequence code")
             return None

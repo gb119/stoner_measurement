@@ -106,6 +106,25 @@ Lifecycle and resource ownership
 configuration and cleanup phases. It is a resource/setup decision, not a
 synonym for the plugin family: some leaf commands need a lifecycle.
 
+``validate()``
+   Return ``True`` or raise
+   ``stoner_measurement.core.validation.ValidationError`` with an actionable
+   message. Generated scripts validate all enabled steps, including nested
+   steps, after construction and before any connection. The default passes.
+   The application's script-generation action also validates the prepared
+   step instances before replacing editor content. Validation errors appear
+   in a dialog and the log; the current script is preserved. Engine clients
+   can call ``validate_generated_sequence()`` after generating source to run
+   these checks without executing the generated script.
+   Check numeric literals and relationships only when all operands are
+   literals. Never evaluate expressions, access hardware or mutate settings.
+   Use ``validate_expression(expression, namespace, label=...)`` from the same
+   module to check syntax and warn about unknown names without execution.
+   Missing names are warnings because earlier runtime scripts may define them;
+   syntax errors block execution. Runtime type and range checks remain required.
+   The engine also calls a scan generator's optional
+   ``validate(namespace, label=...)`` hook. List scans implement this hook.
+
 ``connect()``
    Open or borrow the resources needed by this instance. Repeated calls must
    release this instance's previous resources before replacing them. The base

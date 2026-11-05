@@ -10,11 +10,12 @@ from typing import Any
 import numpy as np
 from qtpy.QtCore import QEvent, QLineF, QPointF, QRectF, Qt
 from qtpy.QtGui import QColor, QPainter, QPainterPath, QPen
-from qtpy.QtWidgets import QComboBox, QFormLayout, QLabel, QVBoxLayout, QWidget
+from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLabel, QVBoxLayout, QWidget
 
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
 from stoner_measurement.plugins.base_plugin import BasePlugin
+from stoner_measurement.plugins.trace._differential import modulate_current_sweep
 from stoner_measurement.plugins.trace.base import TracePlugin, TraceStatus
 from stoner_measurement.plugins.trace.k6221_2182a import (
     ComplianceMode,
@@ -115,8 +116,20 @@ class _PulsePreview(QWidget):
         width, delay, period, mains = (float(value) for value in values)
         if not all(math.isfinite(value) for value in (width, delay, period, mains)):
             raise ValueError("Use finite numeric timing settings for the preview.")
-        if width <= 0 or delay < 0 or delay >= width or mains not in (50, 60) or period <= 0:
-            raise ValueError("Choose a positive pulse width and a shorter settling delay.")
+        if delay >= width:
+            raise ValueError(
+                f"Settling delay ({_preview_time(delay)}) must be shorter than pulse width "
+                f"({_preview_time(width)}). Increase pulse width or reduce settling delay."
+            )
+        Keithley6221.validate_pulse_delta_sweep(
+            (0.0,),
+            width=width,
+            source_delay=delay,
+            period=period,
+            low_measurements=self.plugin._low_measurements,
+        )
+        if mains not in (50, 60):
+            raise ValueError("Select 50 or 60 Hz for the mains-frequency preview.")
         if period < 2 / mains + width:
             raise ValueError(
                 f"Cycle too short for this nominal mains-spaced sequence: allow at least "
@@ -250,9 +263,18 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
     These are nominal timings, excluding the initial trigger-to-mains wait.
     Numeric timing controls also accept
     expressions, evaluated during configure; expression previews are schematic.
+    Timing limits are shown beside the controls. Invalid numeric combinations
+    display an explanation above the preview; settling delay must be shorter
+    than pulse width. Pulse width is limited by the hardware to 12 ms.
 
     The baseline current is zero. Two low measurements give
     V = Vhigh - (Vbefore + Vafter)/2; one gives Vhigh - Vbefore.
+    Enable alternating delta-current mode in **Settings** to offset successive
+    high currents by +dI and -dI. Delta current accepts runtime expressions.
+    At least three scan points are required. The standard trace's three-point
+    reduction then reports averaged V and differential R = dV/dI or G = dI/dV
+    against nominal current, with P = dI*dV. Endpoint differential values use
+    the nearest interior estimate. The zero-current baseline is unchanged.
     The IV trace contains current x, corrected V, R = V/I (NaN at zero),
     and peak P = I*V, rather than cycle-average power. Integration is set by
     the 6221. The 2182A must be connected by RS-232 and Trigger Link; there
@@ -282,6 +304,9 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
         _source_range_mode (SourceRangeMode): BEST, AUTO or FIXED.
         _source_range (float | str): Fixed current range in amps.
         _voltage_range (float): 2182A range in volts; zero means automatic.
+        _differential_mode (bool): Alternate high-current offsets; default False.
+        _delta_current (float | str): Positive high-current offset in amps.
+        _differential_conductance (bool): Report G instead of R; default False.
 
     Raises:
         ValueError: If pulse settings, current values or saved modes are invalid.
@@ -293,6 +318,8 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
             pulse_trace._pulse_width = 500e-6
             pulse_trace._pulse_source_delay = 20e-6
             pulse_trace._pulse_period = "cycle_time"
+            pulse_trace._differential_mode = True
+            pulse_trace._delta_current = 1e-6
             # Define cycle_time in the engine before configuration.
             # After the sequence measures, inspect pulse_trace.data["IV"].
     """
@@ -318,10 +345,41 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
 
     def _validate_modes(self) -> None:
         """Reject unsupported inherited modes, including console changes."""
-        if self._secondary_enabled or self._differential_mode:
-            raise ValueError("Pulse Delta does not support auxiliary meters or differential mode.")
+        if self._secondary_enabled:
+            raise ValueError("Pulse Delta does not support auxiliary meters.")
         if self._compliance_mode is not ComplianceMode.VOLTAGE:
             raise ValueError("Pulse Delta uses fixed voltage compliance.")
+
+    def validate(self) -> bool:
+        """Check pulse literals and expression syntax without touching hardware."""
+        from stoner_measurement.core.validation import ValidationError, validate_expression
+
+        try:
+            self._validate_modes()
+            settings = {
+                "pulse_width": (self._pulse_width, 50e-6, 12e-3),
+                "pulse_source_delay": (self._pulse_source_delay, 16e-6, 11.966e-3),
+                "pulse_period": (self._pulse_period, 1e-3, 999999.999),
+                "compliance": (self._compliance, 0.1, 105),
+            }
+            if self._differential_mode:
+                settings["delta_current"] = (self._delta_current, 1e-15, 0.1)
+            if self._source_range_mode is SourceRangeMode.FIXED:
+                settings["source_range"] = (self._source_range, 2e-9, 0.1)
+            for name, (value, minimum, maximum) in settings.items():
+                if isinstance(value, str):
+                    validate_expression(value, self.engine_namespace, label=f"{self.instance_name}.{name}")
+                elif not math.isfinite(float(value)) or not minimum <= float(value) <= maximum:
+                    raise ValidationError(f"{name} must be between {minimum:g} and {maximum:g}.")
+            if not any(isinstance(v, str) for v in (self._pulse_width, self._pulse_source_delay)):
+                if self._pulse_source_delay >= self._pulse_width:
+                    raise ValidationError("Settling delay must be shorter than pulse width.")
+            if not any(isinstance(v, str) for v in (self._pulse_width, self._pulse_period)):
+                if self._pulse_period < self._pulse_width:
+                    raise ValidationError("Cycle period must be at least the pulse width.")
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(str(exc)) from exc
+        return True
 
     def connect(self) -> None:
         """Open only the source session and check its serial-connected 2182A."""
@@ -349,13 +407,19 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
     def configure(self) -> None:
         """Validate expressions and programme and arm one native pulse sweep."""
         self._sweep_values = None
+        self._nominal_sweep_values = None
         self._validate_modes()
         if self._k6221 is None:
             raise RuntimeError("Not connected; call connect() before configure().")
         source = self._k6221
         self._set_status(TraceStatus.CONFIGURING)
         try:
-            values = tuple(float(v) for v in self.scan_generator.generate())
+            nominal = np.asarray(self.scan_generator.generate(), dtype=float)
+            values = tuple(
+                modulate_current_sweep(nominal, self.eval_float(self._delta_current))
+                if self._differential_mode
+                else nominal
+            )
             timing = dict(
                 width=self.eval_float(self._pulse_width),
                 source_delay=self.eval_float(self._pulse_source_delay),
@@ -382,6 +446,7 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
             self._pulse_armed = True
             self._configured_period = timing["period"]
             self._sweep_values = np.asarray(values)
+            self._nominal_sweep_values = nominal
         except BaseException:
             self._set_status(TraceStatus.ERROR)
             self._abort_source(source)
@@ -466,12 +531,15 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
             "pulse_period": "_pulse_period",
             "low_measurements": "_low_measurements",
             "preview_mains_frequency": "_preview_mains_frequency",
+            "differential_mode": "_differential_mode",
+            "differential_conductance": "_differential_conductance",
+            "delta_current": "_delta_current",
         }
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
         """Restore pulse settings, preserving unevaluated timing expressions."""
-        if data.get("secondary_nanovoltmeter", {}).get("enabled") or data.get("differential_mode"):
-            raise ValueError("Pulse Delta cannot restore auxiliary meters or differential mode.")
+        if data.get("secondary_nanovoltmeter", {}).get("enabled"):
+            raise ValueError("Pulse Delta cannot restore auxiliary meters.")
         TracePlugin._restore_from_json(self, data)
         for key, attr in self._setting_attributes().items():
             if key in data:
@@ -490,10 +558,37 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
         resource.setCurrentText(self._6221_resource)
         resource.currentTextChanged.connect(lambda value: setattr(self, "_6221_resource", value))
         form.addRow("6221 GPIB resource:", resource)
+        differential = QCheckBox("Enable alternating delta-current mode")
+        differential.setObjectName("differential_mode")
+        differential.setChecked(self._differential_mode)
+        conductance = QCheckBox("Report differential conductance (otherwise differential resistance)")
+        conductance.setObjectName("differential_conductance")
+        conductance.setChecked(self._differential_conductance)
+        conductance.setEnabled(self._differential_mode)
+        delta = SISpinBox(suffix="A", value=self._delta_current, allow_expressions=True)
+        delta.setObjectName("delta_current")
+        delta.setMinimum(1e-15)
+        delta.setMaximum(0.1)
+        delta.setEnabled(self._differential_mode)
+        differential.toggled.connect(
+            lambda enabled: self._set_differential_mode(enabled, conductance, delta)
+        )
+        conductance.toggled.connect(lambda enabled: setattr(self, "_differential_conductance", enabled))
+        delta.sigValueChanged.connect(lambda widget: setattr(self, "_delta_current", widget.value()))
+        form.addRow("Differential mode:", differential)
+        form.addRow("Delta current:", delta)
+        form.addRow("Differential result:", conductance)
         preview = _PulsePreview(self)
+        timing_feedback = QLabel()
+        timing_feedback.setObjectName("pulse_timing_feedback")
+        timing_feedback.setWordWrap(True)
+        preview.timing_feedback = timing_feedback
         fields = (
-            ("Pulse width:", "_pulse_width", "s", 50e-6, 12e-3),
-            ("Settling delay within pulse:", "_pulse_source_delay", "s", 16e-6, 11.966e-3),
+            ("Pulse width (50 µs–12 ms):", "_pulse_width", "s", 50e-6, 12e-3),
+            (
+                "Settling delay (16 µs–11.966 ms, shorter than width):",
+                "_pulse_source_delay", "s", 16e-6, 11.966e-3,
+            ),
             ("Complete cycle period:", "_pulse_period", "s", 1e-3, 999999.999),
             ("Voltage compliance:", "_compliance", "V", 0.1, 105),
             ("Fixed source range:", "_source_range", "A", 2e-9, 0.1),
@@ -559,14 +654,37 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
         )
         note.setWordWrap(True)
         layout.addWidget(note)
+        layout.addWidget(timing_feedback)
         layout.addWidget(preview)
+        self._refresh_timing_feedback(preview)
         layout.addStretch()
         return root
 
     def _update_setting(self, attr: str, value: Any, preview: _PulsePreview) -> None:
         """Store a control value and refresh the pulse diagram."""
         setattr(self, attr, value)
+        self._refresh_timing_feedback(preview)
         preview.update()
+
+    @staticmethod
+    def _refresh_timing_feedback(preview: _PulsePreview) -> None:
+        """Expose timing errors as ordinary accessible text outside the drawing."""
+        try:
+            preview.cycle_timing()
+        except ValueError as exc:
+            timings = (
+                preview.plugin._pulse_width,
+                preview.plugin._pulse_source_delay,
+                preview.plugin._pulse_period,
+            )
+            prefix = (
+                "Preview unavailable: "
+                if any(isinstance(value, str) for value in timings)
+                else "Invalid pulse timing: "
+            )
+            preview.timing_feedback.setText(prefix + str(exc))
+        else:
+            preview.timing_feedback.setText("Pulse timing is valid for the nominal preview.")
 
     def _about_html(self) -> str | None:
         """Render this plugin's documentation instead of the DC About page."""

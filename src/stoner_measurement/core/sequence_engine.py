@@ -1952,6 +1952,12 @@ class SequenceEngine(QObject):
 
         lines: list[str] = list(header)
         lines.extend(self._generate_instantiation_phase(ordered_plugins, all_step_plugins))
+        lines.extend([
+            "# Validate configuration before connecting instruments.",
+            "from stoner_measurement.core.validation import validate_sequence as _validate_sequence",
+            "_validate_sequence([" + ", ".join(p.instance_name for p in ordered_plugins) + "], globals())",
+            "",
+        ])
         lines.extend(self._generate_connect_phase(ordered_plugins))
         lines.extend(self._generate_configure_phase(ordered_plugins))
 
@@ -1991,6 +1997,19 @@ class SequenceEngine(QObject):
 
         code, line_map = self._rebuild_line_map(code, action_line_owner)
         return code, line_map
+
+    def validate_generated_sequence(self) -> bool:
+        """Check enabled steps from the last generation without running its script.
+
+        Returns:
+            (bool): True when configuration passes preflight checks.
+
+        Raises:
+            ValidationError: If an enabled step has invalid configuration.
+        """
+        from stoner_measurement.core.validation import validate_sequence
+
+        return validate_sequence(self._sequence_plugins, self._namespace)
 
     def _add_line_map_markers(
         self,
