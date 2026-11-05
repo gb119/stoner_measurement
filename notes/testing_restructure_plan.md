@@ -2,6 +2,18 @@
 
 ## 2026-11-05: Expression preflight on Python 3.12
 
+- Follow-up CI run 42114333018 passed the repaired preflight checks but exposed
+  an intermittent Python 3.14/PyQt5 crash during function-scan widget tests:
+  PyQtGraph delivered a resize event to a deleted `LabelItem`.
+- Moved the 30 `TestFunctionScanWidget` cases to
+  `tests/unit/scan/test_function_scan_widget.py` and retained every constructed
+  widget through `managed_qt_widget`, including the recalled-preset preview.
+  The two generator factory tests now use the same fixture. Test assertions
+  were preserved; no tests added or removed.
+- The moved tranche and original module pass together on Python 3.12 and
+  3.14/PyQt5: 102 passed on each. The full Python 3.14 coverage run passed:
+  4,238 passed, two skipped in 262.40 seconds. Full collection remains 4,240
+  tests, confirming that the migration preserves the test inventory.
 - Fixed the CI failure in `test_sequence_validation.py`: Python 3.12 marks
   inlined comprehension targets as both local and global, but does not expose
   the newer `Symbol.is_comp_iter()` method. Exclude local symbols when finding
