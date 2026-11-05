@@ -2,7 +2,9 @@
 ===========================
 
 This user reference covers wiring, pulse configuration and returned data for
-the native Pulse Delta acquisition. For held DC during nested measurements,
+the native Pulse Delta acquisition. Use :doc:`keithley_meters` to compare all
+four Keithley trace plugins, and :doc:`keithley_triggers` for their different
+wiring and trigger schemes. For held DC during nested measurements,
 use :doc:`keithley_point_commands`. For processing and saving returned traces,
 see :doc:`data_workflows`.
 
@@ -35,6 +37,12 @@ instead of an impossible waveform. Timing expressions
 are evaluated during configuration, and are not evaluated by the preview.
 The 6221 sets the 2182A integration time; there is no independent NPLC control.
 
+.. figure:: _static/screenshots/keithley-pulse-settings.png
+   :alt: Dark native Pulse Delta Settings page with pulse width, settling delay, cycle period, baseline count and the live timing diagram.
+   :width: 100%
+
+   Native Pulse Delta settings and the linked full-cycle/pulse-detail preview.
+
 Results and acquisition lifecycle
 ----------------------------------
 
@@ -42,6 +50,16 @@ The baseline is zero current. With two baseline measurements, voltage is
 ``Vhigh - (Vbefore + Vafter)/2``; with one, it is ``Vhigh - Vbefore``.
 The ``IV`` trace contains current, corrected voltage, resistance and peak power.
 Resistance is NaN at zero current. Power is not averaged over the cycle.
+
+**Differential mode** optionally alternates positive/negative **Delta current**
+offsets about the nominal high-pulse currents, retaining the zero-current
+baseline. It requires at least three points and a positive delta current.
+After the native baseline correction, neighbouring readings are reduced to
+voltage and differential resistance, or conductance when selected. The source
+axis stays nominal; the response column becomes ``R`` or ``G`` and power uses
+delta current times the reduced voltage change. Endpoint responses use the
+nearest interior reduction. This extra modulation does not replace the native
+pulse timing or baseline handshake.
 
 Native Pulse Delta has a dedicated source/meter handshake. Auxiliary meters
 are not supported by this plugin: listening to its triggers would require

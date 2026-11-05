@@ -7,6 +7,8 @@ FTDI USB instrument labelled **Wharfedale**, and a built-in simulator.
 This page is for operators configuring and using that rig. Use
 :doc:`data_workflows` for general collection/plotting/saving and
 :doc:`third_party_plugins` for extension contracts.
+The shared engine, panel and status-bar workflow is introduced in
+:doc:`rig_controls`.
 
 Safety and first connection
 ---------------------------
@@ -69,6 +71,12 @@ geometry, increasing coupled motion rotates both the theta sample stage and
 the 2-theta detector arm clockwise, with the detector moving through twice the
 angle. The live synoptic displays the measured sample, detector and reflected
 ray geometry after every snapshot.
+
+.. figure:: _static/screenshots/controller-xray.png
+   :alt: Dark X-ray Control page with axis selection, motion controls, detector counting and the live geometry synoptic using the simulator.
+   :width: 100%
+
+   Motion and counting controls with the built-in simulated diffractometer.
 
 Detector counting
 -----------------

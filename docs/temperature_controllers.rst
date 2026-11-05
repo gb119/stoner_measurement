@@ -4,7 +4,8 @@ Temperature controllers
 This is the user and rig-administrator reference for the Temperature Control
 panel, loop selections and shared stability settings. For qualified Python
 calls see :ref:`temperature-console`; for plugin contracts see
-:doc:`third_party_plugins`.
+:doc:`third_party_plugins`. See :doc:`rig_controls` for the common engine,
+panel and main-window status-bar workflow.
 
 A rig can use one temperature controller or a primary controller plus an
 optional secondary controller. The secondary controller is disabled by default.
@@ -18,6 +19,16 @@ form and an **Enable secondary controller** switch. Enable the switch only for
 a rig with a second controller, then select its driver, transport and address.
 Each instrument has independent Connect and Disconnect buttons. A secondary
 instrument can remain connected when the primary is disconnected.
+
+.. figure:: _static/screenshots/controller-temperature-connection.png
+   :alt: Dark Temperature Control connection page showing the primary and enabled secondary controller forms.
+   :width: 100%
+
+   Independent connection forms, shown with built-in simulated controllers.
+
+The main-window **Temp** indicator's Connect and Disconnect shortcuts address
+the primary slot. Use the panel's secondary controls to change the secondary
+connection; disconnecting primary does not disconnect secondary.
 
 **Save Settings to YAML** saves both connection forms, including settings for
 an instrument that has not yet been connected. Disabling secondary disconnects
@@ -42,6 +53,13 @@ curve names are kept in separate labelled tables on the same page. Cryogen contr
 appear for each instrument that supports them. Heater ranges and other optional
 features belong to the selected instrument.
 
+.. figure:: _static/screenshots/controller-temperature.png
+   :alt: Dark Temperature Control page with Primary and Secondary tabs and two primary loop control groups.
+   :width: 100%
+
+   Loop controls with the built-in simulator; the secondary controller has
+   its own labelled tab.
+
 The Stability page has one shared table for the whole rig. Each tolerance and
 rate sensor can come from either controller: ``A`` is primary channel A and
 ``A.2`` is secondary channel A. An empty selection uses the first available
@@ -55,6 +73,12 @@ The first row whose upper temperature limit includes the target wins, even when
 another row also matches. Use **Move Up** and **Move Down** to choose priority;
 rows are never automatically sorted. If no row matches, the last row applies.
 Changing the selected band or sensor starts a fresh stability window.
+
+.. figure:: _static/screenshots/controller-temperature-stability.png
+   :alt: Dark Stability page showing the shared ordered tolerance and rate-sensor table and row-priority controls.
+   :width: 100%
+
+   One ordered stability table for the whole temperature rig.
 
 The chart combines temperature, setpoint, heater and supported gas-flow traces.
 Secondary labels use the suffix ``.2``, such as ``T_A.2`` and ``SP_1.2``. Internal

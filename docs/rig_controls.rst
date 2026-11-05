@@ -1,73 +1,101 @@
-Magnet, motor and pressure controls
-====================================
+Controllers
+===========
 
-This is an operational overview of the shared control panels used alongside
-measurement sequences. Use :doc:`temperature_controllers` and
-:doc:`xray_diffractometer` for those subsystems' detailed references. For testing
-without devices, see :doc:`simulated_instruments`.
+Controllers maintain the rig's temperature, magnetic field, motor position,
+pressure/flow and X-ray diffractometer state alongside a measurement sequence.
+Each subsystem has a background engine, an operator panel and sequence steps
+that share its service. Use this page for the common workflow, then choose the
+reference for the controller you are operating.
 
-Shared panels and sequence steps
----------------------------------
+.. toctree::
+   :maxdepth: 1
 
-Open a panel using its toolbar button or the **Engines** menu. Availability
-depends on the corresponding feature in Preferences. The panel and related
-sequence plugins use one shared controller service: hiding a panel does not
-mean its instrument has disconnected. Use its connection controls or the
-engine controls when you intend to disconnect.
+   temperature_controllers
+   magnet_controllers
+   motor_controllers
+   pressure_controllers
+   xray_diffractometer
 
-Select the instrument driver and supported transport/address on **Connection**,
-then connect. **Save Settings to YAML** preserves connection settings for the
-rig. A disabled automatic polling rate stops periodic reads while retaining
-the connection; explicit reads and commands still require a responsive device.
-Driver capabilities determine which optional controls are available.
+Engine, panel and sequence
+--------------------------
 
-Magnetic field
-----------------
+The **controller engine** owns its instrument session, dispatches automatic
+polls to a worker and publishes readback, status and stability information.
+The **control panel** edits the connection and operating settings and displays
+that state. Related set, scan, sweep and monitor plugins borrow the shared
+service; they do not own or close its sessions during sequence cleanup.
 
-The magnet panel exposes field/current readback, target and ramp controls,
-status, and supported persistent-switch functions. Rig limits such as magnet
-constant, compliance and ramp bounds belong to its configuration. Confirm
-their meaning for the selected magnet/power supply before applying targets.
+Open a panel with its toolbar button or the appropriate **Engines** submenu:
+Temperature, Magnet, Motor, Pressure or X-ray. Preferences controls whether
+that feature, its status indicator and its sequence plugins are visible.
+Closing a panel or pressing **Hide** leaves the engine running. Stopping a
+measurement sequence is also separate from disconnecting a shared controller.
 
-Set Field, Magnet Controller Scan/Sweep and Magnetic Field Monitor share this
-service. Use a scan for measurements after discrete points and a sweep for
-sampling while the state changes. Configure collection/plotting on the
-sequence steps as shown in :doc:`data_workflows`; a control-panel chart is not
-automatically a saved measurement table.
+Connect from the panel
+----------------------
 
-Motor position
-----------------
+1. Open **Connection** and select the driver, a supported transport and its
+   address. Driver capabilities determine which optional controls appear.
+2. Connect the instrument and check its readback. Use the built-in simulators
+   to explore the interface without hardware; see :doc:`simulated_instruments`.
+3. Use **Save Settings to YAML** to preserve the rig's connection preferences.
+   These saved choices are used by status-bar Connect.
+4. Choose a polling rate. **Disabled** or zero stops automatic reads while
+   retaining the connection; explicit reads still communicate with the device.
 
-The motor panel has **Connection** and **Control** pages. Connection fields
-depend on the selected transport, including serial/VISA/network controls and
-the controller serial number for Kinesis. Control provides target angle,
-velocity, acceleration, direction, reads and supported movement operations.
-The dial is a readback display; it is not a draggable movement command.
+The temperature panel has primary and optional secondary controller slots.
+The pressure panel has separate gauge and mass-flow sessions. Their individual
+connection controls are described on their own pages.
 
-Set Position, Motor Controller Scan/Sweep and Motor Angle Monitor use the same
-session. Movement and homing behavior depend on the driver. The simulated
-motor supports motion-profile testing without connecting a real stage.
+Connect and disconnect from the main window
+-------------------------------------------
 
-Pressure and flow
-------------------
+The main-window status bar contains **Temp**, **Magnet**, **Motor**,
+**Pressure** and **X-ray** indicators for the enabled features. Hover over an
+indicator for its state; its dot pulses after a successful poll. Connected/
+polling states use the connected colour, errors use the error colour and
+inactive states use the default colour.
 
-The pressure panel exposes gauge and mass-flow controller choices. Its
-channel readings, flow settings and optional interlocks/remote controls depend
-on the selected driver. A gauge query and a flow setpoint are different
-operations; select the device/channel that owns the required capability.
+.. figure:: _static/screenshots/controller-status-bar.png
+   :alt: Dark main-window status bar with Temp, Magnet, Motor, Pressure and X-ray engine indicators.
+   :width: 100%
 
-Pressure Monitor, Set Flow and Gauge Channel sequence commands borrow the
-shared pressure service. Their configuration and output selectors determine
-which channels participate in a measurement. Use Plot Points for current
-scalar readings and enable scan/sweep collection to retain them in a result
-table; Save then writes that table independently of the panel's live chart.
+   Controller indicators in the main-window status bar, shown disconnected.
 
-Script and extension boundaries
+Right-click an indicator for **Connect** and **Disconnect**:
+
+* **Connect** uses the saved preferred driver, transport and address. It is
+  available while disconnected or in an error state; configure and save the
+  connection from the panel first.
+* **Disconnect** ends the corresponding session and its device polling. It is
+  unavailable for a disconnected or stopped engine. Connection failures are
+  reported in a dialogue.
+
+For **Temp**, these shortcuts address the primary controller; a connected
+secondary remains independent. For **Pressure**, they address the gauge;
+use the panel for the separate mass-flow connection. The controller's own
+page explains these multi-device cases.
+
+The **Stop ... Engine** action in the controller's Engines submenu shuts down
+that engine and disconnects its owned devices. Use the ordinary Disconnect
+controls for routine session changes. Hiding a panel is solely a visibility
+operation.
+
+Use controllers in a measurement
 --------------------------------
 
-Use public controller services for direct scripted control, with explicit
-connection/capability checks. The sequence engine namespace is not itself a
-magnet, motor or pressure controller. See :doc:`console_api` for the shared
-namespace model, and the appropriate classes in :doc:`api/core` and
-:doc:`api/instruments` for method signatures. Plugin authors must preserve
-borrowed-session ownership as specified in :doc:`third_party_plugins`.
+Use a set command for a target, a scan to run measurements after discrete
+points, a sweep to collect while state changes, or a monitor for scalar
+readback. The specific controller pages list the available steps and any
+stability or movement conditions.
+
+Control-panel charts are live diagnostics, separate from sequence result
+tables. Select outputs in the scan/sweep data controls, then use Plot Points,
+Plot Trace and Save as described in :doc:`data_workflows` to retain the
+measurement you need.
+
+For direct Python access, use the public controller services in
+:doc:`console_api` and the signatures in :doc:`api/core` and
+:doc:`api/instruments`. The sequence engine namespace is not itself an
+instrument controller. Plugin authors must preserve shared-service ownership;
+see :doc:`third_party_plugins`.

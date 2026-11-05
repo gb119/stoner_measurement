@@ -41,10 +41,7 @@ composition and discovery are introduced in :doc:`api/instruments`.
    configuration
    simulated_instruments
    rig_controls
-   temperature_controllers
-   keithley_point_commands
-   keithley_pulse_delta
-   xray_diffractometer
+   keithley_meters
 
 .. toctree::
    :maxdepth: 2
