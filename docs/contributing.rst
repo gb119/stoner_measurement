@@ -71,9 +71,12 @@ Use :doc:`plugin_tab_ordering` and the shared widgets when extending plugin UI.
 
 .. code-block:: powershell
 
-   conda run -n stoner_measurement python -m sphinx -b html docs docs/_build/html
+   conda run -n stoner_measurement python -m sphinx -E -a -b html -W --keep-going docs docs/_build/html
 
-Check warnings against changed pages and inspect the generated HTML, downloads
-and image links. A successful build can still contain warnings from other API
-docstrings. Validate executable examples, including generated actions and
-persistence, rather than only syntax-highlighting their source.
+Build with a fresh Sphinx environment and treat every warning as an error,
+as the documentation deployment workflow does. API detail pages under
+``docs/_generated/api/`` are regenerated from the authored catalogues and
+templates; edit the catalogue, template or owning docstring instead of those
+generated files. Inspect the generated HTML, downloads and image links.
+Validate executable examples, including generated actions and persistence,
+rather than only syntax-highlighting their source.

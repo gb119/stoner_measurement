@@ -678,7 +678,7 @@ class BaseInstrument(ABC):
         self.write("*RST")
         
     def clear(self):
-        """Send the IOEEE488.2 *CLS command."""
+        """Send the IEEE 488.2 ``*CLS`` command."""
         self.write("*CLS")
 
     def __enter__(self) -> BaseInstrument:

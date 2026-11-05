@@ -22,19 +22,46 @@ driver can be reused with different transports (for example serial, Ethernet, GP
 null transport for tests) as long as the protocol matches the instrument command set.
 
 .. automodule:: stoner_measurement.instruments.base_instrument
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autosummary::
+   :toctree: ../_generated/api
+   :nosignatures:
+
+   BaseInstrument
 
 .. automodule:: stoner_measurement.instruments.transport
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autosummary::
+   :toctree: ../_generated/api
+   :nosignatures:
+
+   base.BaseTransport
+   ethernet_transport.EthernetTransport
+   ftdi_d2xx_transport.FtdiD2xxError
+   ftdi_d2xx_transport.FtdiD2xxTransport
+   gpib_transport.GpibTransport
+   gpib_transport.PassThroughGpibTransport
+   null_transport.NullTransport
+   serial_transport.EchoSerialTransport
+   serial_transport.SerialTransport
+   udp_transport.UdpTransport
 
 .. automodule:: stoner_measurement.instruments.protocol
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autosummary::
+   :toctree: ../_generated/api
+   :nosignatures:
+
+   base.BaseProtocol
+   ieee488.parse_ieee_block
+   lakeshore.LakeshoreProtocol
+   leybold.LeyboldCenterProtocol
+   mks.MKSPR4000Protocol
+   mks.MKSPSRProtocol
+   modbus.ModbusRtuProtocol
+   oxford.OxfordProtocol
+   scpi.ScpiProtocol
+   signal_recovery.SignalRecoveryProtocol
 
 
 Driver discovery process
@@ -55,9 +82,12 @@ to filter the discovered registry by an instrument base type such as
 ``TemperatureController``, ``MagnetController``, or ``SourceMeter``.
 
 .. automodule:: stoner_measurement.instruments.driver_manager
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autosummary::
+   :toctree: ../_generated/api
+   :nosignatures:
+
+   InstrumentDriverManager
 
 
 Instrument hierarchy and concrete classes
@@ -75,48 +105,199 @@ Hierarchy overview:
 Concrete classes currently included in the package:
 
 * Source meter drivers:
-  :class:`~stoner_measurement.instruments.keithley.Keithley2400`,
-  :class:`~stoner_measurement.instruments.keithley.Keithley2410`,
-  :class:`~stoner_measurement.instruments.keithley.Keithley2450`
+  :class:`~stoner_measurement.instruments.keithley.k2400.Keithley2400`,
+  :class:`~stoner_measurement.instruments.keithley.k2400.Keithley2410`,
+  :class:`~stoner_measurement.instruments.keithley.k2400.Keithley2450`
 * Temperature controller drivers:
-  :class:`~stoner_measurement.instruments.lakeshore.Lakeshore335`,
-  :class:`~stoner_measurement.instruments.lakeshore.Lakeshore336`,
-  :class:`~stoner_measurement.instruments.lakeshore.Lakeshore340`,
-  :class:`~stoner_measurement.instruments.oxford.OxfordITC503`,
-  :class:`~stoner_measurement.instruments.oxford.OxfordMercuryTemperatureController`
+  :class:`~stoner_measurement.instruments.lakeshore.temperature_controllers.Lakeshore335`,
+  :class:`~stoner_measurement.instruments.lakeshore.temperature_controllers.Lakeshore336`,
+  :class:`~stoner_measurement.instruments.lakeshore.temperature_controllers.Lakeshore340`,
+  :class:`~stoner_measurement.instruments.oxford.temperature_controllers.OxfordITC503`,
+  :class:`~stoner_measurement.instruments.oxford.temperature_controllers.OxfordMercuryTemperatureController`
 * Magnet controller drivers:
-  :class:`~stoner_measurement.instruments.lakeshore.Lakeshore625`,
-  :class:`~stoner_measurement.instruments.oxford.OxfordIPS120`
+  :class:`~stoner_measurement.instruments.lakeshore.ls625.Lakeshore625`,
+  :class:`~stoner_measurement.instruments.oxford.ips120.OxfordIPS120`
 * X-ray diffractometer drivers:
-  :class:`~stoner_measurement.instruments.xray.LegacyXrayDiffractometer`,
-  :class:`~stoner_measurement.instruments.xray.SimulatedXrayDiffractometer`
+  :class:`~stoner_measurement.instruments.xray.legacy_diffractometer.LegacyXrayDiffractometer`,
+  :class:`~stoner_measurement.instruments.xray.simulated.SimulatedXrayDiffractometer`
 
 .. automodule:: stoner_measurement.instruments
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autosummary::
+   :toctree: ../_generated/api
+   :nosignatures:
+
+   agilent.e5062a.AgilentE5062A
+   agilent.n5222a.AgilentN5222A
+   current_source.CurrentSource
+   current_source.CurrentSourceCapabilities
+   current_source.CurrentSweepConfiguration
+   current_source.CurrentSweepSpacing
+   current_source.CurrentWaveform
+   current_source.PulsedSweepConfiguration
+   dmm.DigitalMultimeter
+   dmm.DmmCapabilities
+   dmm.DmmFunction
+   dmm.DmmTriggerSource
+   electrometer.Electrometer
+   electrometer.ElectrometerCapabilities
+   electrometer.ElectrometerDataFormat
+   electrometer.ElectrometerFunction
+   electrometer.ElectrometerTriggerConfiguration
+   electrometer.ElectrometerTriggerSource
+   errors.InstrumentError
+   eurotherm.temperature_controllers.Eurotherm2000Series
+   eurotherm.temperature_controllers.Eurotherm3200Series
+   leybold.pressure_controllers.LeyboldCenterThree
+   leybold.pressure_controllers.LeyboldDisplayThree
+   lockin_amplifier.LockInAmplifier
+   lockin_amplifier.LockInAmplifierCapabilities
+   lockin_amplifier.LockInExpandFactor
+   lockin_amplifier.LockInInputCoupling
+   lockin_amplifier.LockInInputShielding
+   lockin_amplifier.LockInInputSource
+   lockin_amplifier.LockInLineFilter
+   lockin_amplifier.LockInOutputChannel
+   lockin_amplifier.LockInReferenceSource
+   lockin_amplifier.LockInReserveMode
+   magnet_controller.KepcoBOPGL
+   magnet_controller.MagnetController
+   magnet_controller.MagnetLimits
+   magnet_controller.MagnetState
+   magnet_controller.MagnetStatus
+   mass_flow_controller.MassFlowController
+   mass_flow_controller.MassFlowControllerCapabilities
+   mks.controllers.MKSPR4000BS
+   mks.controllers.MKSPSR1A
+   mks.controllers.MKSPSR4A
+   motor_controller.Motor
+   motor_controller.MotorController
+   motor_controller.MotorStatus
+   nanovoltmeter.Nanovoltmeter
+   nanovoltmeter.NanovoltmeterCapabilities
+   nanovoltmeter.NanovoltmeterFunction
+   nanovoltmeter.NanovoltmeterTriggerSource
+   network_analyser.ByteOrder
+   network_analyser.DataEncoding
+   network_analyser.NetworkAnalyser
+   network_analyser.NetworkAnalyserCapabilities
+   network_analyser.NetworkAnalyserTriggerSource
+   network_analyser.NetworkSweep
+   network_analyser.NetworkTraceData
+   network_analyser.SweepConfiguration
+   network_analyser.SweepType
+   network_analyser.TraceFormat
+   pressure_controller.PressureControllerCapabilities
+   pressure_controller.PressureGaugeController
+   pressure_controller.PressureReading
+   pressure_controller.PressureRelayState
+   pressure_controller.PressureSetpoint
+   pressure_controller.PressureStatus
+   pressure_controller.PressureUnit
+   simulated.SimulatedMagnetController
+   simulated.SimulatedMassFlowController
+   simulated.SimulatedMotorController
+   simulated.SimulatedPressureGaugeController
+   simulated.SimulatedTemperatureController
+   source_meter.MeasureFunction
+   source_meter.SourceMeter
+   source_meter.SourceMeterCapabilities
+   source_meter.SourceMode
+   source_meter.SourceSweepConfiguration
+   source_meter.SweepSpacing
+   source_meter.TriggerModelConfiguration
+   source_meter.TriggerSource
+   temperature_controller.AlarmState
+   temperature_controller.ControlMode
+   temperature_controller.ControllerCapabilities
+   temperature_controller.InputChannelSettings
+   temperature_controller.LoopStatus
+   temperature_controller.PIDParameters
+   temperature_controller.RampState
+   temperature_controller.SensorStatus
+   temperature_controller.TemperatureController
+   temperature_controller.TemperatureReading
+   temperature_controller.TemperatureStatus
+   temperature_controller.ZoneEntry
+   thorlabs.hdr50.ThorlabsHDR50
+   thorlabs.kdc101_kprmte.ThorlabsKDC101KPRMTE
+   xray.legacy_diffractometer.LegacyXrayDiffractometer
+   xray.protocol.XraySnapshot
+   xray.simulated.SimulatedXrayDiffractometer
+   xray_diffractometer.DiffractometerMechanics
+   xray_diffractometer.XrayDiffractometer
 
 .. automodule:: stoner_measurement.instruments.keithley
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autosummary::
+   :toctree: ../_generated/api
+   :nosignatures:
+
+   _scpi_data_format.KeithleyByteOrder
+   k182.Keithley182
+   k2000.Keithley2000
+   k2000.Keithley2700
+   k2182.Keithley2182A
+   k2400.Keithley2400
+   k2400.Keithley2410
+   k2400.Keithley2450
+   k6221.Keithley6221
+   k651x.Keithley6514
+   k651x.Keithley6517
+   k651x.Keithley6845
 
 .. automodule:: stoner_measurement.instruments.lakeshore
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autosummary::
+   :toctree: ../_generated/api
+   :nosignatures:
+
+   current_sources.LakeshoreM81CurrentSource
+   lia.LakeshoreM81LockIn
+   ls625.Lakeshore625
+   temperature_controllers.Lakeshore335
+   temperature_controllers.Lakeshore336
+   temperature_controllers.Lakeshore340
 
 .. automodule:: stoner_measurement.instruments.oxford
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autosummary::
+   :toctree: ../_generated/api
+   :nosignatures:
+
+   ips120.OxfordIPS120
+   mercury_ips.OxfordMercuryIPS
+   temperature_controllers.OxfordITC503
+   temperature_controllers.OxfordMercuryTemperatureController
 
 .. automodule:: stoner_measurement.instruments.xray_diffractometer
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autosummary::
+   :toctree: ../_generated/api
+   :nosignatures:
+
+   AxisDirection
+   AxisMechanics
+   CountResult
+   XrayMotionDisabledError
+   XrayMotionError
+   XrayOperationCancelled
+   XrayPositionError
+   XrayTravelLimitError
+   cancellation_requested
 
 .. automodule:: stoner_measurement.instruments.xray
-   :members:
-   :undoc-members:
-   :show-inheritance:
+
+.. autosummary::
+   :toctree: ../_generated/api
+   :nosignatures:
+
+   protocol.ControllerStatus
+   protocol.LegacyXrayProtocol
+   protocol.XrayBcdError
+   protocol.XrayFrameLengthError
+   protocol.XrayOpcode
+   protocol.XrayProtocolError
+   protocol.decode_le_bcd
+   protocol.decode_snapshot
+   protocol.decode_wrapped_six_digits

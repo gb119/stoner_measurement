@@ -212,3 +212,6 @@ __marimo__/
 
 .pytest*/*
 notes/sources/*
+
+# Sphinx autosummary output is regenerated from the authored API catalogue.
+docs/_generated/api/

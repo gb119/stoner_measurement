@@ -742,7 +742,7 @@ class PassThroughGpibTransport(GpibTransport):
         return response
 
     def read_status_byte(self) -> int | None:
-        """Return the IEEE 488.2 status byte via a wrapped *STB? query.
+        """Return the IEEE 488.2 status byte via a wrapped ``*STB?`` query.
 
         Because this is a serial over GPIB transport, this is not an out-of-band operation.
 

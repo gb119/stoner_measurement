@@ -48,7 +48,7 @@ jobs:
       - name: Build documentation
         shell: bash -el {0}
         run: |
-          python -m sphinx -b html docs docs/_build/html
+          python -m sphinx -E -a -b html -W --keep-going docs docs/_build/html
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
