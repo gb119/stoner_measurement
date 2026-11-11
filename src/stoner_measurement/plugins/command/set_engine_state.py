@@ -9,12 +9,18 @@ from typing import Any
 
 from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
 
+from stoner_measurement.core.controller_polling import raise_for_controller_failure
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.ui.widgets import SISpinBox
 
 
 class SetEngineStateCommand(CommandPlugin):
-    """Base class for commands that set, optionally await, and snapshot an engine state."""
+    """Set, optionally await, and snapshot a controller target.
+
+    Controller errors, disconnects and shutdown abort the command rather than
+    consuming its settling timeout. Successful outputs from a previous run
+    are cleared before a new action starts.
+    """
 
     setpoint_suffix = ""
     poll_interval = 0.5
@@ -74,17 +80,22 @@ class SetEngineStateCommand(CommandPlugin):
 
     def execute(self) -> None:
         """Set the evaluated target, optionally wait for it, and capture final state."""
+        self.timed_out = False
+        self._final_values = {}
         setpoint = self.eval_float(self.setpoint_expr)
         wait_for_target = bool(self.eval(self.wait_expr))
         engine = self._ensure_engine()
-        self.timed_out = False
         self._set_target(engine, setpoint)
         updates = getattr(getattr(engine, "_service", None) or engine, "_state_updates", None)
         revision = updates.revision if updates is not None else None
         state = self._read_state(engine)
+        raise_for_controller_failure(state, self.name, getattr(self, "controller_id", None))
         timeout = self.wait_timeout_seconds
         deadline = None if timeout is None else time.monotonic() + timeout
-        while wait_for_target and not self._target_reached(state, setpoint):
+        while wait_for_target:
+            raise_for_controller_failure(state, self.name, getattr(self, "controller_id", None))
+            if self._target_reached(state, setpoint):
+                break
             if self._stop_requested():
                 break
             if deadline is not None and time.monotonic() >= deadline:

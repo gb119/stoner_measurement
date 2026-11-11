@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.state_scan import TemperatureControllerScanPlugin
+from stoner_measurement.temperature_control.types import EngineStatus, TemperatureEngineState
 from stoner_measurement.ui.widgets import SISpinBox
 
 
@@ -65,6 +68,11 @@ def test_temperature_scan_settings_expose_stability_timeout(
 
 def test_temperature_scan_records_timeout(monkeypatch, qapp):
     plugin = TemperatureControllerScanPlugin()
+    controller = SimpleNamespace(
+        connected_driver=None,
+        get_engine_state=lambda: TemperatureEngineState(engine_status=EngineStatus.POLLING),
+    )
+    monkeypatch.setattr(plugin, "_engine", lambda: controller)
     plugin.settle_timeout_minutes = 0.001
     monkeypatch.setattr(plugin, "set_state", lambda _value: None)
     monkeypatch.setattr(plugin, "get_state", lambda: 4.0)
@@ -85,6 +93,11 @@ def test_temperature_scan_records_timeout(monkeypatch, qapp):
 
 def test_temperature_scan_resets_timeout_on_next_operation(monkeypatch, qapp):
     plugin = TemperatureControllerScanPlugin()
+    controller = SimpleNamespace(
+        connected_driver=None,
+        get_engine_state=lambda: TemperatureEngineState(engine_status=EngineStatus.POLLING),
+    )
+    monkeypatch.setattr(plugin, "_engine", lambda: controller)
     plugin.timed_out = True
     monkeypatch.setattr(plugin, "set_state", lambda _value: None)
     monkeypatch.setattr(plugin, "is_at_target", lambda: True)

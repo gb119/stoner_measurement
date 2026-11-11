@@ -561,6 +561,13 @@ class Lakeshore340InputSettings(InputChannelSettings):
     compensation_mode: int | None = None
 
 
+class _Lakeshore340Protocol(LakeshoreProtocol):
+    """Use Model 340 status bits (manual section 9.1.3.1)."""
+
+    status_error_mask = 0x10
+    gpib_use_mav = False
+
+
 class Lakeshore340(_LakeshoreTemperatureControllerBase):
     """Model 340 native control commands for the standard A/B input hardware.
 
@@ -571,6 +578,11 @@ class Lakeshore340(_LakeshoreTemperatureControllerBase):
     """
 
     _MODEL = "MODEL340"
+
+    def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
+        """Select native status handling while permitting an explicit protocol."""
+        super().__init__(transport, protocol if protocol is not None else _Lakeshore340Protocol())
+
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=2, num_loops=2, input_channels=("A", "B"), loop_numbers=(1, 2),
         has_ramp=True, has_pid=True, has_zone=True, has_manual_heater_output=True,

@@ -1264,8 +1264,8 @@ class _ControllerSession(QObject):
                 self._invalidate_state()
             try:
                 state = self._build_state(evaluate_stability=evaluate_stability)
-            except Exception:
-                logger.exception("TemperatureControllerEngine: read-state error")
+            except Exception as exc:
+                logger.exception("TemperatureControllerEngine: read-state error (%s): %s", type(exc).__name__, exc)
                 self._set_status(EngineStatus.ERROR)
                 self._invalidate_state()
                 return None

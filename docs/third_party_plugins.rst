@@ -182,6 +182,15 @@ as though it were current. Do not catch ``KeyboardInterrupt`` or cancellation
 indiscriminately. Bound hardware I/O and waits: stopping Python execution
 cannot reliably interrupt an indefinitely blocked device call.
 
+Built-in controller target commands, scans and sweeps abort on an error,
+disconnection or shutdown snapshot instead of treating controller failure as
+ordinary settling. Plugins implementing their own waits should apply
+``core.controller_polling.raise_for_controller_failure`` before accepting a
+target snapshot. Pass the selected temperature ``controller_id`` when using
+the combined temperature service so that a failed peer does not mask the
+selected controller's health. This status check cannot interrupt a native
+driver call that has not returned; transports must also enforce I/O deadlines.
+
 Sequence actions run on the engine worker. Create and update Qt widgets on the
 GUI thread, using queued Qt signals or the application's service boundaries
 for cross-thread requests. Import Qt through ``qtpy`` and signals through

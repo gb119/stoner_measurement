@@ -93,7 +93,8 @@ class TestGpibProtocolTermination:
         assert resource.trigger_count == 1
         transport.close()
 
-    def test_read_times_out_when_mav_never_appears(self, monkeypatch):
+    @pytest.mark.parametrize("complete_mask", [None, 2])
+    def test_read_times_out_when_mav_never_appears(self, monkeypatch, complete_mask):
         pytest.importorskip("pyvisa")
         import pyvisa
 
@@ -102,13 +103,34 @@ class TestGpibProtocolTermination:
         resource, rm_factory = self._make_fake_gpib_resource_manager()
         resource.read_stb = lambda: 11
         monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
-        transport = GpibTransport(address=8, timeout=0.0, command_complete_mask=2)
+        transport = GpibTransport(address=8, timeout=0.0, command_complete_mask=complete_mask)
         transport.open()
 
         with pytest.raises(TimeoutError, match=r"MAV.*STB=11"):
             transport.read()
 
         transport.close()
+
+    def test_read_times_out_when_mav_never_clears(self, monkeypatch):
+        import pyvisa
+
+        import stoner_measurement.instruments.transport.gpib_transport as gpib_module
+        from stoner_measurement.instruments.transport import GpibTransport
+
+        resource, rm_factory = self._make_fake_gpib_resource_manager()
+        resource.read_stb = lambda: 16
+        resource.read_raw = lambda count: b"partial"
+        monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
+        clock = [0.0]
+        monkeypatch.setattr(gpib_module, "perf_counter", lambda: clock[0])
+        monkeypatch.setattr(gpib_module, "sleep", lambda seconds: clock.__setitem__(0, clock[0] + 0.1))
+        transport = GpibTransport(address=8, timeout=0.05)
+        transport.open()
+        try:
+            with pytest.raises(TimeoutError, match="Timeout reading.*GPIB address 8"):
+                transport.read()
+        finally:
+            transport.close()
 
     def test_read_does_not_consume_timeout_while_command_is_executing(self, monkeypatch):
         pytest.importorskip("pyvisa")

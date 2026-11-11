@@ -42,6 +42,7 @@ from stoner_measurement.instruments.magnet_controller import (
     current_is_at_target,
 )
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol, ScpiProtocol
+from stoner_measurement.instruments.protocol.mercury import MercuryIPSProtocol
 from stoner_measurement.instruments.transport import (
     EthernetTransport,
     GpibTransport,
@@ -469,6 +470,8 @@ class MagnetControllerEngine(QObject):
                 Protocol instance selected for the driver family.
         """
         name = driver_name.lower()
+        if "mercury" in name:
+            return MercuryIPSProtocol()
         if "kepco" in name or "bop" in name:
             return ScpiProtocol()
         if "oxford" in name or "ips" in name:
@@ -922,8 +925,8 @@ class MagnetControllerEngine(QObject):
                 return None
             try:
                 state = self._build_state()
-            except Exception:
-                logger.exception("MagnetControllerEngine: read-state error")
+            except Exception as exc:
+                logger.exception("MagnetControllerEngine: read-state error (%s): %s", type(exc).__name__, exc)
                 self._is_at_target = False
                 self._stable = False
                 self._at_target_since = None

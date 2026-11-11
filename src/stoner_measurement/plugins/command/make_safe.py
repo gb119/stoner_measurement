@@ -7,6 +7,7 @@ from typing import Any
 
 from qtpy.QtWidgets import QCheckBox, QFormLayout, QLabel, QWidget
 
+from stoner_measurement.core.controller_polling import raise_for_controller_failure
 from stoner_measurement.instruments.motor_controller import MotorMoveDirection
 from stoner_measurement.instruments.temperature_controller import ControlMode
 from stoner_measurement.magnet_control.engine import MagnetControllerEngine
@@ -148,6 +149,10 @@ class MakeSafeCommand(CommandPlugin):
         updates = getattr(engine, "_state_updates", None)
         state = engine.read_controller_state()
         while True:
+            snapshot = state
+            if snapshot is None and hasattr(engine, "get_engine_state"):
+                snapshot = engine.get_engine_state()
+            raise_for_controller_failure(snapshot, "Magnet controller during Make Safe")
             if state is not None and state.at_target:
                 break
             if time.monotonic() >= deadline:

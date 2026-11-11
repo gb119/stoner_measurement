@@ -1,5 +1,41 @@
 # Testing Restructure Plan
 
+## 2026-11-11: Controller failure waits
+
+- Added focused command/scan/sweep failure checks in
+  `tests/unit/plugins/test_controller_failure_waits.py`, worker-exit and bounded
+  notification checks in the existing core module, and missing/stuck MAV cases
+  in the GPIB module. Temperature timeout fakes now explicitly model a healthy
+  controller. No tests moved or removed.
+- Combined controller, scan/sweep, secondary-temperature integration, plugin
+  and driver checks: 404 passed on offscreen PyQt5 / Python 3.14.10 through
+  Miniforge Conda. The final focused run passed 47 checks, including an added
+  connection-failure output-reset regression. Ruff remains unavailable.
+- Guarantees and unresolved native-call/transaction-lock/shutdown limits are
+  recorded in `notes/2026-11-11-controller-failure-waits.md`.
+
+## 2026-11-11: Mercury iPS connection and diagnostics
+
+- Updated the existing focused driver module to native group commands and SET
+  acknowledgements, adding engine-to-GPIB connection, failed identity cleanup,
+  rejection, unit-scale and alarm regressions. Added the focused UI module
+  `tests/unit/ui/panels/test_magnet_connection_errors.py` with managed widgets.
+  No tests moved or removed.
+- Combined Mercury IPS/iTC, GPIB, magnet engine, diagnostics, constants,
+  compliance, target detection and monitor checks: 217 passed on offscreen
+  PyQt5 / Python 3.14.10 through Miniforge Conda. Ruff is unavailable.
+- Manual evidence and bench limits are recorded in
+  `notes/2026-11-11-mercury-ips-driver-audit.md`.
+
+## 2026-11-11: Model 340 polling status correction
+
+- Added six GPIB-backed driver regressions to the existing Lake Shore module:
+  normal status flags permit temperature reads; native bit 4 still raises an error.
+  No tests moved or removed.
+- Driver, GPIB transport and legacy temperature-control checks: 160 passed using
+  Miniforge Conda, Python 3.14 and offscreen PyQt5. Ruff is unavailable in that
+  environment. Physical instrument confirmation remains outstanding.
+
 ## 2026-11-11: Offline Windows User Guide
 
 - Added focused helper/build coverage in `tests/unit/test_user_guide.py` and

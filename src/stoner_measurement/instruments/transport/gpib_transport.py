@@ -297,9 +297,9 @@ class GpibTransport(BaseTransport):
                     and not last_status_byte & self._command_complete_mask
                 ):
                     deadline = perf_counter() + max(0.0, self._timeout)
-                if self._command_complete_mask is not None and perf_counter() >= deadline:
+                if perf_counter() >= deadline:
                     raise TimeoutError(
-                        f"Timeout waiting for MAV after command completion from "
+                        f"Timeout waiting for MAV from "
                         f"GPIB address {self.address}; "
                         f"last STB={last_status_byte}."
                     )
@@ -307,7 +307,7 @@ class GpibTransport(BaseTransport):
             while (
                 self._use_mav and self.read_status_byte() & 16
             ) or not response:  # Loop until we don;'t have a message available.
-                if self._command_complete_mask is not None and perf_counter() >= deadline:
+                if self._use_mav and perf_counter() >= deadline:
                     raise TimeoutError(
                         f"Timeout reading from GPIB address {self.address}; "
                         f"last STB={last_status_byte}."

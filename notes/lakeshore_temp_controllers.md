@@ -71,6 +71,17 @@ they must not be inferred from the 335/336 or enabled by a fabricated channel na
 
 ## Verification
 
+Polling follow-up: the Model 340 protocol now configures the GPIB error mask as
+0x10 and disables MAV polling. Manual section 9.1.3.1 (printed page 9-2) defines
+bit 2 as Settle and bit 4 as instrument Error; bit 4 is not Message Available.
+The transport's default 0x04 error mask incorrectly rejected normal settled
+readings before consuming the KRDG response. Regression checks exercise actual
+GpibTransport reads with normal status flags and preserve rejection of 0x10.
+The polling log now includes the exception type and message in its main entry,
+so the log viewer can display the cause without opening traceback details.
+Confirm continuous polling on the physical 340 after restarting and reconnecting;
+fake-resource checks cannot establish bench behaviour.
+
 Tests cover native commands, CSET flag preservation, off versus open-loop modes,
 Celsius conversion, sensor-unit rejection, status bits, six-field zone tables, native
 input setup, event-register errors and real Apply clicks for both loops. The combined

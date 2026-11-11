@@ -7,6 +7,44 @@ import pytest
 from stoner_measurement.core.controller_polling import ControllerPoller, coordinated_read
 
 
+@pytest.mark.parametrize("failure", [RuntimeError("hardware disconnected"), SystemExit("worker exited")])
+def test_failed_worker_releases_pending_and_allows_next_poll(failure, monkeypatch):
+    fatal_errors = []
+    monkeypatch.setattr(threading, "excepthook", lambda args: fatal_errors.append(args.exc_value))
+    poller = ControllerPoller()
+
+    def fail():
+        raise failure
+
+    poller.request(fail)
+    poller._worker.join(1)
+    assert not poller._worker.is_alive()
+    assert not poller._pending
+    recovered = threading.Event()
+    poller.request(recovered.set)
+    poller._worker.join(1)
+    assert recovered.is_set()
+    assert fatal_errors == ([failure] if isinstance(failure, SystemExit) else [])
+    poller.close()
+    poller.join()
+
+
+def test_update_wait_without_publisher_is_bounded_and_cancellable(qapp):
+    from qtpy.QtCore import QObject, Signal
+
+    from stoner_measurement.core.controller_polling import ControllerUpdates
+
+    class Publisher(QObject):
+        state_updated = Signal(object)
+
+    publisher = Publisher()
+    updates = ControllerUpdates(publisher)
+    assert not updates.wait(updates.revision, 0.01)
+    stop = threading.Event()
+    stop.set()
+    assert not updates.wait(updates.revision, 60, stop)
+
+
 @pytest.mark.parametrize("result", [None, "fresh snapshot"])
 def test_overlapping_reads_share_success_or_failure_and_next_read_is_fresh(result):
     entered = threading.Event()

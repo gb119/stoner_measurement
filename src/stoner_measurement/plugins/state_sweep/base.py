@@ -21,6 +21,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.controller_polling import raise_for_controller_failure
 from stoner_measurement.plugins.base_plugin import instance_name_validation_error
 from stoner_measurement.plugins.state.base import StatePlugin
 from stoner_measurement.plugins.state.output_selection import OutputSelectionTable
@@ -591,6 +592,13 @@ class StateSweepPlugin(StatePlugin):
                 out-of-limits; :attr:`state_reached` is emitted on normal
                 exhaustion.
         """
+        engine_factory = getattr(self, "_engine", None)
+        if callable(engine_factory):
+            controller = engine_factory()  # pylint: disable=not-callable
+            if hasattr(controller, "get_engine_state"):
+                raise_for_controller_failure(
+                    controller.get_engine_state(), self.state_name, getattr(self, "controller_id", None)
+                )
         now = time.monotonic()
         if now > self._sweep_deadline:
             elapsed = now - self._sweep_start_time

@@ -1177,9 +1177,19 @@ class MagnetControlPanel(QWidget):
                 transport_name=transport_name,
                 address=address,
             )
-        except Exception:
-            logger.exception("Failed to connect magnet driver")
+        except Exception as exc:
+            logger.exception(
+                "Failed to connect magnet driver %s via %s at %s (%s): %s",
+                self._driver_combo.currentText(), self._transport_combo.currentText(),
+                self._engine.preferred_address, type(exc).__name__, exc,
+            )
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
+            QMessageBox.warning(
+                self, "Magnet connection failed",
+                f"Could not connect {self._driver_combo.currentText()} via "
+                f"{self._transport_combo.currentText()} at {self._engine.preferred_address}.\n\n"
+                f"{type(exc).__name__}: {exc}",
+            )
             return
 
         self._sync_existing_connection_state(apply_limits=True)

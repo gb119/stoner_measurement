@@ -35,3 +35,15 @@ class MercuryProtocol(ScpiProtocol):
         """
         if any(token in {"INVALID", "NOT_FOUND", "N/A", "DENIED"} for token in response.split(":")):
             raise InstrumentError(f"Mercury: {response}", command=command)
+
+
+class MercuryIPSProtocol(MercuryProtocol):
+    """Use native iPS replies rather than unsupported IEEE-488.2 status bits.
+
+    The iPS manual sections 10.3 and 10.3.1 exclude the standard status
+    commands. Read each newline-terminated reply directly, including SET
+    acknowledgements, and check native rejection tokens instead.
+    """
+
+    gpib_use_mav = False
+    status_error_mask = None

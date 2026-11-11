@@ -29,6 +29,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.controller_polling import raise_for_controller_failure
 from stoner_measurement.plugins.base_plugin import instance_name_validation_error
 from stoner_measurement.plugins.state.base import StatePlugin
 from stoner_measurement.plugins.state.output_selection import OutputSelectionTable
@@ -683,7 +684,13 @@ class StateScanPlugin(StatePlugin):
         if updates is not None:
             controller.read_controller_state()
         revision = updates.revision if updates is not None else None
-        while not self.is_at_target():
+        while True:
+            if controller is not None and hasattr(controller, "get_engine_state"):
+                raise_for_controller_failure(
+                    controller.get_engine_state(), self.state_name, getattr(self, "controller_id", None)
+                )
+            if self.is_at_target():
+                break
             self.state_changed.emit(self.get_state())
             if time.monotonic() > deadline:
                 self.timed_out = True

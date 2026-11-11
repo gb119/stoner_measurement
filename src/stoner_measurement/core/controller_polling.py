@@ -12,6 +12,25 @@ from qtpy.QtCore import Qt, QThread, QTimer, Signal, Slot
 logger = logging.getLogger(__name__)
 
 
+def raise_for_controller_failure(state, context="Controller", controller_id=None):
+    """Reject failed controller snapshots before waiting for a hardware target.
+
+    Args:
+        state: Snapshot exposing an engine_status enum, when available.
+        context (str): Operation or controller name included in the exception.
+        controller_id (str | None): Temperature slot to check independently.
+
+    Raises:
+        RuntimeError: The controller reports an error, disconnect or shutdown.
+    """
+    status = getattr(state, "engine_status", None)
+    if controller_id is not None:
+        status = getattr(state, "controller_statuses", {}).get(controller_id, status)
+    status = getattr(status, "value", status)
+    if status in ("error", "disconnected", "stopped"):
+        raise RuntimeError(f"{context} is {status}; cannot wait for a hardware target. Check the controller log.")
+
+
 def controller_action(action):
     """Serialize a controller transaction with polling and connection changes."""
 
@@ -61,8 +80,8 @@ class ControllerPoller:
                 closed = self._closed
             if not closed:
                 read()
-        except Exception:
-            logger.exception("Scheduled controller read failed")
+        except Exception as exc:
+            logger.exception("Scheduled controller read failed (%s): %s", type(exc).__name__, exc)
         finally:
             with self._lock:
                 self._pending = False

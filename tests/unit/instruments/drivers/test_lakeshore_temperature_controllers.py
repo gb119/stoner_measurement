@@ -35,6 +35,38 @@ def _null(responses=None):
 
 
 class TestLakeshoreTemperatureControllers:
+    @pytest.mark.parametrize("status", [0x00, 0x01, 0x04, 0x05, 0x80])
+    def test_lakeshore340_gpib_poll_accepts_normal_status(self, status):
+        class Resource:
+            def write_raw(self, data):
+                assert data == b"KRDG? A\r\n"
+
+            def read_stb(self):
+                return status
+
+            def read_raw(self, count):
+                return b"4.2\r\n"
+
+        transport = GpibTransport(address=12)
+        driver = Lakeshore340(transport)
+        transport._resource = Resource()
+        assert transport._use_mav is False
+        assert driver.get_temperature("A") == pytest.approx(4.2)
+
+    def test_lakeshore340_gpib_retains_instrument_error_check(self):
+        class Resource:
+            def write_raw(self, data):
+                pass
+
+            def read_stb(self):
+                return 0x10
+
+        transport = GpibTransport(address=12)
+        driver = Lakeshore340(transport)
+        transport._resource = Resource()
+        with pytest.raises(InstrumentError, match=r"(?s)KRDG.*STB=16"):
+            driver.get_temperature("A")
+
     def test_lakeshore335_disables_gpib_mav_polling(self):
         transport = GpibTransport(address=12)
 

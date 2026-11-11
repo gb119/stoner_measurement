@@ -503,8 +503,8 @@ class PressureControllerEngine(QObject):
                 return None
             try:
                 state = self._build_state()
-            except Exception:
-                logger.exception("PressureControllerEngine: read-state error")
+            except Exception as exc:
+                logger.exception("PressureControllerEngine: read-state error (%s): %s", type(exc).__name__, exc)
                 self._set_status(PressureEngineStatus.ERROR)
                 return None
             self._set_status(self._derive_status(polling=True))
