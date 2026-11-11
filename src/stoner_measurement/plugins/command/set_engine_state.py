@@ -78,6 +78,17 @@ class SetEngineStateCommand(CommandPlugin):
         stop_event = getattr(thread, "_stop_event", None)
         return bool(stop_event is not None and stop_event.is_set())
 
+    def _raise_for_failure(self, state) -> None:
+        """Reject failed controller snapshots before accepting a target.
+
+        Args:
+            state: Latest controller snapshot.
+
+        Raises:
+            RuntimeError: The controller reports an error, disconnect or shutdown.
+        """
+        raise_for_controller_failure(state, self.name, getattr(self, "controller_id", None))
+
     def execute(self) -> None:
         """Set the evaluated target, optionally wait for it, and capture final state."""
         self.timed_out = False
@@ -89,11 +100,11 @@ class SetEngineStateCommand(CommandPlugin):
         updates = getattr(getattr(engine, "_service", None) or engine, "_state_updates", None)
         revision = updates.revision if updates is not None else None
         state = self._read_state(engine)
-        raise_for_controller_failure(state, self.name, getattr(self, "controller_id", None))
+        self._raise_for_failure(state)
         timeout = self.wait_timeout_seconds
         deadline = None if timeout is None else time.monotonic() + timeout
         while wait_for_target:
-            raise_for_controller_failure(state, self.name, getattr(self, "controller_id", None))
+            self._raise_for_failure(state)
             if self._target_reached(state, setpoint):
                 break
             if self._stop_requested():

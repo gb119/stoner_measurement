@@ -1836,3 +1836,16 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
 - Validation: 1,053 instrument and magnet tests passed on Python 3.14.7 and offscreen
   PyQt5. Ruff passed for all changed Python files. See the shared protocol audit note
   for the exact test scope and remaining physical hardware validation.
+
+## 2026-11-11: Preserve X-ray operation errors in controller waits
+
+- CI for the Oxford refactor confirmed one pre-existing failure across all four
+  Python/Qt jobs: the generic controller guard masked a background motion error.
+- Added a failure-check hook to SetEngineStateCommand. The diffractometer command
+  lets a pending motion deliver its original exception, including when error status
+  precedes ticket completion. Disconnect and shutdown still abort immediately.
+- Added four deterministic notification-order and disconnect/shutdown cases to the
+  existing X-ray command test module; no tests were moved or removed.
+- Focused validation: 44 command/controller failure tests passed and Ruff passed.
+- Full local validation: 4,482 tests passed, 2 skipped on Python 3.14.7/PyQt5;
+  git diff --check passed. CI verification follows the corrective commit.

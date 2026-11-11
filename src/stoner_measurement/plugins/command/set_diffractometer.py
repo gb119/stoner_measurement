@@ -124,6 +124,27 @@ class SetDiffractometerCommand(SetEngineStateCommand):
             return engine.get_engine_state()
         return engine.read_controller_state() or engine.get_engine_state()
 
+    def _raise_for_failure(self, state) -> None:
+        """Propagate the motion ticket's error before the generic engine error.
+
+        Args:
+            state: Latest diffractometer snapshot.
+
+        Raises:
+            Exception: The completed motion's original error, or a controller
+                failure when no motion error is available.
+        """
+        if self._operation is not None:
+            if self._operation.done.is_set():
+                self._operation.result()
+            elif getattr(state.engine_status, "value", state.engine_status) == "error":
+                # Motion marks the engine as failed before its worker completes
+                # the ticket. Wait for that completion notification so the
+                # original exception is preserved. Disconnect/shutdown still
+                # pass through the common failure guard immediately.
+                return
+        super()._raise_for_failure(state)
+
     def _target_reached(self, state, setpoint: float) -> bool:
         del setpoint
         if self._operation is not None:

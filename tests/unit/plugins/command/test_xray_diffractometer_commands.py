@@ -17,6 +17,7 @@ from stoner_measurement.plugins.command import (
 )
 from stoner_measurement.ui.widgets import SISpinBox
 from stoner_measurement.xray_control import XrayControllerEngine, XrayMotionMode
+from stoner_measurement.xray_control.engine import XrayOperation
 
 
 class _FakeXrayEngine:
@@ -164,6 +165,43 @@ def test_waiting_xray_command_propagates_background_failure(qapp, engine, monkey
             command.execute()
     finally:
         controller.shutdown()
+
+
+@pytest.mark.parametrize("initial_status", ["polling", "error"])
+def test_motion_failure_survives_status_notification_order(initial_status, qapp, engine, monkeypatch):
+    """Preserve the original error even if ERROR is visible before ticket completion."""
+    operation = XrayOperation()
+    failure = RuntimeError("specific motion failure")
+    initial = SimpleNamespace(engine_status=initial_status)
+    failed = SimpleNamespace(engine_status="error")
+
+    def complete(*args):
+        operation.error = failure
+        operation.done.set()
+        return True
+
+    controller = SimpleNamespace(
+        get_engine_state=lambda: failed,
+        _state_updates=SimpleNamespace(revision=0, wait=complete),
+    )
+    command = SetDiffractometerCommand()
+    engine.add_plugin("motion_failure_order", command)
+    monkeypatch.setattr(command, "_ensure_engine", lambda: controller)
+    monkeypatch.setattr(command, "_set_target", lambda *args: setattr(command, "_operation", operation))
+    monkeypatch.setattr(command, "_read_state", lambda *args: initial)
+    with pytest.raises(RuntimeError) as error:
+        command.execute()
+    assert error.value is failure
+    assert command._final_values == {}
+    assert not command.timed_out
+
+
+@pytest.mark.parametrize("status", ["disconnected", "stopped"])
+def test_pending_motion_does_not_hide_disconnect_or_shutdown(status, qapp):
+    command = SetDiffractometerCommand()
+    command._operation = XrayOperation()
+    with pytest.raises(RuntimeError, match=f"is {status}"):
+        command._raise_for_failure(SimpleNamespace(engine_status=status))
 
 
 def test_stopping_waiting_command_cancels_its_pending_move(qapp, engine, monkeypatch):
