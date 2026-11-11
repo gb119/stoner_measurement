@@ -368,6 +368,18 @@ class ControllerCapabilities:
         has_manual_heater_output (bool):
             ``True`` if the driver supports setting the heater output directly
             (required for :attr:`~ControlMode.OPEN_LOOP` operation).
+        has_heater_range (bool):
+            ``True`` if the controller provides selectable heater power ranges.
+        control_modes (tuple[ControlMode, ...]):
+            Supported modes, or an empty tuple to use the generic mode choices.
+        heater_range_loops (tuple[int, ...] | None):
+            Loops with discrete heater ranges. None means all loops when
+            has_heater_range is true; an empty tuple means none.
+        setpoint_after_configuration (bool):
+            Configure ramp and output settings before writing the target in Apply.
+        input_settings_model (str):
+            Input editor schema. The default uses the shared 335/336 layout;
+            ``lakeshore340`` selects the Model 340 native input editor.
         has_input_settings (bool):
             ``True`` if the driver supports reading and writing per-channel
             input configuration (sensor type, range, filter, calibration curve
@@ -402,6 +414,11 @@ class ControllerCapabilities:
     heater_range_labels: dict[int, tuple[str, ...]] = field(default_factory=dict)
     min_temperature: float | None = None
     max_temperature: float | None = None
+    has_heater_range: bool = True
+    control_modes: tuple[ControlMode, ...] = ()
+    heater_range_loops: tuple[int, ...] | None = None
+    setpoint_after_configuration: bool = False
+    input_settings_model: str = "standard"
 
 
 # ---------------------------------------------------------------------------

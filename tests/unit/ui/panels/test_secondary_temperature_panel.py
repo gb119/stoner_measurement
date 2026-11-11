@@ -69,8 +69,8 @@ def test_shared_stability_selectors_preserve_missing_selection(rig, managed_temp
 def test_input_settings_share_page_with_separate_owner_tables(rig, managed_temperature_panel):
     panel = managed_temperature_panel()
     tab = panel._tabs.widget(panel._input_settings_tab_index)
-    assert tab.layout().indexOf(panel._input_settings_widget) >= 0
-    assert tab.layout().indexOf(panel._secondary_input_settings) >= 0
+    assert tab.widget().layout().indexOf(panel._input_settings_widget) >= 0
+    assert tab.widget().layout().indexOf(panel._secondary_input_settings) >= 0
     assert panel._secondary_input_settings._engine is rig.controller("secondary")
 
 
@@ -230,6 +230,118 @@ def test_stability_rows_can_be_reordered(rig, managed_temperature_panel):
     panel._on_apply_stability()
     assert rig.stability_config.bands[0].rate_channel == "secondary:B"
     assert rig.stability_config.bands[1].max_temperature_k == 100
+
+
+@pytest.mark.parametrize("controller_id", ["primary", "secondary"])
+def test_control_edits_survive_poll_until_explicit_read(
+    rig, managed_temperature_panel, controller_id
+):
+    from dataclasses import replace
+
+    class CryogenController(SimulatedTemperatureController):
+        position = 12.0
+        automatic = False
+
+        def get_capabilities(self):
+            return replace(
+                super().get_capabilities(),
+                has_cryogen_control=True,
+                has_gas_auto_mode=True,
+            )
+
+        def get_gas_flow(self):
+            return self.position
+
+        def get_gas_auto(self):
+            return self.automatic
+
+        def set_gas_auto(self, enabled):
+            self.automatic = enabled
+
+    panel = managed_temperature_panel()
+    driver = CryogenController()
+    rig.connect_instrument(driver, controller_id=controller_id)
+    if controller_id == "primary":
+        position = panel._needle_spin
+        automatic = panel._gas_auto_check
+        read = panel._needle_read_btn.click
+    else:
+        position = panel._secondary_cryogen._position
+        automatic = panel._secondary_cryogen._auto
+        read = panel._secondary_cryogen._read
+    assert position.value() == 12.0
+    assert not automatic.isChecked()
+    position.setValue(35.0)
+    driver.position = 60.0
+    driver.automatic = True
+    rig.read_controller_state()
+    assert position.value() == 35.0
+    assert not automatic.isChecked()
+    assert position.isEnabled()
+    read()
+    assert position.value() == 60.0
+    assert automatic.isChecked()
+    assert not position.isEnabled()
+    automatic.setChecked(False)
+    assert position.value() == 60.0
+    assert position.isEnabled()
+
+
+@pytest.mark.parametrize("mode_name", ["CLOSED_LOOP", "ZONE", "OPEN_LOOP", "OFF"])
+def test_primary_itc503_apply_reaches_hardware(rig, managed_qt_widget, mode_name):
+    from qtpy.QtWidgets import QPushButton
+
+    from stoner_measurement.instruments.oxford import OxfordITC503
+    from stoner_measurement.instruments.temperature_controller import ControlMode
+    from stoner_measurement.instruments.transport import NullTransport
+    from stoner_measurement.ui.temperature_panel import _LoopControlGroup
+
+    mode = ControlMode[mode_name]
+    responses = [b"H\r", b"T\r"]
+    expected = [b"H2\r", b"T12.0\r"]
+    if mode is not ControlMode.ZONE:
+        responses.extend([b"L\r", b"P\r", b"I\r", b"D\r"])
+        expected.extend([b"L0\r", b"P30.0\r", b"I4.0\r", b"D0.5\r"])
+    responses.extend([b"X0A3C3S00H2L0\r", b"L\r", b"A\r"])
+    expected.extend([b"X\r", b"L1\r" if mode is ControlMode.ZONE else b"L0\r"])
+    expected.append(b"A3\r" if mode in (ControlMode.CLOSED_LOOP, ControlMode.ZONE) else b"A2\r")
+    if mode in (ControlMode.OFF, ControlMode.OPEN_LOOP):
+        responses.append(b"O\r")
+        expected.append(b"O0.0\r" if mode is ControlMode.OFF else b"O25.0\r")
+    transport = NullTransport(responses=responses)
+    transport.open()
+    driver = OxfordITC503(transport=transport)
+    rig._driver = driver
+    group = managed_qt_widget(_LoopControlGroup(1, rig, driver.get_capabilities()))
+    group._channel_combo.setCurrentIndex(group._channel_combo.findData("B"))
+    group._mode_combo.setCurrentIndex(group._mode_combo.findData(mode))
+    group._sp_spin.setValue(12)
+    group._pid_p_spin.setValue(30)
+    group._pid_i_spin.setValue(4)
+    group._pid_d_spin.setValue(0.5)
+    group._manual_output_spin.setValue(25)
+    assert group._heater_range_spin.isHidden()
+    assert group._ramp_widget.isHidden()
+    assert group._mode_combo.findData(ControlMode.MONITOR) == -1
+    next(button for button in group.findChildren(QPushButton) if button.text() == "Apply").click()
+    assert transport.write_log == expected
+
+
+def test_primary_itc503_make_safe_uses_manual_off_sequence(rig):
+    from stoner_measurement.instruments.oxford import OxfordITC503
+    from stoner_measurement.instruments.transport import NullTransport
+    from stoner_measurement.plugins.command.make_safe import MakeSafeCommand
+
+    transport = NullTransport(responses=[
+        b"X0A3C3S00H1L0\r", b"A\r", b"G\r",
+        b"X0A1C3S00H1L0\r", b"L\r", b"A\r", b"O\r",
+    ])
+    transport.open()
+    rig._driver = OxfordITC503(transport=transport)
+    MakeSafeCommand._make_temperature_safe()
+    assert transport.write_log == [
+        b"X\r", b"A1\r", b"G0.0\r", b"X\r", b"L0\r", b"A0\r", b"O0.0\r",
+    ]
 
 
 if __name__ == "__main__":

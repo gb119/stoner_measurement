@@ -24,12 +24,14 @@ def test_defaults_json_and_widget(qapp):
     assert not any((restored.temperature, restored.magnet, restored.motor, restored.always_make_safe))
 
 
-def test_execute_makes_selected_controllers_safe(monkeypatch, qapp):
+@pytest.mark.parametrize("has_heater_range", [True, False])
+def test_execute_makes_selected_controllers_safe(monkeypatch, qapp, has_heater_range):
     temperature_calls = []
     temp_engine = SimpleNamespace(
         connected_driver=SimpleNamespace(
             get_capabilities=lambda: SimpleNamespace(
-                num_loops=2, has_gas_auto_mode=True, has_cryogen_control=True
+                num_loops=2, has_gas_auto_mode=True, has_cryogen_control=True,
+                has_heater_range=has_heater_range,
             )
         ),
         set_manual_heater_output=lambda *args: temperature_calls.append(("output", *args)),
@@ -62,8 +64,8 @@ def test_execute_makes_selected_controllers_safe(monkeypatch, qapp):
 
     MakeSafeCommand().execute()
 
-    assert ("output", 1, 0.0) in temperature_calls
-    assert ("range", 2, 0) in temperature_calls
+    assert (("output", 1, 0.0) in temperature_calls) is has_heater_range
+    assert (("range", 2, 0) in temperature_calls) is has_heater_range
     assert ("mode", 1, ControlMode.OFF) in temperature_calls
     assert temperature_calls.index(("needle", 0.0)) < temperature_calls.index(
         ("mode", 1, ControlMode.OFF)

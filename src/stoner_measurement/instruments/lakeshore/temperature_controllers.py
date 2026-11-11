@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import csv
+import math
+from dataclasses import dataclass
 from typing import ClassVar
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.lakeshore import LakeshoreProtocol
 from stoner_measurement.instruments.temperature_controller import (
@@ -539,200 +542,285 @@ class Lakeshore336(_LakeshoreTemperatureControllerBase):
     )
 
 
+@dataclass(frozen=True)
+class Lakeshore340InputSettings(InputChannelSettings):
+    """Native Model 340 input parameters, distinct from the 335 INTYPE layout.
+
+    Attributes:
+        sensor_units (int | None): Native sensor units: 1 volts, 2 ohms.
+        coefficient (int | None): Sensor coefficient: 1 negative, 2 positive.
+        excitation (int | None): Native excitation code, 0–12.
+        input_enabled (bool | None): Whether hardware input readings are enabled.
+        compensation_mode (int | None): Compensation: 0 off, 1 on, 2 paused.
+    """
+
+    sensor_units: int | None = None
+    coefficient: int | None = None
+    excitation: int | None = None
+    input_enabled: bool | None = None
+    compensation_mode: int | None = None
+
+
 class Lakeshore340(_LakeshoreTemperatureControllerBase):
-    """Concrete driver for the Lakeshore 340 temperature controller.
+    """Model 340 native control commands for the standard A/B input hardware.
 
-    The 340 uses a different command set from the 335/336:
-
-    * Input-channel assignment is configured via ``CSET`` / ``CSET?`` rather
-      than ``OUTMODE`` / ``OUTMODE?``.
-    * Control mode is set via ``CMODE`` / ``CMODE?`` rather than the mode
-      field of ``OUTMODE``.
-    * Zone-table commands (``ZONE`` / ``ZONE?``) are not available on the 340;
-      zone control must be configured through the front panel.
+    Loop 1 drives the heater; Loop 2 drives analog output 2, which must already
+    be configured for loop control on the instrument. Only Loop 1 has heater
+    ranges. Zone tables contain six values, unlike the 335's eight. Native
+    input setup uses Lakeshore340InputSettings and a dedicated native editor.
     """
 
     _MODEL = "MODEL340"
-    _LS340_LOOP1_RANGES = ("Off", "0.5 W", "5 W", "50 W", "500 W", "5 kW")
-    _LS340_LOOP2_RANGES = ("Off", "On")
     _CAPABILITIES = ControllerCapabilities(
-        num_inputs=2,
-        num_loops=2,
-        input_channels=("A", "B"),
-        loop_numbers=(1, 2),
-        has_ramp=True,
-        has_pid=True,
-        has_zone=False,
-        has_input_settings=True,
-        heater_range_labels={1: _LS340_LOOP1_RANGES, 2: _LS340_LOOP2_RANGES},
+        num_inputs=2, num_loops=2, input_channels=("A", "B"), loop_numbers=(1, 2),
+        has_ramp=True, has_pid=True, has_zone=True, has_manual_heater_output=True,
+        has_input_settings=True, input_settings_model="lakeshore340", heater_range_loops=(1,),
+        setpoint_after_configuration=True,
+        heater_range_labels={1: ("Off", "Range 1", "Range 2", "Range 3", "Range 4", "Range 5")},
+        control_modes=(ControlMode.OFF, ControlMode.CLOSED_LOOP, ControlMode.ZONE, ControlMode.OPEN_LOOP),
     )
 
-    def get_input_channel(self, loop: int) -> str:
-        """Return the channel assigned to *loop* via ``CSET?``.
+    def write(self, command: str, slow: int | None = None) -> None:
+        """Write a native action and check the documented event-status register.
 
         Args:
-            loop (int):
-                Control loop number (1 or 2).
+            command (str): Model 340 action without a terminator.
 
-        Returns:
-            (str):
-                Channel label (``"A"`` or ``"B"``).
+        Keyword Parameters:
+            slow (int | None): Optional transport delay in milliseconds.
 
-        Examples:
-            >>> from stoner_measurement.instruments.transport import NullTransport
-            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
-            >>> ctrl = Lakeshore340(transport=NullTransport())
-            >>> # ctrl.get_input_channel(1)  # requires live instrument
+        Raises:
+            InstrumentError: Command, execution, device or query error is reported.
         """
-        input_index, _, _, _ = self._get_cset(loop)
-        return self._channel_from_index(input_index)
+        with self._lock:
+            super().write(command, slow=slow)
+            if self.auto_check_errors:
+                status = int(self.query("*ESR?"))
+                if not 0 <= status <= 255:
+                    raise ValueError(f"Invalid Model 340 event status {status}.")
+                if status & 60:
+                    raise InstrumentError("Model 340 event register reports an error", command=command,
+                                          error_code=status)
+
+    @staticmethod
+    def _bounded(value, low, high, name):
+        """Validate a finite native numeric setting before writing."""
+        if not math.isfinite(value) or not low <= value <= high:
+            raise ValueError(f"Lakeshore340 {name} must be between {low} and {high}.")
+
+    def _get_cset(self, loop: int) -> tuple[str, int, int, int]:
+        """Read lettered input, setpoint units, enable and power-up flags."""
+        fields = [item.strip() for item in self.query(f"CSET? {self._normalise_loop(loop)}").split(",")]
+        if len(fields) != 4:
+            raise ValueError(f"Invalid Model 340 CSET response: {fields!r}.")
+        channel = self._normalise_channel(fields[0])
+        units, enabled, powerup = (int(item) for item in fields[1:])
+        if units not in (1, 2, 3) or enabled not in (0, 1) or powerup not in (0, 1):
+            raise ValueError(f"Invalid Model 340 CSET response: {fields!r}.")
+        return channel, units, enabled, powerup
+
+    def get_input_channel(self, loop: int) -> str:
+        """Return the hardware control sensor label from CSET?."""
+        return self._get_cset(loop)[0]
 
     def set_input_channel(self, loop: int, channel: str) -> None:
-        """Assign *channel* to *loop* via ``CSET``, preserving other parameters.
+        """Select an A/B sensor, preserving units and enable flags."""
+        channel = self._normalise_channel(channel)
+        with self._lock:
+            _, units, enabled, powerup = self._get_cset(loop)
+            self.write(f"CSET {loop},{channel},{units},{enabled},{powerup}")
 
-        Args:
-            loop (int):
-                Control loop number (1 or 2).
-            channel (str):
-                Channel label to assign (``"A"`` or ``"B"``).
+    def get_setpoint(self, loop: int) -> float:
+        """Return a kelvin setpoint, converting native Celsius when necessary."""
+        with self._lock:
+            units = self._get_cset(loop)[1]
+            if units == 3:
+                raise NotImplementedError("Model 340 sensor-unit setpoints cannot be converted to kelvin.")
+            value = super().get_setpoint(loop)
+            return value + 273.15 if units == 2 else value
 
-        Examples:
-            >>> from stoner_measurement.instruments.transport import NullTransport
-            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
-            >>> ctrl = Lakeshore340(transport=NullTransport())
-            >>> # ctrl.set_input_channel(1, "B")  # requires live instrument
-        """
-        _, units, onoff, powerup_enable = self._get_cset(loop)
-        self.write(
-            f"CSET {self._normalise_loop(loop)},{self._channel_to_index(channel)}"
-            f",{units},{onoff},{powerup_enable}"
-        )
+    def set_setpoint(self, loop: int, value: float) -> None:
+        """Write a kelvin target in the loop's configured temperature units."""
+        self._bounded(value, 0, math.inf, "setpoint")
+        with self._lock:
+            units = self._get_cset(loop)[1]
+            if units == 3:
+                raise NotImplementedError("Select kelvin or Celsius setpoint units on the Model 340 first.")
+            super().set_setpoint(loop, value - 273.15 if units == 2 else value)
 
     def get_loop_mode(self, loop: int) -> ControlMode:
-        """Return the control mode for *loop* via ``CMODE?``.
-
-        Args:
-            loop (int):
-                Control loop number (1 or 2).
-
-        Returns:
-            (ControlMode):
-                Current control mode.
-
-        Examples:
-            >>> from stoner_measurement.instruments.transport import NullTransport
-            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
-            >>> ctrl = Lakeshore340(transport=NullTransport())
-            >>> # ctrl.get_loop_mode(1)  # requires live instrument
-        """
-        code = self._parse_int_token(self.query(f"CMODE? {self._normalise_loop(loop)}"))
-        return _LS340_CODE_TO_MODE.get(code, ControlMode.CLOSED_LOOP)
+        """Read loop enable from CSET and control algorithm from CMODE."""
+        with self._lock:
+            if not self._get_cset(loop)[2]:
+                return ControlMode.OFF
+            code = int(self.query(f"CMODE? {loop}"))
+            if code not in _LS340_CODE_TO_MODE:
+                raise ValueError(f"Unsupported Model 340 control mode {code}; autotune is not a generic mode.")
+            return _LS340_CODE_TO_MODE[code]
 
     def set_loop_mode(self, loop: int, mode: ControlMode) -> None:
-        """Set the control mode for *loop* via ``CMODE``.
+        """Enable the selected control algorithm, or disable the loop with CSET."""
+        self._normalise_loop(loop)
+        if mode not in self._CAPABILITIES.control_modes:
+            raise ValueError(f"Unsupported Model 340 mode {mode!r}.")
+        with self._lock:
+            channel, units, _, powerup = self._get_cset(loop)
+            if mode is not ControlMode.OFF:
+                self.write(f"CMODE {loop},{_LS340_MODE_TO_CODE[mode]}")
+            self.write(f"CSET {loop},{channel},{units},{int(mode is not ControlMode.OFF)},{powerup}")
 
-        Args:
-            loop (int):
-                Control loop number (1 or 2).
-            mode (ControlMode):
-                Desired control mode.
+    def get_heater_output(self, loop: int) -> float:
+        """Read heater percent for Loop 1 or actual analog-output percent for Loop 2."""
+        self._normalise_loop(loop)
+        raw = self.query("HTR?" if loop == 1 else "AOUT? 2")
+        return float(raw.strip().removesuffix("%"))
 
-        Examples:
-            >>> from stoner_measurement.instruments.transport import NullTransport
-            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
-            >>> from stoner_measurement.instruments.temperature_controller import ControlMode
-            >>> ctrl = Lakeshore340(transport=NullTransport())
-            >>> # ctrl.set_loop_mode(1, ControlMode.CLOSED_LOOP)  # requires live instrument
-        """
-        code = _LS340_MODE_TO_CODE.get(mode, _LS340_MODE_TO_CODE[ControlMode.CLOSED_LOOP])
-        self.write(f"CMODE {self._normalise_loop(loop)},{code}")
+    def get_heater_range(self, loop: int) -> int:
+        """Read the single heater range; Loop 2 has no heater ranges."""
+        self._normalise_loop(loop)
+        if loop != 1:
+            raise NotImplementedError("Model 340 Loop 2 is an analog output without heater ranges.")
+        value = int(self.query("RANGE?"))
+        if value not in range(6):
+            raise ValueError(f"Invalid Model 340 heater range {value}.")
+        return value
 
-    def get_num_zones(self, loop: int) -> int:
-        """Raise :exc:`NotImplementedError` — the 340 does not support zone commands.
+    def set_heater_range(self, loop: int, range_: int) -> None:
+        """Set Loop 1's heater range using RANGE without a loop argument."""
+        self._normalise_loop(loop)
+        if loop != 1:
+            raise NotImplementedError("Model 340 Loop 2 is an analog output without heater ranges.")
+        if not isinstance(range_, int) or range_ not in range(6):
+            raise ValueError("Model 340 heater range must be an integer from 0 to 5.")
+        self.write(f"RANGE {range_}")
 
-        Args:
-            loop (int):
-                Control loop number (unused).
+    def set_manual_heater_output(self, loop: int, output: float) -> None:
+        """Set native manual output in percent, including bipolar analog control."""
+        self._normalise_loop(loop)
+        self._bounded(output, -100, 100, "manual output")
+        self.write(f"MOUT {loop},{output}")
 
-        Raises:
-            NotImplementedError:
-                Always, because ``ZONE`` / ``ZONE?`` are not available on the
-                Lakeshore 340.
+    def set_pid(self, loop: int, p: float, i: float, d: float) -> None:
+        """Set native gain/reset/rate values; I is reset, not an integral time."""
+        for value, name in ((p, "P"), (i, "I"), (d, "D")):
+            self._bounded(value, 0, 1000, name)
+        super().set_pid(loop, p, i, d)
 
-        Examples:
-            >>> from stoner_measurement.instruments.transport import NullTransport
-            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
-            >>> ctrl = Lakeshore340(transport=NullTransport())
-            >>> ctrl.get_num_zones(1)
-            Traceback (most recent call last):
-                ...
-            NotImplementedError: Lakeshore 340 does not support zone table commands.
-        """
-        raise NotImplementedError("Lakeshore 340 does not support zone table commands.")
+    def set_ramp_rate(self, loop: int, rate: float) -> None:
+        """Set a 0–100 K/min ramp rate while retaining enable state atomically."""
+        self._bounded(rate, 0, 100, "ramp rate")
+        with self._lock:
+            super().set_ramp_rate(loop, rate)
+
+    def set_ramp_enabled(self, loop: int, enabled: bool) -> None:
+        """Toggle ramping while retaining its rate under the shared lock."""
+        with self._lock:
+            super().set_ramp_enabled(loop, enabled)
+
+    def _get_ramp(self, loop: int) -> tuple[bool, float]:
+        """Reject malformed native ramp state before any read-modify-write action."""
+        values = self._parse_csv_floats(self.query(f"RAMP? {self._normalise_loop(loop)}"), minimum_length=2)
+        if len(values) != 2 or values[0] not in (0, 1):
+            raise ValueError("Invalid Model 340 RAMP response.")
+        self._bounded(values[1], 0, 100, "ramp readback")
+        return bool(values[0]), values[1]
+
+    def get_sensor_status(self, channel: str) -> SensorStatus:
+        """Decode the Model 340 reading-status bit definitions."""
+        status = int(self.query(f"RDGST? {self._normalise_channel(channel)}"))
+        if not 0 <= status <= 255:
+            raise ValueError(f"Invalid Model 340 reading status {status}.")
+        if status & (1 | 2 | 64):
+            return SensorStatus.INVALID
+        if status & (32 | 128):
+            return SensorStatus.OVERRANGE
+        if status & 16:
+            return SensorStatus.UNDERRANGE
+        return SensorStatus.OK if status == 0 else SensorStatus.INVALID
 
     def get_zone(self, loop: int, zone_index: int) -> ZoneEntry:
-        """Raise :exc:`NotImplementedError` — the 340 does not support zone commands.
-
-        Args:
-            loop (int):
-                Control loop number (unused).
-            zone_index (int):
-                Zone entry index (unused).
-
-        Raises:
-            NotImplementedError:
-                Always, because ``ZONE`` / ``ZONE?`` are not available on the
-                Lakeshore 340.
-
-        Examples:
-            >>> from stoner_measurement.instruments.transport import NullTransport
-            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
-            >>> ctrl = Lakeshore340(transport=NullTransport())
-            >>> ctrl.get_zone(1, 1)
-            Traceback (most recent call last):
-                ...
-            NotImplementedError: Lakeshore 340 does not support zone table commands.
-        """
-        raise NotImplementedError("Lakeshore 340 does not support zone table commands.")
+        """Read a native six-field Model 340 zone entry."""
+        self._validate_zone(loop, zone_index)
+        values = self._parse_csv_floats(self.query(f"ZONE? {loop},{zone_index}"), minimum_length=6)
+        if len(values) != 6:
+            raise ValueError("Model 340 ZONE? must return six fields.")
+        return ZoneEntry(values[0], values[1], values[2], values[3], 0.0, int(values[5]), values[4])
 
     def set_zone(self, loop: int, zone_index: int, entry: ZoneEntry) -> None:
-        """Raise :exc:`NotImplementedError` — the 340 does not support zone commands.
+        """Write the six native zone fields, excluding 335-only input and ramp fields."""
+        self._validate_zone(loop, zone_index)
+        if entry.ramp_rate or entry.input_channel:
+            raise ValueError("Model 340 zones have no input-channel or ramp-rate fields.")
+        self._bounded(entry.upper_bound, 0, math.inf, "zone upper temperature")
+        for value, name in ((entry.p, "P"), (entry.i, "I"), (entry.d, "D")):
+            self._bounded(value, 0, 1000, name)
+        self._bounded(entry.heater_output, -100, 100, "zone manual output")
+        if not isinstance(entry.heater_range, int) or entry.heater_range not in range(6):
+            raise ValueError("Model 340 zone range must be 0–5.")
+        self.write(f"ZONE {loop},{zone_index},{entry.upper_bound},{entry.p},{entry.i},{entry.d},"
+                   f"{entry.heater_output},{entry.heater_range}")
 
-        Args:
-            loop (int):
-                Control loop number (unused).
-            zone_index (int):
-                Zone entry index (unused).
-            entry (ZoneEntry):
-                Zone entry (unused).
+    def _validate_zone(self, loop, index):
+        """Validate zone addressing before I/O."""
+        self._normalise_loop(loop)
+        if not isinstance(index, int) or not 1 <= index <= 10:
+            raise ValueError("Model 340 zone index must be 1–10.")
 
-        Raises:
-            NotImplementedError:
-                Always, because ``ZONE`` / ``ZONE?`` are not available on the
-                Lakeshore 340.
-
-        Examples:
-            >>> from stoner_measurement.instruments.transport import NullTransport
-            >>> from stoner_measurement.instruments.lakeshore import Lakeshore340
-            >>> from stoner_measurement.instruments.temperature_controller import ZoneEntry
-            >>> ctrl = Lakeshore340(transport=NullTransport())
-            >>> zone = ZoneEntry(
-            ...     upper_bound=100.0, p=50.0, i=10.0, d=0.0, ramp_rate=0.0, heater_range=1, heater_output=0.0
-            ... )
-            >>> ctrl.set_zone(1, 1, zone)
-            Traceback (most recent call last):
-                ...
-            NotImplementedError: Lakeshore 340 does not support zone table commands.
-        """
-        raise NotImplementedError("Lakeshore 340 does not support zone table commands.")
-
-    def _get_cset(self, loop: int) -> tuple[int, int, int, int]:
-        """Return ``(input_index, units, onoff, powerup_enable)`` for *loop*.
-
-        Queries ``CSET? <loop>`` and parses the four-field CSV response.
-        """
-        values = self._parse_csv_floats(
-            self.query(f"CSET? {self._normalise_loop(loop)}"),
-            minimum_length=4,
+    def get_input_channel_settings(self, channel: str) -> Lakeshore340InputSettings:
+        """Read the native INTYPE, INSET, FILTER and curve layouts."""
+        ch = self._normalise_channel(channel)
+        with self._lock:
+            native = [int(item) for item in self.query(f"INTYPE? {ch}").split(",")]
+            inset = [int(item) for item in self.query(f"INSET? {ch}").split(",")]
+            filt = self._parse_csv_floats(self.query(f"FILTER? {ch}"), minimum_length=3)
+            curve = int(self.query(f"INCRV? {ch}"))
+        if len(native) != 5 or len(inset) != 2 or len(filt) != 3:
+            raise ValueError("Malformed Model 340 input setup response.")
+        return Lakeshore340InputSettings(
+            sensor_type=native[0], sensor_units=native[1], coefficient=native[2],
+            excitation=native[3], range_=native[4], input_enabled=bool(inset[0]),
+            compensation_mode=inset[1], compensation=inset[1] == 1,
+            filter_enabled=bool(filt[0]), filter_points=int(filt[1]), filter_window=filt[2],
+            curve_number=curve,
         )
-        return int(values[0]), int(values[1]), int(values[2]), int(values[3])
+
+    def set_input_channel_settings(self, channel: str, settings: InputChannelSettings) -> None:
+        """Write only supplied native fields; blanks preserve hardware defaults.
+
+        Temperature-unit and autorange fields from the 335 schema are rejected.
+        Supplying native overrides to INTYPE can select the hardware Special
+        sensor type, as documented by the Model 340 manual.
+        """
+        ch = self._normalise_channel(channel)
+        if settings.autorange is not None or settings.units is not None:
+            raise ValueError("Model 340 INTYPE has sensor units, not autorange or temperature-unit fields.")
+        native = [settings.sensor_type, getattr(settings, "sensor_units", None),
+                  getattr(settings, "coefficient", None), getattr(settings, "excitation", None), settings.range_]
+        limits = [(0, 12), (1, 2), (1, 2), (0, 12), (1, 13)]
+        for value, (low, high) in zip(native, limits, strict=True):
+            if value is not None and (not isinstance(value, int) or not low <= value <= high):
+                raise ValueError("Invalid Model 340 INTYPE setting.")
+        enabled = getattr(settings, "input_enabled", None)
+        compensation = getattr(settings, "compensation_mode", None)
+        if compensation is None and settings.compensation is not None:
+            compensation = int(settings.compensation)
+        if compensation is not None and compensation not in (0, 1, 2):
+            raise ValueError("Invalid Model 340 compensation mode.")
+        fields = [settings.filter_enabled, settings.filter_points, settings.filter_window]
+        if settings.filter_points is not None:
+            self._bounded(settings.filter_points, 2, 64, "filter points")
+        if settings.filter_window is not None:
+            self._bounded(settings.filter_window, 1, 10, "filter window")
+        if settings.curve_number is not None and settings.curve_number not in range(61):
+            raise ValueError("Model 340 curve number must be 0–60.")
+        def csv_fields(values):
+            return ",".join("" if v is None else str(int(v) if isinstance(v, bool) else v) for v in values)
+        with self._lock:
+            if any(v is not None for v in native):
+                self.write(f"INTYPE {ch},{csv_fields(native)}")
+            if enabled is not None or compensation is not None:
+                self.write(f"INSET {ch},{csv_fields([enabled, compensation])}")
+            if any(v is not None for v in fields):
+                self.write(f"FILTER {ch},{csv_fields(fields)}")
+            if settings.curve_number is not None:
+                self.write(f"INCRV {ch},{settings.curve_number}")

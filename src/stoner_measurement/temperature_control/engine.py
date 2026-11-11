@@ -36,6 +36,8 @@ from stoner_measurement.instruments.addressing import (
 )
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol
+from stoner_measurement.instruments.protocol.mercury import MercuryProtocol
+from stoner_measurement.instruments.temperature_controller import ControlMode
 from stoner_measurement.instruments.transport import (
     EthernetTransport,
     GpibTransport,
@@ -430,6 +432,8 @@ class _ControllerSession(QObject):
                 Protocol instance selected for the driver family.
         """
         name = driver_name.lower()
+        if "mercury" in name:
+            return MercuryProtocol()
         if "oxford" in name or "itc" in name or "mercury" in name:
             return OxfordProtocol()
         return LakeshoreProtocol()
@@ -838,34 +842,43 @@ class _ControllerSession(QObject):
             if self._driver is None:
                 raise RuntimeError("No temperature controller is connected.")
             try:
-                self._driver.set_setpoint(loop, setpoint)
-                self._mark_setpoint_pending(loop, setpoint)
-            except Exception:
-                logger.exception("Failed to set setpoint for loop %d", loop)
-                raise
-            try:
-                self._driver.set_loop_mode(loop, mode)
-            except Exception:
-                logger.exception("Failed to set loop mode for loop %d", loop)
-                raise
-            try:
                 self._driver.set_input_channel(loop, input_channel)
             except Exception:
                 logger.exception("Failed to set input channel for loop %d", loop)
                 raise
             caps = self._driver.get_capabilities()
+            if not caps.setpoint_after_configuration:
+                self._apply_loop_setpoint(loop, setpoint)
             self._set_supported_ramp(loop, ramp_rate, ramp_enabled, caps.has_ramp)
             try:
-                if caps.has_pid:
+                if caps.has_pid and mode is not ControlMode.ZONE:
                     self._driver.set_pid(loop, pid_p, pid_i, pid_d)
             except Exception:
                 logger.exception("Failed to set PID for loop %d", loop)
                 raise
             try:
-                self._driver.set_heater_range(loop, heater_range)
+                if caps.has_heater_range and (caps.heater_range_loops is None or loop in caps.heater_range_loops):
+                    self._driver.set_heater_range(loop, heater_range)
             except Exception:
                 logger.exception("Failed to set heater range for loop %d", loop)
                 raise
+            if caps.setpoint_after_configuration:
+                self._apply_loop_setpoint(loop, setpoint)
+            try:
+                self._driver.set_loop_mode(loop, mode)
+            except Exception:
+                logger.exception("Failed to set loop mode for loop %d", loop)
+                raise
+
+    def _apply_loop_setpoint(self, loop: int, setpoint: float) -> None:
+        """Write and track an Apply target after the required configuration steps."""
+        assert self._driver is not None
+        try:
+            self._driver.set_setpoint(loop, setpoint)
+            self._mark_setpoint_pending(loop, setpoint)
+        except Exception:
+            logger.exception("Failed to set setpoint for loop %d", loop)
+            raise
 
     def _set_supported_ramp(
         self, loop: int, ramp_rate: float, ramp_enabled: bool, supported: bool
@@ -1120,8 +1133,6 @@ class _ControllerSession(QObject):
         with self._engine_lock:
             if self._driver is None:
                 return None
-            from stoner_measurement.instruments.temperature_controller import ControlMode
-
             setpoint = self._safe_read_loop(self._driver.get_setpoint, loop, "setpoint", 0.0)
             mode = self._safe_read_loop(
                 self._driver.get_loop_mode, loop, "loop mode", ControlMode.CLOSED_LOOP
@@ -1129,10 +1140,14 @@ class _ControllerSession(QObject):
             input_channel = self._safe_read_loop(
                 self._driver.get_input_channel, loop, "input channel", ""
             )
-            ramp_enabled = self._safe_read_loop(
-                self._driver.get_ramp_enabled, loop, "ramp enabled", False
-            )
-            ramp_rate = self._safe_read_loop(self._driver.get_ramp_rate, loop, "ramp rate", 0.0)
+            caps = self._driver.get_capabilities()
+            ramp_enabled = False
+            ramp_rate = 0.0
+            if caps.has_ramp:
+                ramp_enabled = self._safe_read_loop(
+                    self._driver.get_ramp_enabled, loop, "ramp enabled", False
+                )
+                ramp_rate = self._safe_read_loop(self._driver.get_ramp_rate, loop, "ramp rate", 0.0)
 
             try:
                 pid = self._driver.get_pid(loop)

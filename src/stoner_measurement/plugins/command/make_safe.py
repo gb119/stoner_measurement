@@ -114,9 +114,15 @@ class MakeSafeCommand(CommandPlugin):
                 loops = getattr(caps, "loop_numbers", tuple(range(1, caps.num_loops + 1)))
                 actions = []
                 for loop in loops:
-                    if getattr(caps, "has_manual_heater_output", True):
+                    # Without power ranges, OFF must disable the heater itself.
+                    # ITC503 performs its manual transition and O0 atomically;
+                    # an earlier O0 while still automatic would be rejected.
+                    if getattr(caps, "has_manual_heater_output", True) and getattr(caps, "has_heater_range", True):
                         actions.append((session.set_manual_heater_output, (loop, 0.0)))
-                    actions.append((session.set_heater_range, (loop, 0)))
+                    if getattr(caps, "has_heater_range", True) and (
+                        getattr(caps, "heater_range_loops", None) is None or loop in caps.heater_range_loops
+                    ):
+                        actions.append((session.set_heater_range, (loop, 0)))
                 if caps.has_gas_auto_mode:
                     actions.append((session.set_gas_auto, (False,)))
                 if caps.has_cryogen_control:

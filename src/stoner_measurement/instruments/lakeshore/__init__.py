@@ -9,6 +9,7 @@ from stoner_measurement.instruments.lakeshore.temperature_controllers import (
     Lakeshore335,
     Lakeshore336,
     Lakeshore340,
+    Lakeshore340InputSettings,
 )
 
 # Backward-compatibility alias — Lakeshore625 is the correct model number.
@@ -18,6 +19,7 @@ __all__ = [
     "Lakeshore335",
     "Lakeshore336",
     "Lakeshore340",
+    "Lakeshore340InputSettings",
     "Lakeshore525",
     "Lakeshore625",
     "LakeshoreM81CurrentSource",

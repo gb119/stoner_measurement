@@ -1,416 +1,88 @@
-﻿# 📘 ITC503 Programmer’s Reference Sheet
-
-***
-
-***
-
-## 🧭 1. Command Model Overview
-
-The ITC503 has **two layers of control**:
-
-### 🔹 Layer 1 – Real‑time control (Chapter 9)
-
-* Immediate commands (single letter)
-* Register readback (`Rn`)
-* Used for:
-  * Setpoint
-  * PID (current values)
-  * Heater control
-  * Status
-
-***
-
-### 🔹 Layer 2 – Programmed control (Chapter 10)
-
-* “Specialist” commands
-* Used to configure:
-  * ✅ PID tables
-  * ✅ Sweep (temperature program) tables
-
-***
-
-## 🔌 2. Command Syntax
-
-### ✅ Write commands
-
-```text
-<Letter><value>
-```
-
-Examples:
-
-```text
-T300     → set temperature
-P20      → proportional band
-O50      → 50% heater
-```
-
-***
-
-### ✅ Read commands
-
-```text
-Rn
-```
-
-Returns integer (scaled; see instrument settings)
-
-***
-
-### ✅ Status query
-
-```text
-X
-```
-
-Returns encoded status string
-
-***
-
-## 📊 3. Read Registers (Chapter 9)
-
-### 🔹 Core registers
-
-```text
-R0   → Set temperature  
-R1   → Sensor 1 temperature  
-R2   → Sensor 2 temperature  
-R3   → Sensor 3 temperature  
-R4   → Temperature error (Set − Measured)  
-R5   → Heater output (% of current limit)  
-R6   → Heater output (Volts, approx.)  
-R7   → Gas flow output  
-R8   → Proportional band  
-R9   → Integral time  
-R10  → Derivative time  
-```
-
-***
-
-### 🔹 Diagnostics
-
-```text
-R11 → Channel 1 frequency / 4  
-R12 → Channel 2 frequency / 4  
-R13 → Channel 3 frequency / 4  
-```
-
-***
-
-## 🌡️ 4. Temperature & Control Commands
-
-### 🔹 Setpoint
-
-```text
-Tvalue     → Set temperature
-R0         → Read setpoint
-```
-
-***
-
-### 🔹 Control mode
-
-```text
-A0  → Manual  
-A1  → Automatic (PID)  
-A2  → Auto (variant-dependent mode)
-```
-
-***
-
-### 🔹 Sensor selection
-
-```text
-C0 → Sensor 1  
-C1 → Sensor 2  
-C2 → Sensor 3  
-```
-
-***
-
-## 🔥 5. Heater Control
-
-```text
-Ovalue   → Set manual heater output (%)  
-Hn       → Heater range (0–max)  
-```
-
-Read:
-
-```text
-R5 → Heater %  
-R6 → Heater voltage  
-```
-
-***
-
-## ⚙️ 6. PID Control (Immediate)
-
-### 🔹 Set
-
-```text
-Pvalue   → Proportional band  
-Ivalue   → Integral time  
-Dvalue   → Derivative time  
-```
-
-### 🔹 Read
-
-```text
-R8 → P  
-R9 → I  
-R10 → D  
-```
-
-***
-
-## 🚀 7. Sweep Control (Execution – Chapter 9)
-
-```text
-S0  → Stop sweep  
-S1  → Start sweep  
-Sn  → Jump to program step n (2–32)
-```
-
-### 🔹 Behaviour rules
-
-* `S1` → continue from current step
-* `Sn (n ≥ 2)`:
-  * Jump to step
-  * If **odd (≠1)**:
-    * Jump to previous step temperature
-    * Then sweep forward
-
-***
-
-## 📡 8. Status String (`X`)
-
-Example:
-
-```text
-X0A1C1S05H2L0
-```
-
-### 🔹 Key fields
-
-| Code | Meaning          |
-| ---- | ---------------- |
-| `A`  | Control mode     |
-| `C`  | Sensor selection |
-| `S`  | Sweep step       |
-| `H`  | Heater range     |
-| `L`  | Control limits   |
-
-👉 Must be parsed character-by-character
-
-***
-
-## 🗂️ 9. Chapter 10 – Specialist Commands
-
-This is where the ITC503 becomes **programmable and stateful**.
-
-***
-
-## ⚙️ 9.1 PID Table Programming
-
-### ✅ Sweep table concept
-
-You define **multiple PID sets** tied to temperature regions:
-
-```text
-Temperature range → P, I, D
-```
-
-***
-
-### ✅ Capabilities
-
-* Store multiple PID entries
-* Automatically select based on temperature
-* Smooth control over wide temperature ranges
-
-***
-
-### ✅ Sweep table structure (conceptual)
-
-```text
-Entry n:
-  T_low
-  T_high
-  P
-  I
-  D
-```
-
-***
-
-### ✅ Use case
-
-Instead of:
-
-* Constant PID → unstable across large range
-
-You get:
-
-* Low-T PID
-* Mid-T PID
-* High-T PID
-
-Switched automatically
-
-***
-
-## 🚀 9.2 Sweep Table Programming
-
-### ✅ Concept
-
-Defines a **multi-step temperature program**
-
-***
-
-### ✅ Each step includes
-
-* Target temperature
-* Sweep characteristics
-* Control behaviour
-
-***
-
-### ✅ Structure (conceptual)
-
-```text
-Step 1: T1  
-Step 2: T2  
-Step 3: T3  
-...
-Step N
-```
-
-***
-
-### ✅ Execution
-
-```text
-S1 → start  
-S5 → jump to step 5  
-S0 → stop  
-```
-
-***
-
-### ✅ Special behaviour
-
-* Odd step entry triggers **pre-step temperature snap**
-* Even steps → normal progression
-
-***
-
-## 🧠 10. Internal Model
-
-The ITC503 can be understood as:
-
-```text
-             ┌─────────────────────┐
-             │   PID TABLE         │
-             └────────┬────────────┘
-                      │
-             ┌────────▼────────────┐
-             │ Sweep Program (1–32)│
-             └────────┬────────────┘
-                      │
-             ┌────────▼────────────┐
-             │ Execution pointer   │ ← S command
-             └────────┬────────────┘
-                      │
-             ┌────────▼────────────┐
-             │ Real-time loop      │
-             │ (A, P, I, D, O, H) │
-             └─────────────────────┘
-```
-
-***
-
-## ⚖️ 11. Key Operational Differences vs Modern Controllers
-
-| Feature                  | ITC503 |
-| ------------------------ | ------ |
-| Immediate control        | Yes    |
-| Register-based readback  | Yes    |
-| PID table switching      | Yes    |
-| Sweep program execution  | Yes    |
-| Continuous ramp          | No     |
-| Self-describing commands | No     |
-
-***
-
-## ✅ 12. Minimal Working Command Sequences
-
-### 🔹 Basic temperature control
-
-```text
-C0        → select sensor 1  
-T300      → set temperature  
-A1        → enable control  
-```
-
-***
-
-### 🔹 Manual heater control
-
-```text
-A0        → manual  
-O40       → 40% output  
-```
-
-***
-
-### 🔹 Start programmed temperature run
-
-```text
-S1        → start sweep program  
-```
-
-***
-
-### 🔹 Read everything important
-
-```text
-R0  → setpoint  
-R1  → temperature  
-R5  → heater  
-R8–10 → PID  
-X   → system status  
-```
-
-***
-
-## ✅ Final Takeaways
-
-The ITC503 is fundamentally:
-
-### ✅ A hybrid system
-
-* **Registers (R0–R13)** for live values
-* **Immediate commands (T, P, I, D, etc.)**
-* **Program tables (Chapter 10)** for automation
-
-***
-
-### ✅ What makes it powerful
-
-* Built-in **temperature programs**
-* Automatic **PID region switching**
-* Minimal host-side logic required
-
-***
-
-### ⚠️ What makes it tricky
-
-* Non-self-describing commands
-* Encoded status (`X`)
-* Separate concepts:
-  * live control vs programmed control
-
-***
-
-Just say 👍
+# ITC503 command audit
+
+Source: Oxford Instruments *ITC503 Operator's Handbook*, Issue 4, April 2000,
+[manufacturer-authored handbook](https://groups.spa.umn.edu/zudovlab/manuals/cryogenics/ITC503.pdf).
+Page numbers below are the printed page numbers. This replaces the previous reference,
+which incorrectly described C as sensor selection and H as heater range.
+
+## Framing and connection
+
+Sections 8.2–8.4 and 8.6.1 (pp. 35–38): ASCII commands end with CR. Actions reply with
+one command letter; reads reply with a letter and data. Rejections start with `?`.
+Consume and validate each action acknowledgement before issuing another command.
+The driver does this even when automatic error polling is disabled. It does not retry
+an action after a missing or invalid acknowledgement.
+
+Section 10.1 (p. 43): `C0` and `C2` select local control; `C1` and `C3` select remote control.
+The driver sends `C3` after successful identity verification, permitting the operator to
+return to local control. This changes neither heater nor gas output. `V` reads identity.
+`Q0` and `Q2` select response termination and are exceptions without acknowledgements.
+
+## Implemented operational commands
+
+| Operation | Commands or status | Evidence |
+| --- | --- | --- |
+| Temperatures A/B/C | R1/R2/R3 | p. 44 |
+| Setpoint read/write | R0 / T | pp. 44, 47 |
+| Heater output read/manual write | R5 / O | pp. 44, 46 |
+| Gas position read/manual write | R7 / G | pp. 44, 46 |
+| Heater sensor A/B/C | H1/H2/H3; X field H for readback | pp. 45–46 |
+| Combined heater/gas automatic control | A0–A3; X field A for readback | p. 45 |
+| Proportional band / integral / derivative | P / I / D; R8/R9/R10 | pp. 20, 44–45 |
+| Auto-PID table selection | L0 disables; L1 enables | p. 46 |
+| Maximum heater voltage | M, in volts; M0 selects dynamic limiting | p. 46 |
+| Programmed sweep execution | S0 stops; S1 starts; X field S is progress | pp. 45–46 |
+| Auto-PID table read/write | x row, y column, q read, p write | pp. 47–49 |
+
+`A` bit 0 controls heater automatic operation and bit 1 controls gas automatic operation.
+Read-modify-write operations preserve the other function under the shared instrument lock.
+Bit 2 indicates AutoGFS calibration and is not copied into a command. Invalid X responses
+raise an error rather than supplying assumed control states. Hardware may reject gas
+commands during calibration; those errors propagate to the caller.
+
+The driver maps automatic heater control with L0 to Closed Loop and with L1 to Zone.
+Open Loop selects manual heater control. Off also writes zero manual heater output;
+hardware subsequently reports Open Loop because there is no separate off status flag.
+Monitor is not advertised as an ITC503 mode. OFF retains gas mode.
+
+Section 4.7 (p. 20): P is a temperature band in kelvin; I and D are times in minutes,
+with documented upper limits of 140 and 273 minutes. These are not SI seconds.
+Manual PID updates issue L0 before P/I/D so the table cannot overwrite the requested terms.
+O accepts 0–99.9 percent; G is sent at 0.1 percent resolution with the same valve limit.
+Non-finite and out-of-range output settings are rejected before transmission.
+The instrument enforces fitted heater voltage and temperature limits.
+
+## Generic API boundaries
+
+ITC503 has no discrete heater power ranges. H is exclusively sensor selection, not a
+heater enable or power-range command. `has_heater_range=False` hides that editor and
+prevents Apply and Make Safe from issuing it. Explicit range calls raise NotImplementedError.
+
+The continuous ramp API cannot represent a stored, multi-step ITC503 sweep. `has_ramp=False`
+hides that editor; rate getters/setters and generic ramp enable reject the operation.
+Use the explicit `start_sweep()` and `stop_sweep()` methods for an existing hardware programme.
+The driver does not rewrite or erase sweep tables. A running sweep overrides T commands
+(p. 47), so stop it explicitly before requesting a fixed setpoint.
+
+The Auto-PID table has 32 rows (p. 48), not the 16 rows of the sweep table. Columns 1–4
+are upper temperature, P, I and D. Each complete row operation holds the shared lock.
+Ramp, heater range and heater output fields in the generic ZoneEntry have no ITC503
+Auto-PID equivalent and are not written. Existing temperature calibration applies to T,
+R0, temperature registers and table upper temperatures. This audit preserves that calibration.
+
+Apply selects the input before writing the target, then configures supported settings
+before selecting the final mode. Zone mode skips individual PID writes. Make Safe skips
+unsupported heater ranges and uses the driver Off operation to zero heater output.
+
+## Verification and bench checks
+
+Regression coverage includes exact action acknowledgements, rejected and malformed responses,
+all heater/gas bit combinations, calibration-state bits, live sensor readback, output limits,
+32-row table bounds and real primary Apply button clicks through the engine and driver.
+
+On an ITC503 with the normal lab load and limits, verify: connection selects remote/unlocked;
+Read matches the front panel; applying a sensor and target selects the intended sensor and
+setpoint; gas-mode changes preserve heater mode and vice versa; manual output and Off reach
+the heater; gas Apply changes the valve; repeated Apply/Read leaves no stale replies.
+Check Auto-PID selection with a populated table. Confirm programmed sweep start/stop separately.
+No physical hardware was used for the automated checks.

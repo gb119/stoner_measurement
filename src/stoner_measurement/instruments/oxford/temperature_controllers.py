@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -12,9 +13,12 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 from stoner_measurement.config_utils import deep_merge, load_yaml_mapping
+from stoner_measurement.instruments.errors import InstrumentError
+from stoner_measurement.instruments.oxford.mercury_itc import (
+    OxfordMercuryTemperatureController as OxfordMercuryTemperatureController,
+)
 from stoner_measurement.instruments.protocol.base import BaseProtocol
 from stoner_measurement.instruments.protocol.oxford import OxfordProtocol
-from stoner_measurement.instruments.protocol.scpi import ScpiProtocol
 from stoner_measurement.instruments.temperature_controller import (
     ControllerCapabilities,
     ControlMode,
@@ -329,22 +333,31 @@ class _OxfordTemperatureControllerBase(TemperatureController):
 
 
 class OxfordITC503(_OxfordTemperatureControllerBase):
-    """Concrete driver for the Oxford Instruments ITC503 temperature controller."""
+    """Oxford ITC503 control using the Issue 4 handbook's command set.
+
+    Connection selects remote control with the front panel unlocked. Actions
+    consume their acknowledgements. Heater and gas automatic modes are
+    independent. PID uses native kelvin/minute units. The generic continuous
+    ramp and heater-range APIs are unavailable; stored sweeps have explicit
+    start/stop methods. OFF is manual heater control with zero output and
+    consequently reads back as OPEN_LOOP.
+    """
 
     _EXPECTED_IDENTITY_TOKENS = ("ITC503",)
-    _PID_TABLE_ROWS = 16
-    _ITC503_HEATER_RANGES = ("Off", "On")
+    _PID_TABLE_ROWS = 32
     _CAPABILITIES = ControllerCapabilities(
         num_inputs=3,
         num_loops=1,
         input_channels=("A", "B", "C"),
         loop_numbers=(1,),
-        has_ramp=True,
+        has_ramp=False,
         has_pid=True,
         has_zone=True,
         has_cryogen_control=True,
         has_gas_auto_mode=True,
-        heater_range_labels={1: _ITC503_HEATER_RANGES},
+        has_manual_heater_output=True,
+        has_heater_range=False,
+        control_modes=(ControlMode.OFF, ControlMode.OPEN_LOOP, ControlMode.CLOSED_LOOP, ControlMode.ZONE),
     )
 
     def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
@@ -356,10 +369,38 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
             true_temperatures,
             itc503_temperatures,
         )
-        # The ITC503 does not expose a Chapter 9 register for a continuous
-        # temperature ramp rate, so a software-side value is maintained for
-        # API compatibility.
-        self._ramp_rate: float = 0.0
+
+    def confirm_identity(self) -> str:
+        """Verify the ITC503 and select remote control with the front panel unlocked.
+
+        Returns:
+            (str): Verified identity returned by the instrument.
+        """
+        with self._lock:
+            identity = super().confirm_identity()
+            self.write("C3")
+            return identity
+
+    def write(self, command: str, slow: int | None = None) -> None:
+        """Send an ITC503 action and consume its command-letter acknowledgement.
+
+        Args:
+            command (str): Action command without a terminator.
+
+        Keyword Parameters:
+            slow (int | None): Optional transport delay in milliseconds.
+
+        Raises:
+            InstrumentError: The action is rejected or its acknowledgement is invalid.
+        """
+        if command == "Q0" or command == "Q2":
+            super().write(command, slow=slow)
+            return
+        response = self.query(command, slow=slow)
+        # A one-character acknowledgement is retained by OxfordProtocol.
+        self.protocol.check_error(response, command=command)
+        if response != command[:1]:
+            raise InstrumentError(f"OxfordITC503: invalid acknowledgement {response!r}", command=command)
 
     def identify(self) -> str:
         """Return identity string."""
@@ -375,26 +416,30 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
     def set_setpoint(self, loop: int, value: float) -> None:
         """Set true setpoint in Kelvin, applying ITC503 calibration when available."""
+        self._validate_value(value, 0.0, math.inf, "setpoint in kelvin")
         itc503_value = self._true_to_itc503_temperature(value)
         super().set_setpoint(loop, itc503_value)
 
     def get_heater_range(self, loop: int) -> int:
-        """Return the current heater range index from the ``X`` status ``H`` token for *loop*.
-
-        Args:
-            loop (int):
-                Control loop number (1-based).
-
-        Returns:
-            (int):
-                Integer value of the ``H`` status token: 0 means the heater is off;
-                higher values select progressively higher power ranges (e.g. 1, 2, …
-                up to the instrument maximum). The exact number of ranges depends on
-                the heater fitted to the instrument.
-        """
+        """Reject heater-range readback: ITC503 has a voltage limit, not ranges."""
         self._normalise_loop(loop)
-        status_tokens = self._read_status_tokens()
-        return int(status_tokens.get("H", 0))
+        raise NotImplementedError("ITC503 has no heater ranges; use set_maximum_heater_voltage().")
+
+    def set_heater_range(self, loop: int, range_: int) -> None:
+        """Reject heater-range changes rather than issuing a sensor command."""
+        self._normalise_loop(loop)
+        raise NotImplementedError("ITC503 has no heater ranges; use set_maximum_heater_voltage().")
+
+    def get_input_channel(self, loop: int) -> str:
+        """Read the selected heater sensor from the hardware H status field."""
+        self._normalise_loop(loop)
+        return {1: "A", 2: "B", 3: "C"}[self._read_status_tokens()["H"]]
+
+    def set_input_channel(self, loop: int, channel: str) -> None:
+        """Assign the heater sensor with H1, H2 or H3."""
+        self._normalise_loop(loop)
+        channel = self._normalise_channel(channel)
+        self.write(self._input_command(loop, channel))
 
     def get_gas_flow(self) -> float:
         """Return the gas-flow needle valve position as a percentage."""
@@ -402,6 +447,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
     def set_gas_flow(self, percent: float) -> None:
         """Set the gas-flow needle valve position to *percent* open."""
+        self._validate_value(percent, 0.0, 99.9, "gas flow percentage")
         self.write(f"G{percent:.1f}")
 
     def get_needle_valve(self) -> float:
@@ -413,17 +459,12 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         self.set_gas_flow(position)
 
     def get_gas_auto(self) -> bool:
-        """Return ``True`` if gas flow is under automatic control.
+        """Return the gas-auto bit from the hardware A status field.
 
         Returns:
-            (bool):
-                The last value set via :meth:`set_gas_auto`.  The ITC503
-                does not expose a read-back command for the auto/manual mode
-                flag, so the returned value reflects the last software-set
-                state rather than a live hardware query.  The value defaults
-                to ``False`` on first connection.
+            (bool): Whether automatic gas control is active.
         """
-        return self._gas_auto
+        return bool(self._read_status_tokens()["A"] & 2)
 
     def set_gas_auto(self, auto: bool) -> None:
         """Enable or disable automatic gas-flow control.
@@ -432,11 +473,9 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         Bit 0 = auto heater, bit 1 = auto gas.  This implementation preserves
         the current heater-auto state when toggling gas auto mode.
         """
-        self._gas_auto = auto
-        # Bit 0 would be set if we also want auto-heater. Since loop mode
-        # already controls the heater, only set bit 1 for gas auto.
-        mode_code = 2 if auto else 0
-        self.write(f"A{mode_code}")
+        with self._lock:
+            heater_auto = self._read_status_tokens()["A"] & 1
+            self.write(f"A{heater_auto | (2 if auto else 0)}")
 
     def _temperature_query(self, channel: str) -> str:
         """Return the ITC503 query command for reading temperature on *channel*."""
@@ -444,8 +483,8 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
     def _input_command(self, loop: int, channel: str) -> str:
         """Return the ITC503 command that assigns *channel* to the heater loop."""
-        channel_code = {"A": 0, "B": 1, "C": 2}[channel]
-        return f"C{channel_code}"
+        channel_code = {"A": 1, "B": 2, "C": 3}[channel]
+        return f"H{channel_code}"
 
     def _setpoint_query(self, loop: int) -> str:
         """Return the ITC503 query command for reading the setpoint."""
@@ -469,26 +508,96 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         """
         self._normalise_loop(loop)
         status_tokens = self._read_status_tokens()
-        return _CODE_TO_MODE.get(status_tokens.get("A", 1), ControlMode.CLOSED_LOOP)
+        if not status_tokens["A"] & 1:
+            return ControlMode.OPEN_LOOP
+        return ControlMode.ZONE if status_tokens["L"] else ControlMode.CLOSED_LOOP
+
+    def set_loop_mode(self, loop: int, mode: ControlMode) -> None:
+        """Set heater control and Auto-PID while preserving gas automatic control.
+
+        OFF selects manual heater control and zero output. Hardware reports
+        this as OPEN_LOOP because it has no separate off status bit.
+        """
+        self._normalise_loop(loop)
+        if mode not in self._CAPABILITIES.control_modes:
+            raise ValueError(f"Unsupported ITC503 control mode {mode!r}.")
+        with self._lock:
+            gas_auto = self._read_status_tokens()["A"] & 2
+            self.write("L1" if mode is ControlMode.ZONE else "L0")
+            heater_auto = int(mode in (ControlMode.CLOSED_LOOP, ControlMode.ZONE))
+            self.write(f"A{gas_auto | heater_auto}")
+            if mode is ControlMode.OFF:
+                self.set_manual_heater_output(loop, 0.0)
+
+    def set_manual_heater_output(self, loop: int, output: float) -> None:
+        """Set manual heater output with O; the heater must already be manual.
+
+        Args:
+            loop (int): Control loop number (1).
+            output (float): Percentage of the configured voltage limit, 0–99.9.
+
+        Raises:
+            ValueError: The loop or output is invalid.
+            InstrumentError: The controller rejects the command.
+        """
+        self._normalise_loop(loop)
+        self._validate_value(output, 0.0, 99.9, "heater output percentage")
+        self.write(f"O{output:.1f}")
+
+    def set_maximum_heater_voltage(self, voltage: float) -> None:
+        """Set the maximum heater voltage using M.
+
+        Args:
+            voltage (float): Non-negative voltage in volts. Zero selects dynamic
+                limiting; the instrument enforces the fitted heater's limit.
+
+        Raises:
+            ValueError: The voltage is negative or non-finite.
+            InstrumentError: The controller rejects the limit.
+        """
+        self._validate_value(voltage, 0.0, math.inf, "maximum heater voltage")
+        self.write(f"M{voltage:.1f}")
+
+    @staticmethod
+    def _validate_value(value: float, minimum: float, maximum: float, name: str) -> None:
+        """Reject non-finite or out-of-range settings before any command is sent."""
+        if not math.isfinite(value) or not minimum <= value <= maximum:
+            raise ValueError(f"ITC503 {name} must be between {minimum} and {maximum}.")
 
     def _mode_command(self, loop: int, mode_code: int) -> str:
-        """Return the ITC503 command that sets the control mode."""
-        return f"A{mode_code}"
+        """Reject generic mode encoding, which cannot preserve the gas-auto bit."""
+        raise NotImplementedError("Use set_loop_mode() to preserve ITC503 gas control.")
 
     def _heater_output_query(self, loop: int) -> str:
         """Return the ITC503 query command for reading heater output percentage."""
         return "R5"
 
     def _heater_range_command(self, loop: int, range_: int) -> str:
-        """Return the ITC503 command that sets the heater range index."""
-        return f"H{range_}"
+        """Reject range encoding: H selects the heater sensor on ITC503."""
+        raise NotImplementedError("ITC503 has no heater ranges.")
 
     def set_pid(self, loop: int, p: float, i: float, d: float) -> None:
-        """Set PID parameters for *loop*."""
+        """Disable Auto-PID and set native PID terms for *loop*.
+
+        Args:
+            loop (int): Control loop number (1).
+            p (float): Non-negative proportional band in kelvin.
+            i (float): Integral action time in minutes, 0–140.
+            d (float): Derivative action time in minutes, 0–273.
+
+        Raises:
+            ValueError: A loop or PID value is invalid.
+            InstrumentError: The controller rejects a command.
+        """
         self._normalise_loop(loop)
-        self.write(f"P{p}")
-        self.write(f"I{i}")
-        self.write(f"D{d}")
+        self._validate_value(p, 0.0, math.inf, "proportional band")
+        self._validate_value(i, 0.0, 140.0, "integral time in minutes")
+        self._validate_value(d, 0.0, 273.0, "derivative time in minutes")
+        with self._lock:
+            self.write("L0")
+            self.write(f"P{p}")
+            self.write(f"I{i}")
+            self.write(f"D{d}")
 
     def get_pid(self, loop: int) -> PIDParameters:
         """Return PID parameters for *loop*.
@@ -503,11 +612,12 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
                 ``R10`` queries.
         """
         self._normalise_loop(loop)
-        return PIDParameters(
-            p=self._query_float("R8"),
-            i=self._query_float("R9"),
-            d=self._query_float("R10"),
-        )
+        with self._lock:
+            return PIDParameters(
+                p=self._query_float("R8"),
+                i=self._query_float("R9"),
+                d=self._query_float("R10"),
+            )
 
     def _pid_command(self, loop: int, p: float, i: float, d: float) -> str:
         """Return the legacy base-hook for PID command composition.
@@ -528,11 +638,10 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
     def get_ramp_rate(self, loop: int) -> float:
         """Return ramp rate in Kelvin per minute for *loop*.
 
-        The ITC503 does not expose a readback register for a continuous ramp
-        rate; this returns the last value set via :meth:`set_ramp_rate`.
+        Continuous ramp rates are not supported; use the programmed sweep API.
         """
         self._normalise_loop(loop)
-        return self._ramp_rate
+        raise NotImplementedError("ITC503 has programmed sweeps, not a continuous ramp-rate register.")
 
     def set_ramp_rate(self, loop: int, rate: float) -> None:
         """Set ramp rate in Kelvin per minute for *loop*.
@@ -541,7 +650,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         direct ramp-rate command in Chapter 9.
         """
         self._normalise_loop(loop)
-        self._ramp_rate = float(rate)
+        raise NotImplementedError("ITC503 has programmed sweeps, not a continuous ramp-rate register.")
 
     def get_ramp_enabled(self, loop: int) -> bool:
         """Return whether sweep/ramp execution is active for *loop*."""
@@ -550,9 +659,17 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         return int(status_tokens.get("S", 0)) > 0
 
     def set_ramp_enabled(self, loop: int, enabled: bool) -> None:
-        """Enable or disable sweep/ramp execution for *loop*."""
+        """Reject generic ramp control; use start_sweep() or stop_sweep()."""
         self._normalise_loop(loop)
-        self.write("S1" if enabled else "S0")
+        raise NotImplementedError("Use start_sweep() or stop_sweep() for an ITC503 programmed sweep.")
+
+    def start_sweep(self) -> None:
+        """Start the existing hardware sweep programme with S1."""
+        self.write("S1")
+
+    def stop_sweep(self) -> None:
+        """Stop hardware sweep execution with S0."""
+        self.write("S0")
 
     def get_num_zones(self, loop: int) -> int:
         """Return the number of ITC503 auto-PID table rows for *loop*.
@@ -580,7 +697,7 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
             loop (int):
                 Control loop number (1-based).
             zone_index (int):
-                Auto-PID table row index (1-based, 1–16).
+                Auto-PID table row index (1-based, 1–32).
 
         Returns:
             (ZoneEntry):
@@ -588,15 +705,16 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         """
         self._normalise_loop(loop)
         row = self._normalise_pid_table_row(zone_index)
-        return ZoneEntry(
-            upper_bound=self._itc503_to_true_temperature(self._query_pid_table_value(row, 1)),
-            p=self._query_pid_table_value(row, 2),
-            i=self._query_pid_table_value(row, 3),
-            d=self._query_pid_table_value(row, 4),
-            ramp_rate=0.0,
-            heater_range=0,
-            heater_output=0.0,
-        )
+        with self._lock:
+            return ZoneEntry(
+                upper_bound=self._itc503_to_true_temperature(self._query_pid_table_value(row, 1)),
+                p=self._query_pid_table_value(row, 2),
+                i=self._query_pid_table_value(row, 3),
+                d=self._query_pid_table_value(row, 4),
+                ramp_rate=0.0,
+                heater_range=0,
+                heater_output=0.0,
+            )
 
     def set_zone(self, loop: int, zone_index: int, entry: ZoneEntry) -> None:
         """Write auto-PID table row *zone_index* for *loop*.
@@ -608,17 +726,22 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
             loop (int):
                 Control loop number (1-based).
             zone_index (int):
-                Auto-PID table row index (1-based, 1–16).
+                Auto-PID table row index (1-based, 1–32).
             entry (ZoneEntry):
                 Zone parameters to write. Only ``upper_bound``, ``p``, ``i``,
                 and ``d`` are written by the ITC503 auto-PID table commands.
         """
         self._normalise_loop(loop)
         row = self._normalise_pid_table_row(zone_index)
-        self._write_pid_table_value(row, 1, self._true_to_itc503_temperature(entry.upper_bound))
-        self._write_pid_table_value(row, 2, entry.p)
-        self._write_pid_table_value(row, 3, entry.i)
-        self._write_pid_table_value(row, 4, entry.d)
+        self._validate_value(entry.upper_bound, 0.0, math.inf, "PID-table upper temperature")
+        self._validate_value(entry.p, 0.0, math.inf, "proportional band")
+        self._validate_value(entry.i, 0.0, 140.0, "integral time in minutes")
+        self._validate_value(entry.d, 0.0, 273.0, "derivative time in minutes")
+        with self._lock:
+            self._write_pid_table_value(row, 1, self._true_to_itc503_temperature(entry.upper_bound))
+            self._write_pid_table_value(row, 2, entry.p)
+            self._write_pid_table_value(row, 3, entry.i)
+            self._write_pid_table_value(row, 4, entry.d)
 
     def _ramp_query(self, loop: int) -> str:
         """Return the legacy base-hook for ramp-state query composition.
@@ -658,14 +781,18 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
                 Mapping from token letters to their parsed integer values.
         """
         status_reply = self.query("X").strip()
+        if re.fullmatch(r"0A[0-7]C[0-3]S\d{1,2}H[1-3]L[01]", status_reply) is None:
+            raise ValueError(f"OxfordITC503: invalid X status response {status_reply!r}.")
         status_tokens: dict[str, int] = {}
         for letter, value in _STATUS_TOKEN_REGEX.findall(status_reply):
             status_tokens[letter.upper()] = int(value)
+        if status_tokens["S"] > 32:
+            raise ValueError(f"OxfordITC503: invalid X status response {status_reply!r}.")
         return status_tokens
 
     def _normalise_pid_table_row(self, row: int) -> int:
         """Validate ITC503 auto-PID table row index."""
-        if not 1 <= row <= self._PID_TABLE_ROWS:
+        if not isinstance(row, int) or not 1 <= row <= self._PID_TABLE_ROWS:
             raise ValueError(f"Invalid PID-table row {row}; expected 1-{self._PID_TABLE_ROWS}.")
         return row
 
@@ -703,114 +830,3 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         """
         self._set_pid_table_pointer(row, column)
         self.write(f"p{value}")
-
-
-class OxfordMercuryTemperatureController(_OxfordTemperatureControllerBase):
-    """Concrete driver for the Oxford Instruments Mercury Temperature Controller."""
-
-    _EXPECTED_IDENTITY_TOKENS = ("MERCURY",)
-    _MERCURY_HEATER_RANGES = ("Off", "On")
-    _CAPABILITIES = ControllerCapabilities(
-        num_inputs=4,
-        num_loops=2,
-        input_channels=("A", "B", "C", "D"),
-        loop_numbers=(1, 2),
-        has_ramp=True,
-        has_pid=True,
-        has_cryogen_control=True,
-        has_gas_auto_mode=True,
-        heater_range_labels={1: _MERCURY_HEATER_RANGES, 2: _MERCURY_HEATER_RANGES},
-    )
-
-    def __init__(self, transport: BaseTransport, protocol: BaseProtocol | None = None) -> None:
-        """Initialise the Mercury temperature controller driver."""
-        super().__init__(transport=transport, protocol=protocol if protocol is not None else ScpiProtocol())
-
-    def get_heater_range(self, loop: int) -> int:
-        """Return the current heater range index (0=off, 1=on) for *loop*.
-
-        Args:
-            loop (int):
-                Control loop number (1-based).
-
-        Returns:
-            (int):
-                0 when the loop range is ``OFF``, 1 otherwise.
-        """
-        loop_n = self._normalise_loop(loop)
-        raw = self.query(f"READ:LOOP{loop_n}:RANGE?").strip()
-        return 0 if raw in ("OFF", "0", "") else 1
-
-    def get_gas_flow(self) -> float:
-        """Return the gas-flow needle valve position as a percentage."""
-        return self._query_float("READ:NEEDLEVALVE:FLOW?")
-
-    def set_gas_flow(self, percent: float) -> None:
-        """Set the gas-flow needle valve position to *percent* open."""
-        self.write(f"SET:NEEDLEVALVE:FLOW {percent:.1f}")
-
-    def get_needle_valve(self) -> float:
-        """Return the needle-valve position as a percentage."""
-        return self.get_gas_flow()
-
-    def set_needle_valve(self, position: float) -> None:
-        """Set the needle-valve position to *position* percent open."""
-        self.set_gas_flow(position)
-
-    def get_gas_auto(self) -> bool:
-        """Return ``True`` if the needle valve is under automatic control."""
-        raw = self.query("READ:NEEDLEVALVE:MODE?").strip().upper()
-        return raw == "AUTO"
-
-    def set_gas_auto(self, auto: bool) -> None:
-        """Enable or disable automatic needle-valve control."""
-        mode = "AUTO" if auto else "MANUAL"
-        self.write(f"SET:NEEDLEVALVE:MODE {mode}")
-
-    def _temperature_query(self, channel: str) -> str:
-        """Return the Mercury query command for reading temperature on *channel*."""
-        return f"READ:TEMP? {channel}"
-
-    def _input_command(self, loop: int, channel: str) -> str:
-        """Return the Mercury command that assigns *channel* to *loop*."""
-        return f"CONF:LOOP{loop}:INPUT {channel}"
-
-    def _setpoint_query(self, loop: int) -> str:
-        """Return the Mercury query command for reading the setpoint of *loop*."""
-        return f"READ:LOOP{loop}:SETP?"
-
-    def _setpoint_command(self, loop: int, value: float) -> str:
-        """Return the Mercury command that sets the setpoint of *loop* to *value* K."""
-        return f"SET:LOOP{loop}:SETP {value}"
-
-    def _mode_query(self, loop: int) -> str:
-        """Return the Mercury query command for reading the control mode of *loop*."""
-        return f"READ:LOOP{loop}:MODE?"
-
-    def _mode_command(self, loop: int, mode_code: int) -> str:
-        """Return the Mercury command that sets the control mode of *loop*."""
-        return f"SET:LOOP{loop}:MODE {mode_code}"
-
-    def _heater_output_query(self, loop: int) -> str:
-        """Return the Mercury query command for reading heater output of *loop*."""
-        return f"READ:LOOP{loop}:HTR?"
-
-    def _heater_range_command(self, loop: int, range_: int) -> str:
-        """Return the Mercury command that sets the heater range for *loop*."""
-        return f"SET:LOOP{loop}:RANGE {range_}"
-
-    def _pid_query(self, loop: int) -> str:
-        """Return the Mercury query command for reading PID parameters of *loop*."""
-        return f"READ:LOOP{loop}:PID?"
-
-    def _pid_command(self, loop: int, p: float, i: float, d: float) -> str:
-        """Return the Mercury command that sets PID parameters for *loop*."""
-        return f"SET:LOOP{loop}:PID {p},{i},{d}"
-
-    def _ramp_query(self, loop: int) -> str:
-        """Return the Mercury query command for reading ramp state and rate of *loop*."""
-        return f"READ:LOOP{loop}:RAMP?"
-
-    def _ramp_command(self, loop: int, enabled: bool, rate: float) -> str:
-        """Return the Mercury command that sets the ramp state and rate for *loop*."""
-        return f"SET:LOOP{loop}:RAMP {int(enabled)},{rate}"

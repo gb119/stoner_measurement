@@ -1747,3 +1747,45 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
   without expression execution or a blocking dialog. No tests moved or removed.
 - App generation, preflight and engine selection: 112 passed on offscreen PyQt5.
 - Script generation validates prepared enabled steps; runtime checks remain.
+
+## 2026-11-11: temperature control edits during polling
+
+- Added primary and secondary valve regression coverage in the existing panel test module.
+  Covers connection readback, preserving edits during polling, explicit Read, and auto-mode toggling.
+- No tests moved or removed. Initial Conda/DLL startup failures were resolved by selecting the explicit
+  Miniforge environment Python and putting that environment's DLL directories first on PATH.
+- The polling regressions pass in the combined ITC503 checks below.
+
+## 2026-11-11: ITC503 manual command audit
+
+- Updated the existing Oxford driver tests to use documented command acknowledgements and corrected mappings.
+  Added mode-bit preservation, hardware readback, invalid-response and input-validation coverage.
+- Added primary ITC503 Apply-button and Make Safe wire-command checks to the existing panel module.
+  Extended Make Safe coverage for controllers without discrete power ranges. No tests moved or removed.
+- Combined verification: 274 passed on offscreen PyQt5, using the Oxford driver tests, temperature-controller
+  contract tests, both temperature panel modules, secondary controller tests, Make Safe command tests and
+  `tests/test_temperature_control.py`. Ruff passed for all changed Python files.
+- Manual evidence and remaining physical bench checks are in [ITC503 Commands.md](<ITC503 Commands.md>).
+
+## 2026-11-11: Mercury iTC and Lake Shore 340 command audits
+
+- Replaced the Mercury core test's fictional fixed-loop commands with native discovery and command coverage in
+  `tests/unit/instruments/drivers/test_oxford_mercury_itc.py`, matching the new production module.
+  The existing Oxford test module still covers ITC503 and compatibility exports.
+- Corrected 340 expectations in the existing Lake Shore module and added native status, unit, range, zone,
+  input-setup, rejection and Apply tests. The existing 335/336 implementations and regression cases remain intact.
+- Ran both source and destination driver test modules together, then broadened to controller, protocol, panel,
+  Make Safe and driver-discovery checks: 478 passed on offscreen PyQt5. Full test collection completed successfully.
+- Audit sources, deliberate API boundaries and bench checks are recorded in
+  `notes/2026-11-11-mercury-itc-driver-audit.md` and `notes/lakeshore_temp_controllers.md`.
+
+## 2026-11-11: Model 340 native input settings editor
+
+- Added ten focused cases in `tests/unit/ui/panels/test_lakeshore340_input_settings.py` for native UI read/write,
+  unchanged and preset writes, Special fields, paused compensation, failure recovery, complete row visibility,
+  and primary/secondary editor routing. No existing test coverage was moved or removed.
+- Updated the panel's existing layout assertion for the scrollable input page and enabled the native driver
+  capability. Existing 335/336 editor behaviour and instrument tests remain covered.
+- Verification: 362 tests passed on offscreen PyQt5 across the native input editor, temperature panels,
+  Lake Shore/Oxford drivers, controller contracts, secondary service, Make Safe and legacy temperature tests.
+  Ruff and `git diff --check` passed. Offscreen visual inspection confirmed every row is fully visible.

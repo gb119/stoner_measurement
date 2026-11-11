@@ -53,6 +53,18 @@ curve names are kept in separate labelled tables on the same page. Cryogen contr
 appear for each instrument that supports them. Heater ranges and other optional
 features belong to the selected instrument.
 
+For a **Lake Shore 340**, Input Settings provides native controls for each A/B
+input, including input enable, sensor type, excitation, voltage range,
+compensation, filtering and calibration curve. It works in either controller
+slot. Use **Read All** to load the hardware settings before writing.
+
+Choose a sensor preset to let the instrument select its associated units,
+coefficient, excitation and range. Choose **Special** to edit those values
+directly. Compensation retains the separate **Off**, **On** and **Paused**
+states. **Write All** sends only changed settings and reads them back, including
+any defaults selected by a new sensor preset. After a failed write or readback,
+use **Read All** before retrying. Polling does not overwrite these edits.
+
 .. figure:: _static/screenshots/controller-temperature.png
    :alt: Dark Temperature Control page with Primary and Secondary tabs and two primary loop control groups.
    :width: 100%

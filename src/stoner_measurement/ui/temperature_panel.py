@@ -562,7 +562,10 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         self._secondary_input_settings = _InputSettingsTableWidget(self._engine.controller("secondary"))
         layout.addWidget(self._secondary_input_settings)
         layout.addStretch()
-        return widget
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(widget)
+        return scroll
 
     # --- Chart tab ---
 
@@ -696,7 +699,8 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         """
         now_ts = datetime.now(tz=UTC).timestamp()
 
-        # Update control-loop groups with live readings.
+        # Refresh read-only labels; editable controls are read on connection
+        # or explicit Read actions so polling cannot overwrite user edits.
         for loop, group in self._loop_groups.items():
             local_state = state
             if isinstance(loop, LoopRef):
@@ -710,25 +714,11 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
                 input_channel=local_state.input_channels.get(loop),
             )
 
-        # Needle valve
-        if state.needle_valve is not None:
-            self._needle_spin.blockSignals(True)
-            self._needle_spin.setValue(state.needle_valve)
-            self._needle_spin.blockSignals(False)
-        if state.gas_auto_mode is not None:
-            self._gas_auto_check.blockSignals(True)
-            self._gas_auto_check.setChecked(state.gas_auto_mode)
-            self._gas_auto_check.blockSignals(False)
-            self._needle_spin.setEnabled(not state.gas_auto_mode)
-            self._needle_apply_btn.setEnabled(not state.gas_auto_mode)
-
         # Update chart buffers and curves.
         self._update_chart(state, now_ts, update_rate=False)
         if state.secondary is not None:
             self._update_chart(state.secondary, now_ts, "secondary:", update_rate=False)
         self._update_rate_chart(state, now_ts)
-        if self._secondary_cryogen is not None:
-            self._secondary_cryogen.update_state(state.secondary)
 
         if self._stab_diagnostics_check.isChecked():
             lines = []
@@ -988,14 +978,15 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         driver = session.connected_driver
         caps = driver.get_capabilities() if driver is not None else None
         has_inputs = caps is not None and caps.has_input_settings
-        self._secondary_input_settings.setVisible(has_inputs)
         if has_inputs:
+            self._select_input_settings_editor("_secondary_input_settings", session, caps)
             self._secondary_input_settings.set_curve_names(session.get_calibration_curve_names())
             self._secondary_input_settings.set_channels(caps.input_channels)
             self._secondary_input_settings.read_all(show_warning=False)
             self._tabs.setTabEnabled(self._input_settings_tab_index, True)
         else:
             self._secondary_input_settings.clear()
+        self._secondary_input_settings.setVisible(has_inputs)
         if self._secondary_cryogen is not None:
             self._secondary_control_layout.removeWidget(self._secondary_cryogen)
             self._secondary_cryogen.deleteLater()
@@ -1123,11 +1114,35 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         self._tabs.setTabEnabled(self._input_settings_tab_index, enabled)
 
         if enabled:
+            self._select_input_settings_editor("_input_settings_widget", self._engine, caps)
             self._input_settings_widget.set_curve_names(self._engine.get_calibration_curve_names())
             self._input_settings_widget.set_channels(caps.input_channels)
         else:
             self._input_settings_widget.set_curve_names({})
             self._input_settings_widget.clear()
+
+    def _select_input_settings_editor(self, attribute, session, caps):
+        """Install the owning controller's input editor while preserving page position."""
+        editor_type = _InputSettingsTableWidget
+        if caps.input_settings_model == "lakeshore340":
+            # Imported when needed, after the shared table class is defined.
+            from stoner_measurement.ui.lakeshore340_input_settings import (
+                Lakeshore340InputSettingsTable,
+            )
+
+            editor_type = Lakeshore340InputSettingsTable
+        current = getattr(self, attribute)
+        if type(current) is editor_type:
+            return
+        parent = current.parentWidget()
+        layout = parent.layout()
+        index = layout.indexOf(current)
+        layout.removeWidget(current)
+        current.close()
+        current.deleteLater()
+        replacement = editor_type(session, parent)
+        layout.insertWidget(index, replacement)
+        setattr(self, attribute, replacement)
 
     def _on_legend_item_changed(self, item, _column: int) -> None:
         """Show/hide traces from legend checkboxes."""
@@ -1357,13 +1372,20 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
 
     @pyqtSlot()
     def _on_read_needle(self) -> None:
-        """Read the current needle valve position from the instrument."""
-        position = self._engine.get_needle_valve()
-        if position is None:
+        """Read the needle valve position and automatic mode from the instrument."""
+        state = self._engine.read_controller_state()
+        if state is None:
             return
-        self._needle_spin.blockSignals(True)
-        self._needle_spin.setValue(position)
-        self._needle_spin.blockSignals(False)
+        if state.needle_valve is not None:
+            self._needle_spin.blockSignals(True)
+            self._needle_spin.setValue(state.needle_valve)
+            self._needle_spin.blockSignals(False)
+        if state.gas_auto_mode is not None:
+            self._gas_auto_check.blockSignals(True)
+            self._gas_auto_check.setChecked(state.gas_auto_mode)
+            self._gas_auto_check.blockSignals(False)
+            self._needle_spin.setEnabled(not state.gas_auto_mode)
+            self._needle_apply_btn.setEnabled(not state.gas_auto_mode)
 
     @pyqtSlot(int)
     @_report_hardware_error
@@ -1663,7 +1685,8 @@ class _CryogenGroup(QGroupBox):
             self._session.set_gas_auto(enabled)
         except Exception as error:
             QMessageBox.warning(self, "Secondary gas flow", str(error))
-        self._read()
+        self._position.setEnabled(not enabled)
+        self._apply.setEnabled(not enabled)
 
     def _read(self):
         state = self._session.read_controller_state()
@@ -2268,6 +2291,8 @@ _INPUT_SETTING_ROWS = (
 class _InputSettingsTableWidget(QWidget):
     """Edit all available sensor input settings in adjacent table columns."""
 
+    _ROWS = _INPUT_SETTING_ROWS
+
     def __init__(
         self, engine: TemperatureControllerEngine, parent: QWidget | None = None
     ) -> None:
@@ -2282,8 +2307,8 @@ class _InputSettingsTableWidget(QWidget):
         """Build the settings table and shared read/write actions."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self._table = QTableWidget(len(_INPUT_SETTING_ROWS), 0)
-        self._table.setVerticalHeaderLabels([label for _, label in _INPUT_SETTING_ROWS])
+        self._table = QTableWidget(len(self._ROWS), 0)
+        self._table.setVerticalHeaderLabels([label for _, label in self._ROWS])
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._table.setAlternatingRowColors(True)
         self._table.setFixedHeight(self._table.horizontalHeader().height() +
@@ -2296,6 +2321,7 @@ class _InputSettingsTableWidget(QWidget):
         read_button.setToolTip("Read input settings for every sensor channel")
         read_button.clicked.connect(self._on_read)
         write_button = QPushButton("Write All")
+        self._write_button = write_button
         write_button.setToolTip("Write input settings for every sensor channel")
         write_button.clicked.connect(self._on_write)
         buttons.addWidget(read_button)
@@ -2312,8 +2338,16 @@ class _InputSettingsTableWidget(QWidget):
         for column, channel in enumerate(self._channels):
             editors = self._make_channel_editors()
             self._editors[channel] = editors
-            for row, (key, _label) in enumerate(_INPUT_SETTING_ROWS):
+            for row, (key, _label) in enumerate(self._ROWS):
                 self._table.setCellWidget(row, column, editors[key])
+        # Cell widgets can increase row heights after construction. Size the
+        # bounded table using their final hints, including the header/frame.
+        self._table.resizeRowsToContents()
+        self._table.setFixedHeight(
+            self._table.horizontalHeader().sizeHint().height()
+            + sum(self._table.rowHeight(row) for row in range(self._table.rowCount()))
+            + 2 * self._table.frameWidth()
+        )
 
     def set_curve_names(self, curve_names: dict[int, str]) -> None:
         """Use controller-reported names in every calibration-curve selector."""
@@ -2514,7 +2548,9 @@ class _LoopControlGroup(QGroupBox):
 
         self._mode_combo = QComboBox()
         for mode in ControlMode:
-            if mode is ControlMode.ZONE and not self._caps.has_zone:
+            if self._caps.control_modes and mode not in self._caps.control_modes:
+                continue
+            if mode is ControlMode.ZONE and not self._caps.has_zone and mode not in self._caps.control_modes:
                 continue
             if mode is ControlMode.OPEN_LOOP and not self._caps.has_manual_heater_output:
                 continue
@@ -2633,7 +2669,10 @@ class _LoopControlGroup(QGroupBox):
         self._ramp_row_label.setVisible(ramp_visible)
         self._ramp_widget.setVisible(ramp_visible)
 
-        heater_range_visible = not off_like
+        heater_range_visible = (
+            self._caps.has_heater_range and not off_like
+            and (self._caps.heater_range_loops is None or self._loop in self._caps.heater_range_loops)
+        )
         self._heater_range_label.setVisible(heater_range_visible)
         heater_range_widget = (
             self._heater_range_combo
