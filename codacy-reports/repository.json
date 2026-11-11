@@ -5,35 +5,99 @@
       "owner": "gb119",
       "name": "stoner_measurement",
       "visibility": "Public",
-      "defaultBranch": {
-        "name": "main"
-      },
-      "lastUpdated": "2026-11-05T21:37:34.480Z",
+      "problems": [],
       "languages": [
+        "CSS",
         "JSON",
         "Markdown",
+        "Powershell",
         "Python",
         "YAML"
       ],
       "standards": [],
-      "problems": []
+      "addedState": "Added",
+      "repositoryId": 857542,
+      "remoteIdentifier": "1199443664",
+      "lastUpdated": "2026-11-11T21:19:00.400Z",
+      "permission": "admin",
+      "stack": {
+        "commitUuid": "4f5fb24182e7a0566ab664d16036c22b308cea87",
+        "stackTags": [
+          "fwk:github-actions",
+          "lib:numpy",
+          "lib:pandas",
+          "lib:pyyaml",
+          "lib:scipy",
+          "tool:black"
+        ],
+        "discoveredAt": "2026-11-11T21:19:36.651772Z"
+      },
+      "defaultBranch": {
+        "id": 57541956,
+        "name": "main",
+        "isDefault": true,
+        "isEnabled": true,
+        "branchType": "Branch",
+        "lastUpdated": "2026-11-11T21:19:00.400Z",
+        "lastCommit": "4f5fb24182e7a0566ab664d16036c22b308cea87"
+      },
+      "badges": {
+        "grade": "https://app.codacy.com/project/badge/Grade/f20d5771398343cd87a26c21ca6b7c7e",
+        "coverage": "https://app.codacy.com/project/badge/Coverage/f20d5771398343cd87a26c21ca6b7c7e"
+      }
     },
     "lastAnalysedCommit": {
-      "sha": "1017a05c26f36712c88a99c5744d8319fe117ad2",
-      "startedAnalysis": "2026-11-05T21:37:42.159Z",
-      "endedAnalysis": "2026-11-05T21:37:59.816Z"
+      "sha": "4f5fb24182e7a0566ab664d16036c22b308cea87",
+      "id": 1215648236,
+      "commitTimestamp": "2026-11-11T21:18:54Z",
+      "authorName": "Gavin Burnell",
+      "authorEmail": "g.burnell@leeds.ac.uk",
+      "message": "Preserve background X-ray motion errors during target waits",
+      "startedAnalysis": "2026-11-11T21:19:08.838Z",
+      "endedAnalysis": "2026-11-11T21:19:45.348Z",
+      "isMergeCommit": false,
+      "parents": [
+        "9d2f5f26f7cb7bd010a1e9a76ee9b01053e650ff"
+      ]
     },
-    "issuesCount": 0,
-    "loc": 98020,
-    "fileCount": 602,
+    "grade": 99,
+    "gradeLetter": "A",
+    "issuesPercentage": 0,
+    "issuesCount": 12,
+    "loc": 99430,
+    "complexFilesPercentage": 27,
+    "complexFilesCount": 176,
+    "branch": {
+      "id": 57541956,
+      "name": "main",
+      "isDefault": true,
+      "isEnabled": true,
+      "branchType": "Branch",
+      "lastUpdated": "2026-11-11T21:19:00.400Z",
+      "lastCommit": "4f5fb24182e7a0566ab664d16036c22b308cea87"
+    },
+    "selectedBranch": {
+      "id": 57541956,
+      "name": "main",
+      "isDefault": true,
+      "isEnabled": true,
+      "branchType": "Branch",
+      "lastUpdated": "2026-11-11T21:19:00.400Z",
+      "lastCommit": "4f5fb24182e7a0566ab664d16036c22b308cea87"
+    },
     "coverage": {
+      "filesUncovered": 321,
+      "filesWithLowCoverage": 95,
       "coveragePercentage": 86,
-      "status": "Waiting",
-      "lastCommitWithCoverage": "1ce75a97641b847ed303fe3951a3934e4a2c0286",
-      "statusUpdatedAt": "2026-11-05T18:04:48.989940Z",
-      "valueUpdatedAt": "2026-11-04T23:39:17.150691Z"
+      "coveragePercentageWithDecimals": 86.78,
+      "numberTotalFiles": 630,
+      "numberCoveredLines": 46265,
+      "numberCoverableLines": 53310,
+      "status": "UpToDate",
+      "lastCommitWithCoverage": "4f5fb24182e7a0566ab664d16036c22b308cea87",
+      "statusUpdatedAt": "2026-11-11T21:31:22.962321Z",
+      "valueUpdatedAt": "2026-11-11T21:31:22.962321Z"
     },
-    "complexFilesPercentage": 28,
     "goals": {
       "maxIssuePercentage": 2,
       "maxDuplicatedFilesPercentage": 10,
@@ -42,24 +106,5 @@
       "fileDuplicationBlockThreshold": 1,
       "fileComplexityValueThreshold": 20
     }
-  },
-  "pullRequests": [],
-  "issuesOverview": {
-    "categories": [],
-    "languages": [],
-    "levels": [],
-    "tags": [],
-    "patterns": [],
-    "authors": [],
-    "potentialFalsePositives": [
-      {
-        "name": "equalOrAboveThreshold",
-        "total": 0
-      },
-      {
-        "name": "belowThreshold",
-        "total": 0
-      }
-    ]
   }
 }

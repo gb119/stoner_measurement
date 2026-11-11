@@ -1,7 +1,8 @@
 """CHM staging rejects failed compiles and stale artifacts."""
 
+# CompletedProcess models compiler outcomes; subprocess.run is replaced below.
 import runpy
-import subprocess
+import subprocess  # nosec B404
 from pathlib import Path
 
 import pytest

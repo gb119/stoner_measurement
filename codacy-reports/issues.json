@@ -1,3 +1,334 @@
 {
-  "issues": []
+  "issues": [
+    {
+      "issueId": "5ac5f21a093b5621978c679b737e8958",
+      "resultDataId": 131564507899,
+      "filePath": "src/stoner_measurement/user_guide.py",
+      "fileId": 245882729094,
+      "patternInfo": {
+        "id": "Bandit_B606",
+        "category": "Security",
+        "level": "Info",
+        "severityLevel": "Info",
+        "subCategory": "InsecureModulesLibraries"
+      },
+      "toolInfo": {
+        "uuid": "89b6fc6a-9137-4cf3-8b9f-dcc3bedfa738",
+        "name": "Bandit"
+      },
+      "lineNumber": 36,
+      "message": "Starting a process without a shell.",
+      "language": "Python",
+      "lineText": "    os.startfile(str(target))",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "3c02d02be16a5f39b901f109d9c97ed963270467",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T10:58:39Z"
+      }
+    },
+    {
+      "issueId": "be49d81f1ca96784becae1f52c2b42dd",
+      "resultDataId": 131564689321,
+      "filePath": "src/stoner_measurement/instruments/oxford/temperature_controllers.py",
+      "fileId": 245882729284,
+      "patternInfo": {
+        "id": "Prospector_pyflakes",
+        "category": "ErrorProne",
+        "level": "High",
+        "severityLevel": "High"
+      },
+      "toolInfo": {
+        "uuid": "25673894-eac1-4941-87a6-81f1abd5c321",
+        "name": "Prospector"
+      },
+      "lineNumber": 16,
+      "message": "'stoner_measurement.instruments.oxford.mercury_itc.OxfordMercuryTemperatureController' imported but unused (F401)",
+      "language": "Python",
+      "lineText": "from stoner_measurement.instruments.oxford.mercury_itc import (",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "27d44e2e1569650c4ff37d79dce3586783478e96",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T15:04:29Z"
+      }
+    },
+    {
+      "issueId": "6a12ecb308fef0d13c1f3c4828efaeb4",
+      "resultDataId": 131564507900,
+      "filePath": "scripts/build_chm.py",
+      "fileId": 245882729220,
+      "patternInfo": {
+        "id": "Bandit_B404",
+        "category": "Security",
+        "level": "Info",
+        "severityLevel": "Info",
+        "subCategory": "CommandInjection"
+      },
+      "toolInfo": {
+        "uuid": "89b6fc6a-9137-4cf3-8b9f-dcc3bedfa738",
+        "name": "Bandit"
+      },
+      "lineNumber": 8,
+      "message": "Consider possible security implications associated with the subprocess module.",
+      "language": "Python",
+      "lineText": "import subprocess",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "3c02d02be16a5f39b901f109d9c97ed963270467",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T10:58:39Z"
+      }
+    },
+    {
+      "issueId": "4e9dfab56bb07b6d2822ffb104968e01",
+      "resultDataId": 131564507897,
+      "filePath": "scripts/build_chm.py",
+      "fileId": 245882729220,
+      "patternInfo": {
+        "id": "Bandit_B603",
+        "category": "Security",
+        "level": "Warning",
+        "severityLevel": "Warning",
+        "subCategory": "InputValidation"
+      },
+      "toolInfo": {
+        "uuid": "89b6fc6a-9137-4cf3-8b9f-dcc3bedfa738",
+        "name": "Bandit"
+      },
+      "lineNumber": 46,
+      "message": "subprocess call - check for execution of untrusted input.",
+      "language": "Python",
+      "lineText": "        subprocess.run(",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "3c02d02be16a5f39b901f109d9c97ed963270467",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T10:58:39Z"
+      }
+    },
+    {
+      "issueId": "21d95eefaa6a11bc022db0cecb529f68",
+      "resultDataId": 131564507949,
+      "filePath": "scripts/build_chm.py",
+      "fileId": 245882729220,
+      "patternInfo": {
+        "id": "Semgrep_python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args",
+        "category": "Security",
+        "level": "Error",
+        "severityLevel": "Error",
+        "subCategory": "CommandInjection"
+      },
+      "toolInfo": {
+        "uuid": "6792c561-236d-41b7-ba5e-9d6bee0d548b",
+        "name": "Opengrep"
+      },
+      "lineNumber": 65,
+      "message": "Detected subprocess function 'run' with user controlled data.",
+      "language": "Python",
+      "lineText": "            [str(compiler), str(work / f\"{BASENAME}.hhp\")], cwd=work, check=False",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "3c02d02be16a5f39b901f109d9c97ed963270467",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T10:58:39Z"
+      }
+    },
+    {
+      "issueId": "3f41566a7719b85afe526e5c1a5f6e01",
+      "resultDataId": 131564507901,
+      "filePath": "scripts/build_chm.py",
+      "fileId": 245882729220,
+      "patternInfo": {
+        "id": "Bandit_B603",
+        "category": "Security",
+        "level": "Warning",
+        "severityLevel": "Warning",
+        "subCategory": "InputValidation"
+      },
+      "toolInfo": {
+        "uuid": "89b6fc6a-9137-4cf3-8b9f-dcc3bedfa738",
+        "name": "Bandit"
+      },
+      "lineNumber": 64,
+      "message": "subprocess call - check for execution of untrusted input.",
+      "language": "Python",
+      "lineText": "        result = subprocess.run(",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "3c02d02be16a5f39b901f109d9c97ed963270467",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T10:58:39Z"
+      }
+    },
+    {
+      "issueId": "3b5c497a2ef5ee87e1d84f4ce3fbcd2b",
+      "resultDataId": 131564689320,
+      "filePath": "src/stoner_measurement/instruments/lakeshore/temperature_controllers.py",
+      "fileId": 245882729498,
+      "patternInfo": {
+        "id": "Prospector_pycodestyle",
+        "category": "CodeStyle",
+        "level": "Info",
+        "severityLevel": "Info"
+      },
+      "toolInfo": {
+        "uuid": "25673894-eac1-4941-87a6-81f1abd5c321",
+        "name": "Prospector"
+      },
+      "lineNumber": 828,
+      "message": "expected 1 blank line before a nested definition, found 0 (E306)",
+      "language": "Python",
+      "lineText": "        def csv_fields(values):",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "27d44e2e1569650c4ff37d79dce3586783478e96",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T15:04:29Z"
+      }
+    },
+    {
+      "issueId": "dc57287ffb8329afbccd114fafe6fd8f",
+      "resultDataId": 131564689370,
+      "filePath": "src/stoner_measurement/instruments/oxford/temperature_controllers.py",
+      "fileId": 245882729284,
+      "patternInfo": {
+        "id": "PyLintPython3_W0611",
+        "category": "UnusedCode",
+        "level": "Warning",
+        "severityLevel": "Warning"
+      },
+      "toolInfo": {
+        "uuid": "31677b6d-4ae0-4f56-8041-606a8d7a8e61",
+        "name": "Pylint"
+      },
+      "lineNumber": 16,
+      "message": "Unused OxfordMercuryTemperatureController imported from stoner_measurement.instruments.oxford.mercury_itc as OxfordMercuryTemperatureController",
+      "language": "Python",
+      "lineText": "from stoner_measurement.instruments.oxford.mercury_itc import (",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "27d44e2e1569650c4ff37d79dce3586783478e96",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T15:04:29Z"
+      }
+    },
+    {
+      "issueId": "94e2cd9dde42e7ffeca561995023a8f3",
+      "resultDataId": 131564689371,
+      "filePath": "tests/unit/ui/panels/test_lakeshore340_input_settings.py",
+      "fileId": 245882729349,
+      "patternInfo": {
+        "id": "PyLintPython3_C0123",
+        "category": "BestPractice",
+        "level": "Warning",
+        "severityLevel": "Warning"
+      },
+      "toolInfo": {
+        "uuid": "31677b6d-4ae0-4f56-8041-606a8d7a8e61",
+        "name": "Pylint"
+      },
+      "lineNumber": 302,
+      "message": "Use isinstance() rather than type() for a typecheck.",
+      "language": "Python",
+      "lineText": "    assert type(getattr(panel, attribute)) is _InputSettingsTableWidget",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "27d44e2e1569650c4ff37d79dce3586783478e96",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T15:04:29Z"
+      }
+    },
+    {
+      "issueId": "1577a4c9f4462cc0a7997f06623c98fd",
+      "resultDataId": 131564507898,
+      "filePath": "tests/unit/test_chm_build.py",
+      "fileId": 245882729041,
+      "patternInfo": {
+        "id": "Bandit_B404",
+        "category": "Security",
+        "level": "Info",
+        "severityLevel": "Info",
+        "subCategory": "CommandInjection"
+      },
+      "toolInfo": {
+        "uuid": "89b6fc6a-9137-4cf3-8b9f-dcc3bedfa738",
+        "name": "Bandit"
+      },
+      "lineNumber": 4,
+      "message": "Consider possible security implications associated with the subprocess module.",
+      "language": "Python",
+      "lineText": "import subprocess",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "3c02d02be16a5f39b901f109d9c97ed963270467",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T10:58:39Z"
+      }
+    },
+    {
+      "issueId": "4a1b031238007855baa3a58106ba0be7",
+      "resultDataId": 131564689372,
+      "filePath": "src/stoner_measurement/ui/temperature_panel.py",
+      "fileId": 245882728988,
+      "patternInfo": {
+        "id": "PyLintPython3_C0123",
+        "category": "BestPractice",
+        "level": "Warning",
+        "severityLevel": "Warning"
+      },
+      "toolInfo": {
+        "uuid": "31677b6d-4ae0-4f56-8041-606a8d7a8e61",
+        "name": "Pylint"
+      },
+      "lineNumber": 1135,
+      "message": "Use isinstance() rather than type() for a typecheck.",
+      "language": "Python",
+      "lineText": "        if type(current) is editor_type:",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "27d44e2e1569650c4ff37d79dce3586783478e96",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T15:04:29Z"
+      }
+    },
+    {
+      "issueId": "25f1a910588e6f4c756115df3f921273",
+      "resultDataId": 131564507896,
+      "filePath": "docs/_static/chm.css",
+      "fileId": 245882729016,
+      "patternInfo": {
+        "id": "Stylelint_declaration-no-important",
+        "category": "BestPractice",
+        "level": "Warning",
+        "severityLevel": "Warning"
+      },
+      "toolInfo": {
+        "uuid": "1f03328a-086e-459e-bfa3-73e56f01020f",
+        "name": "Stylelint"
+      },
+      "lineNumber": 4,
+      "message": "Disallowed !important (declaration-no-important)",
+      "language": "CSS",
+      "lineText": "    padding: 1em 1.5em !important;",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "3c02d02be16a5f39b901f109d9c97ed963270467",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-11T10:58:39Z"
+      }
+    }
+  ]
 }

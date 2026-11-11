@@ -299,6 +299,8 @@ def test_panel_selects_native_editor_for_its_owning_session_and_switches_back(
     panel._select_input_settings_editor(
         attribute, session, Lakeshore335(NullTransport()).get_capabilities()
     )
+    # A specialised subclass must be replaced, not merely accepted as a base instance.
+    # pylint: disable-next=unidiomatic-typecheck
     assert type(getattr(panel, attribute)) is _InputSettingsTableWidget
 
 

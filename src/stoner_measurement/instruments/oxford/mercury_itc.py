@@ -61,7 +61,7 @@ class OxfordMercuryTemperatureController(TemperatureController):
         )
 
     def identify(self) -> str:
-        """Read the native Mercury identity using *IDN?."""
+        """Read the native Mercury identity using ``*IDN?``."""
         return self.query("*IDN?")
 
     def confirm_identity(self) -> str:

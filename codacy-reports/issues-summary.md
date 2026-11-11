@@ -1,46 +1,40 @@
 # Codacy Issues Summary
 
-Repository: `gh/gb119/stoner_measurement`
+Repository: `gh/gb119/stoner_measurement`, branch `main`
 
-Branch: `main`
+Analysed commit: `4f5fb24182e7a0566ab664d16036c22b308cea87`
 
-Analysed commit: `1017a05c26f36712c88a99c5744d8319fe117ad2`
+Analysis completed: 2026-11-11T21:19:45.348Z
 
-Analysis completed: 2026-11-05T21:37:59.816Z
+## Current result
 
-## Remote inventory and local fixes
+**12 active issues**, all reviewed and addressed locally; hosted reanalysis is pending.
 
-The latest issue pull and repository metadata both report **zero active
-issues** after hosted analysis of the source-fix commit above. All three
-findings from the preceding inventory are verified cleared.
+## Review of the 12 findings
 
-| Finding | Resolution |
+| Findings | Disposition |
 | --- | --- |
-| Markdownlint MD012 in the 3 November cleanup note | Removed the extra blank line before a heading |
-| Bandit B102 in the preflight regression test | Documented line-scoped suppression for trusted generated code |
-| Pylint W0122 on the same test statement | Documented line-scoped suppression for the same intentional execution |
+| Oxford re-export: Pyflakes F401 and Pylint W0611 (2) | Explicit public exports preserve the Mercury compatibility import |
+| Lake Shore nested CSV formatter: E306 (1) | Added the required blank lines |
+| Editor selection and regression: C0123 (2) | Exact type is required to switch from the specialised subclass back to the generic editor; documented line-scoped suppressions |
+| Packaged guide launch: B606 (1) | Intentional Windows association launch of the fixed-name cached bundled guide; documented call-scoped suppression |
+| Build script and test imports: B404 (2) | Intentional subprocess use; the test mocks execution; documented import-scoped suppressions |
+| Sphinx and HHC calls: B603 (2) | Trusted developer build tools, separate arguments, no command shell; documented call-scoped suppressions |
+| HHC environment-selected tool: Opengrep (1) | Explicit compiler selection is intentional build capability, not untrusted application input; exact-rule suppression |
+| CHM stylesheet: declaration-no-important (1) | Replaced !important with a more specific html body selector |
 
-The test executes application-generated sequence code to verify that invalid
-configuration blocks connections, including inside a nested sequence. Keeping
-this execution preserves the ordering regression. No external code or user
-input is executed by the test, and no remote ignore states or global analysis
-exclusions were changed.
+No remote ignore states or global analyser exclusions were changed. The subprocess
+findings identify intentional developer tooling, not an application command-input
+path. Compiler selection, shell-free invocation and artifact checks are preserved.
 
-## Evidence
+## Validation and evidence
 
-- `issues.json` and `repository.json` contain the downloaded remote snapshot.
-- `issues.csv` contains the active inventory (header only).
-- `resolved-issues.csv` preserves all eight findings resolved across the
-  3 November and 5 November cleanups, with their verified source-fix commits.
-- Ruff check/format, targeted Pylint `W0122,W0012` and Bandit B102 pass for
-  the edited Python files.
-- The 12 preflight tests pass on Python 3.12.14 and 3.14.7 with offscreen
-  PyQt5, including eight additional expression scope cases for the CI repair.
-- The full Python 3.12 suite passed: 4,238 passed, two skipped in 240.29 seconds.
-
-The source repair also fixes a Python 3.12 comprehension-local
-misclassification in preflight validation. A separate intermittent PyQtGraph
-crash in the hosted function-widget tests prompted a follow-up migration to
-managed Qt teardown; this does not change the verified Codacy result above.
-The follow-up passed all 4,238 tests (two skipped) with coverage on Python
-3.14/PyQt5, preserving the full 4,240-test collection.
+- 168 affected guide, controller and editor tests passed on Python 3.14.7/PyQt5.
+- Ruff and targeted Pylint W0611, C0123 and W0012 passed.
+- Targeted Bandit B404, B603 and B606 passed.
+- Strict Sphinx HTML Help build passed after correcting literal markup in the
+  Mercury identity docstring; the generated stylesheet retains the same gutter.
+- `issues.json` and `repository.json` hold the current remote snapshot.
+- `issues.csv` records active findings and dispositions.
+- `resolved-issues.csv` preserves earlier resolutions and, after remote confirmation,
+  records these findings with the immutable source-fix commit and analysis time.

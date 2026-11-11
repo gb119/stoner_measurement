@@ -1132,6 +1132,9 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
 
             editor_type = Lakeshore340InputSettingsTable
         current = getattr(self, attribute)
+        # The Model 340 editor subclasses the generic editor; isinstance would
+        # retain the specialised editor when switching back to a generic model.
+        # pylint: disable-next=unidiomatic-typecheck
         if type(current) is editor_type:
             return
         parent = current.parentWidget()

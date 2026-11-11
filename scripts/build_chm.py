@@ -1,11 +1,12 @@
 """Build and stage the Windows user guide before building application packages."""
 
+# This release tool deliberately launches Sphinx and the developer-selected HHC.
 from __future__ import annotations
 
 import argparse
 import os
 import shutil
-import subprocess
+import subprocess  # nosec B404
 import sys
 import tempfile
 from pathlib import Path
@@ -43,7 +44,8 @@ def build_chm(compiler: Path, root: Path = ROOT) -> Path:
     staged.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(dir=output) as temporary:
         work = Path(temporary)
-        subprocess.run(
+        # Use this interpreter and fixed module/options, with no command shell.
+        subprocess.run(  # nosec B603
             [
                 sys.executable,
                 "-m",
@@ -61,7 +63,11 @@ def build_chm(compiler: Path, root: Path = ROOT) -> Path:
             ],
             check=True,
         )
-        result = subprocess.run(
+        # HHC is a trusted build tool chosen explicitly by --hhc/HHC or discovered
+        # in the developer's PATH/install directory. Selecting a compiler is an
+        # intentional build capability; the project path is a separate argument.
+        result = subprocess.run(  # nosec B603
+            # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
             [str(compiler), str(work / f"{BASENAME}.hhp")], cwd=work, check=False
         )
         compiled = work / f"{BASENAME}.chm"

@@ -29,6 +29,8 @@ from stoner_measurement.instruments.temperature_controller import (
 from stoner_measurement.instruments.transport.base import BaseTransport
 from stoner_measurement.resources import bundled_resource_path, user_resource_file
 
+__all__ = ["OxfordITC503", "OxfordMercuryTemperatureController"]
+
 logger = logging.getLogger(__name__)
 
 _MODE_TO_CODE = {

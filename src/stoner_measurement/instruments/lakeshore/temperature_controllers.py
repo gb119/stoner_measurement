@@ -825,8 +825,10 @@ class Lakeshore340(_LakeshoreTemperatureControllerBase):
             self._bounded(settings.filter_window, 1, 10, "filter window")
         if settings.curve_number is not None and settings.curve_number not in range(61):
             raise ValueError("Model 340 curve number must be 0–60.")
+
         def csv_fields(values):
             return ",".join("" if v is None else str(int(v) if isinstance(v, bool) else v) for v in values)
+
         with self._lock:
             if any(v is not None for v in native):
                 self.write(f"INTYPE {ch},{csv_fields(native)}")

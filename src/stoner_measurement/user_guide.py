@@ -33,4 +33,6 @@ def open_user_guide() -> None:
     target = directory / HELP_FILENAME
     if not target.is_file() or target.read_bytes() != content:
         target.write_bytes(content)
-    os.startfile(str(target))
+    # Open only the fixed-name cached copy of our bundled guide, never a command
+    # or a caller-supplied path. The Windows file association owns the viewer.
+    os.startfile(str(target))  # nosec B606
