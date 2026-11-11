@@ -9,6 +9,11 @@ implementation contracts separately.
 Starting the application
 ------------------------
 
+On Windows, release packages include an offline manual. Choose
+**Help > User Guide**, or press **F1**, to open it in Windows Help Viewer.
+The bundled guide works without an internet connection; links to external
+documentation still require internet access.
+
 After installation, launch the application from the command line:
 
 .. code-block:: bash

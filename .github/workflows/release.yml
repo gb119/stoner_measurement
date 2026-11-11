@@ -1,0 +1,110 @@
+name: Package Release with Offline Help
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-packages-${{ github.event.release.tag_name || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash -el {0}
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QT_QPA_FONTDIR: C:\Windows\Fonts
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+          persist-credentials: false
+
+      - name: Set up project environment
+        uses: conda-incubator/setup-miniconda@fc2d68f6413eb2d87b895e92f8584b5b94a10167
+        with:
+          miniforge-version: latest
+          activate-environment: stoner_measurement
+          environment-file: environment.yml
+          channels: phygbu,conda-forge
+          channel-priority: flexible
+
+      - name: Install HTML Help compiler
+        shell: pwsh
+        run: |
+          choco install html-help-workshop --version=1.32.1 --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'HTML Help Workshop installation failed.' }
+
+      - name: Install application for documentation imports
+        run: conda run -n stoner_measurement python -m pip install -e . --no-deps
+
+      - name: Build and stage compiled User Guide
+        run: conda run -n stoner_measurement python scripts/build_chm.py
+
+      - name: Build wheel and source distribution
+        run: conda run -n stoner_measurement python -m build
+
+      - name: Verify bundled User Guide
+        run: |
+          conda run --no-capture-output -n stoner_measurement python - <<'PY'
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          guide = Path('src/stoner_measurement/help/stoner_measurement.chm').read_bytes()
+          wheels = list(Path('dist').glob('*.whl'))
+          sources = list(Path('dist').glob('*.tar.gz'))
+          if len(wheels) != 1 or len(sources) != 1:
+              raise SystemExit('Expected exactly one wheel and one source distribution')
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              if wheel.read('stoner_measurement/help/stoner_measurement.chm') != guide:
+                  raise SystemExit('Wheel User Guide differs from the compiled guide')
+          with tarfile.open(sources[0]) as source:
+              name = sources[0].name.removesuffix('.tar.gz') + '/src/stoner_measurement/help/stoner_measurement.chm'
+              with source.extractfile(name) as bundled:
+                  if bundled.read() != guide:
+                      raise SystemExit('Source distribution User Guide differs from the compiled guide')
+          print('Both packages contain the freshly compiled User Guide')
+          PY
+
+      - name: Check package metadata
+        run: conda run -n stoner_measurement python -m twine check dist/*
+
+      - name: Collect standalone User Guide
+        run: cp src/stoner_measurement/help/stoner_measurement.chm dist/
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'release'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified packages
+        uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: dist
+
+      - name: Attach packages and User Guide to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" dist/* --clobber

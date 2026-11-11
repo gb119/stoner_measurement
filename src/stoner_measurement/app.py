@@ -71,6 +71,7 @@ from stoner_measurement.ui.theme import (
     theme_name,
 )
 from stoner_measurement.ui.value_watch import ValueWatchWindow
+from stoner_measurement.user_guide import open_user_guide
 
 logger = logging.getLogger(__name__)
 
@@ -866,6 +867,11 @@ class MeasurementApp(QMainWindow):
         )
         self._act_stop_xray_engine.triggered.connect(self._on_stop_xray_engine)
 
+        self._act_user_guide = QAction("&User Guide", self)
+        self._act_user_guide.setShortcut(QKeySequence("F1"))
+        self._act_user_guide.setStatusTip("Open the offline User Guide")
+        self._act_user_guide.triggered.connect(self._on_user_guide)
+
         self._act_about = QAction("&About", self)
         self._act_about.setStatusTip("Show information about this application")
         self._act_about.triggered.connect(self._on_about)
@@ -956,6 +962,8 @@ class MeasurementApp(QMainWindow):
         self._xray_menu.addAction(self._act_stop_xray_engine)
         # Help menu
         help_menu = menu_bar.addMenu("&Help")
+        help_menu.addAction(self._act_user_guide)
+        help_menu.addSeparator()
         help_menu.addAction(self._act_about)
 
     # ------------------------------------------------------------------
@@ -2217,6 +2225,13 @@ class MeasurementApp(QMainWindow):
         from stoner_measurement.xray_control.engine import XrayControllerEngine
 
         XrayControllerEngine.instance().shutdown()
+
+    def _on_user_guide(self) -> None:
+        """Open the bundled offline manual in the Windows Help viewer."""
+        try:
+            open_user_guide()
+        except OSError as exc:
+            QMessageBox.warning(self, "User Guide", str(exc))
 
     def _on_about(self) -> None:
         """Display the About dialogue."""

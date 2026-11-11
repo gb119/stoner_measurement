@@ -1,5 +1,17 @@
 # Testing Restructure Plan
 
+## 2026-11-11: Offline Windows User Guide
+
+- Added focused helper/build coverage in `tests/unit/test_user_guide.py` and
+  `tests/unit/test_chm_build.py`, plus menu/F1 coverage in
+  `tests/integration/app/test_user_guide_menu.py`. No existing tests moved.
+- All 10 tests passed using the project Conda environment, offscreen Qt and
+  Windows fonts. Tests cover cached guide lifetime, missing files, unsupported
+  platforms, compiler success/failure, stale artifacts, menu/F1 dispatch and
+  error reporting. Ruff passed for the changed Python files.
+- Built a real CHM with HTML Help Workshop, checked its rendering in Windows
+  Help Viewer, and verified the guide is present in the built wheel and sdist.
+
 ## 2026-11-05: Expression preflight on Python 3.12
 
 - Follow-up CI run 42114333018 passed the repaired preflight checks but exposed

@@ -1,0 +1,5 @@
+/* Use basic CSS supported by the Windows HTML Help viewer. The document
+   needs its own gutter beside the native contents pane and its scrollbar. */
+body {
+    padding: 1em 1.5em !important;
+}

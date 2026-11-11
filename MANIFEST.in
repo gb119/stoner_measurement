@@ -1,0 +1,3 @@
+include scripts/build_chm.py
+include scripts/build_windows_release.ps1
+recursive-include src/stoner_measurement/help *.chm

@@ -67,3 +67,16 @@ else:
 
 html_logo = "_static/StonerLogo2.png"
 html_static_path = ["_static"]
+
+# Stable project/CHM filename for the Windows release build.
+htmlhelp_basename = "stoner_measurement"
+
+
+def setup(app):
+    """Apply viewer-specific spacing only to compiled Windows help."""
+    app.connect("builder-inited", _configure_compiled_help)
+
+
+def _configure_compiled_help(app):
+    if app.builder.name == "htmlhelp":
+        app.add_css_file("chm.css")
