@@ -26,12 +26,13 @@ def test_ips120_connection_preserves_persisted_magnet_constant(monkeypatch, qapp
         },
     )
     engine = MagnetControllerEngine()
-    driver = OxfordIPS120(NullTransport(responses=[b"VIPS120-10 3.07\r"]))
+    driver = OxfordIPS120(NullTransport(responses=[b"VIPS120-10 3.07\r", b"C\r"]))
 
     engine.connect_instrument(driver)
 
     assert driver.magnet_constant == pytest.approx(0.075)
     assert engine.configuration_dict()["limits"]["magnet_constant"] == pytest.approx(0.075)
+    driver.transport.queue_response(b"C\r")
     engine.shutdown()
 
 

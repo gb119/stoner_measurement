@@ -109,6 +109,47 @@ class BaseProtocol(ABC):
         """
         return DEFAULT_MAX_FRAME_SIZE
 
+    def command_expects_acknowledgement(self, command: str) -> bool:
+        """Return whether a write must read and validate a reply.
+
+        Args:
+            command (str): Action command without its terminator.
+
+        Returns:
+            (bool): False by default; response-producing protocols override this.
+        """
+        return False
+
+    def validate_acknowledgement(self, raw: bytes, *, command: str) -> None:
+        """Validate an action reply, independently of optional error polling.
+
+        Args:
+            raw (bytes): Acknowledgement received from the transport.
+            command (str): Action command that produced the reply.
+
+        Raises:
+            InstrumentError: The protocol reports an error in the reply.
+        """
+        self.check_error(self.parse_response(raw, command=command), command=command)
+
+    def parse_float(self, response: str, *, command: str) -> float:
+        """Parse a numeric query payload.
+
+        Args:
+            response (str): Payload after response framing has been removed.
+            command (str): Query command used for error context.
+
+        Returns:
+            (float): Numeric value in the reply.
+
+        Raises:
+            ValueError: The payload is not a floating-point number.
+        """
+        try:
+            return float(response.strip())
+        except ValueError as exc:
+            raise ValueError(f"Invalid numeric response for {command}: {response!r}") from exc
+
     @abstractmethod
     def format_command(self, command: str) -> bytes:
         """Format a command string for transmission.

@@ -121,6 +121,14 @@ Concrete classes currently included in the package:
   :class:`~stoner_measurement.instruments.xray.legacy_diffractometer.LegacyXrayDiffractometer`,
   :class:`~stoner_measurement.instruments.xray.simulated.SimulatedXrayDiffractometer`
 
+The legacy Oxford ITC503 and IPS120 drivers share acknowledgement and numeric
+response handling through ``OxfordProtocol``. Setting commands wait for and
+validate their command-letter reply, even when ``auto_check_errors`` is disabled.
+``Q`` communications-mode commands and commands prefixed with ``$`` do not wait
+for a reply. A rejected or malformed acknowledgement raises ``InstrumentError``;
+a missing reply propagates the transport timeout. Actions are not automatically
+retried, since the setting may already have been applied.
+
 .. automodule:: stoner_measurement.instruments
 
 .. autosummary::

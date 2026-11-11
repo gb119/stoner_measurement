@@ -13,7 +13,6 @@ import numpy as np
 from scipy.interpolate import interp1d
 
 from stoner_measurement.config_utils import deep_merge, load_yaml_mapping
-from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.oxford.mercury_itc import (
     OxfordMercuryTemperatureController as OxfordMercuryTemperatureController,
 )
@@ -252,22 +251,6 @@ class _OxfordTemperatureControllerBase(TemperatureController):
             raise ValueError(f"Invalid loop {loop}; expected one of {self._CAPABILITIES.loop_numbers}.")
         return loop
 
-    def _query_float(self, command: str) -> float:
-        """Query and parse a single numeric token."""
-        token = self.query(command).split(",", maxsplit=1)[0].strip()
-        try:
-            return float(token)
-        except ValueError as exc:
-            # Some Oxford replies include an echoed command letter where the
-            # instrument uppercases the echo (e.g. ``Q10.0`` for query ``q``).
-            # Accept a single leading alphabetic prefix when present.
-            if len(token) > 1 and token[:1].isalpha():
-                try:
-                    return float(token[1:])
-                except ValueError:
-                    pass
-            raise ValueError(f"Invalid numeric response for {command!r}: {token!r}.") from exc
-
     def _parse_csv_floats(self, response: str, *, minimum_length: int) -> list[float]:
         """Parse a comma-separated float payload."""
         tokens = [item.strip() for item in response.split(",") if item.strip()]
@@ -380,27 +363,6 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
             identity = super().confirm_identity()
             self.write("C3")
             return identity
-
-    def write(self, command: str, slow: int | None = None) -> None:
-        """Send an ITC503 action and consume its command-letter acknowledgement.
-
-        Args:
-            command (str): Action command without a terminator.
-
-        Keyword Parameters:
-            slow (int | None): Optional transport delay in milliseconds.
-
-        Raises:
-            InstrumentError: The action is rejected or its acknowledgement is invalid.
-        """
-        if command == "Q0" or command == "Q2":
-            super().write(command, slow=slow)
-            return
-        response = self.query(command, slow=slow)
-        # A one-character acknowledgement is retained by OxfordProtocol.
-        self.protocol.check_error(response, command=command)
-        if response != command[:1]:
-            raise InstrumentError(f"OxfordITC503: invalid acknowledgement {response!r}", command=command)
 
     def identify(self) -> str:
         """Return identity string."""

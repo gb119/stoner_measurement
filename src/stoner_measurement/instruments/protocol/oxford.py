@@ -11,8 +11,9 @@ ASCII protocol where:
   certain responses.
 
 References:
-    Oxford Instruments ITC 503 Remote-Control Handbook (1995).
-    Oxford Instruments IPS 120-10 User Manual.
+    Oxford Instruments ITC503 Operator's Handbook, Issue 4 (April 2000).
+    Oxford Instruments IPS120-10 Operator's Handbook, Issue 06 (November 2000),
+    sections 5.2, 5.3 and 6.1.
 """
 
 from __future__ import annotations
@@ -35,7 +36,9 @@ class OxfordProtocol(BaseProtocol):
     payload (after stripping the echo character) begins with ``"?"``.
     Because the error is carried in the normal response, this protocol sets
     :attr:`errors_in_response` to ``True``; callers should invoke
-    :meth:`check_error` on every parsed query response.
+    :meth:`check_error` on every parsed query response. Actions require a
+    single command-letter acknowledgement, except for Q communications-mode
+    commands and explicitly dollar-prefixed commands that suppress replies.
 
     Attributes:
         terminator (bytes):
@@ -140,13 +143,57 @@ class OxfordProtocol(BaseProtocol):
         """
         return query.encode("ascii") + self.terminator
 
+    def command_expects_acknowledgement(self, command: str) -> bool:
+        """Return whether an Oxford action returns a command-letter reply.
+
+        Args:
+            command (str): Action command without its terminator.
+
+        Returns:
+            (bool): False for communications-mode Q commands and explicit
+                dollar-prefixed reply suppression; True otherwise.
+        """
+        return not command.startswith(("Q", "$"))
+
+    def validate_acknowledgement(self, raw: bytes, *, command: str) -> None:
+        """Require an accepted action's single command-letter acknowledgement.
+
+        Args:
+            raw (bytes): Action reply received from the transport.
+            command (str): Action command that produced the reply.
+
+        Raises:
+            InstrumentError: The action was rejected or its reply is malformed.
+        """
+        response = raw.decode("ascii", errors="replace").strip()
+        self.check_error(response, command=command)
+        if response != command[:1]:
+            raise InstrumentError(
+                f"Oxford Instruments: invalid acknowledgement {response!r}", command=command
+            )
+
+    def parse_float(self, response: str, *, command: str) -> float:
+        """Parse the first comma-separated numeric Oxford payload.
+
+        Args:
+            response (str): Payload after command-echo removal.
+            command (str): Query command used for error context.
+
+        Returns:
+            (float): Numeric value in the first response field.
+
+        Raises:
+            ValueError: The first field is not numeric.
+        """
+        return super().parse_float(response.split(",", maxsplit=1)[0], command=command)
+
     def parse_response(self, raw: bytes, *, command: str | None = None) -> str:
         """Parse a raw Oxford Instruments response.
 
         Oxford responses often echo the command letter as their first
         character. This method strips that leading echo character only
-        when it matches the first character of *command*, then strips
-        the trailing carriage return and surrounding whitespace.
+        when it matches the first character of *command* (case-insensitively),
+        then strips the trailing carriage return and surrounding whitespace.
 
         Args:
             raw (bytes):
@@ -156,7 +203,7 @@ class OxfordProtocol(BaseProtocol):
             command (str | None):
                 Command/query string that produced *raw*.  When provided,
                 a leading echoed command character is removed only if it
-                matches the first character of this command.  Defaults to
+                matches the first character of this command, ignoring case. Defaults to
                 ``None``.
 
         Returns:
@@ -184,7 +231,7 @@ class OxfordProtocol(BaseProtocol):
 
         if command:
             first_command_char = command[:1]
-            if first_command_char and decoded.startswith(first_command_char):
+            if first_command_char and decoded[:1].upper() == first_command_char.upper():
                 return decoded[1:]
             return decoded
 

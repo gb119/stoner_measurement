@@ -857,12 +857,13 @@ class TestEngineLifecycle:
         engine = MagnetControllerEngine()
         engine._resolve_driver_class = lambda _name: OxfordIPS120
         engine._build_transport = (
-            lambda _transport, _address: NullTransport(responses=[b"VIPS120-10 3.07\r"])
+            lambda _transport, _address: NullTransport(responses=[b"VIPS120-10 3.07\r", b"C\r"])
         )
         engine._build_protocol = lambda _driver: OxfordProtocol()
         engine.connect_driver("OxfordIPS120", "Null", "")
         assert engine._driver is not None
         assert isinstance(engine._driver, OxfordIPS120)
+        engine._driver.transport.queue_response(b"C\r")
         engine.disconnect_instrument()
         engine.shutdown()
 

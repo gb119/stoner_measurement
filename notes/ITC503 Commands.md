@@ -10,8 +10,10 @@ which incorrectly described C as sensor selection and H as heater range.
 Sections 8.2–8.4 and 8.6.1 (pp. 35–38): ASCII commands end with CR. Actions reply with
 one command letter; reads reply with a letter and data. Rejections start with `?`.
 Consume and validate each action acknowledgement before issuing another command.
-The driver does this even when automatic error polling is disabled. It does not retry
-an action after a missing or invalid acknowledgement.
+The shared `BaseInstrument` transaction and `OxfordProtocol` validation do this even
+when automatic error polling is disabled, for both ITC503 and IPS120. They do not retry
+an action after a missing or invalid acknowledgement. Numeric echo and payload parsing
+also live in the shared protocol; only a matching command echo is removed, ignoring case.
 
 Section 10.1 (p. 43): `C0` and `C2` select local control; `C1` and `C3` select remote control.
 The driver sends `C3` after successful identity verification, permitting the operator to

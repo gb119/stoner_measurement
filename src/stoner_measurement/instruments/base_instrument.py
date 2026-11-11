@@ -183,12 +183,16 @@ class BaseInstrument(ABC):
         self._comms_logger.debug(f"Disconnected {self}")
 
     def write(self, command: str, slow:int|None = None) -> None:
-        """Send a command to the instrument without expecting a response.
+        """Send a command and consume any protocol-required acknowledgement.
 
         The command is formatted by :attr:`protocol` before being passed to
         :attr:`transport`.  If :attr:`auto_check_errors` is ``True`` and the
         protocol uses an error queue (not response-embedded errors),
         :meth:`check_for_errors` is called after the command is sent.
+
+        Protocol-required acknowledgements are always consumed and validated,
+        including when :attr:`auto_check_errors` is disabled. Missing replies
+        propagate the transport timeout; actions are not automatically retried.
 
         A reentrant lock (:attr:`_lock`) is held for the entire write and
         optional error-check cycle so that two concurrent callers cannot
@@ -206,9 +210,11 @@ class BaseInstrument(ABC):
         Raises:
             ConnectionError:
                 If the transport is not open.
+            TimeoutError:
+                If a required acknowledgement does not arrive in time.
             InstrumentError:
-                If :attr:`auto_check_errors` is ``True`` and the instrument
-                reports an error after processing the command.
+                If a required acknowledgement is invalid, or enabled error
+                polling reports an error after processing the command.
 
         Examples:
             >>> from stoner_measurement.instruments.transport import NullTransport
@@ -225,14 +231,18 @@ class BaseInstrument(ABC):
         with self._lock:
             payload = self.protocol.format_command(command)
             try:
-                self.transport.write(_coerce_to_bytes(payload),slow=slow)
+                if self.protocol.command_expects_acknowledgement(command):
+                    raw = self.transport.query(_coerce_to_bytes(payload), slow=slow)
+                    self.protocol.validate_acknowledgement(raw, command=command)
+                else:
+                    self.transport.write(_coerce_to_bytes(payload), slow=slow)
                 if self.auto_check_errors and not self.protocol.errors_in_response:
                     self.check_for_errors(command=command)
-            except InstrumentError:
+            except InstrumentError as exc:
                 self._comms_logger.error(
-                    "Instrument reported error during query %r: %s",
+                    "Instrument reported error during write %r: %s",
                     command,
-                    "",
+                    exc.message,
                 )
                 raise
 
@@ -353,6 +363,20 @@ class BaseInstrument(ABC):
                 raise
 
             return response
+
+    def _query_float(self, command: str) -> float:
+        """Query and parse a numeric reply using the selected protocol.
+
+        Args:
+            command (str): Query expected to return a numeric payload.
+
+        Returns:
+            (float): Numeric value parsed by the protocol.
+
+        Raises:
+            ValueError: The response is not numeric.
+        """
+        return self.protocol.parse_float(self.query(command), command=command)
 
     def query_ieee_block(self, command: str, *, max_payload: int = 256 * 1024 * 1024) -> bytes:
         """Send a query and return its IEEE 488.2 definite-length block payload.

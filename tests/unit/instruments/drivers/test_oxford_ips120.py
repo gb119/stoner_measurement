@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.magnet_controller import (
     HeaterState,
     MagnetLimits,
@@ -23,6 +24,12 @@ def _null(responses=None):
 
 
 class TestOxfordIPS120:
+    def test_connect_closes_transport_when_remote_ack_is_invalid(self):
+        t = _null([b"VIPS120-10 3.07\r", b"?C1\r"])
+        with pytest.raises(InstrumentError, match="unrecognised command"):
+            OxfordIPS120(t).connect()
+        assert not t.is_open
+
     def test_default_protocol_is_oxford(self):
         m = OxfordIPS120(transport=NullTransport())
         assert isinstance(m.protocol, OxfordProtocol)
@@ -49,7 +56,7 @@ class TestOxfordIPS120:
         assert t.write_log == [b"R0\r", b"R7\r", b"R1\r"]
 
     def test_set_target_and_ramp_commands(self):
-        t = _null()
+        t = _null([b"I\r", b"S\r", b"A\r"])
         m = OxfordIPS120(transport=t)
         m.set_target_current(3.0)
         m.set_ramp_rate_current(0.2)
@@ -57,7 +64,7 @@ class TestOxfordIPS120:
         assert t.write_log == [b"I3.0\r", b"S0.2\r", b"A1\r"]
 
     def test_heater_methods_and_property(self):
-        t = _null(responses=[b"X00A0C0H1P0\r"])
+        t = _null(responses=[b"H\r", b"H\r", b"X00A0C0H1P0\r"])
         m = OxfordIPS120(transport=t)
         m.heater_on()
         m.heater_off()
@@ -179,14 +186,14 @@ class TestOxfordIPS120:
         assert m.magnet_constant == pytest.approx(0.5)
 
     def test_set_target_field_uses_native_field_command(self):
-        t = _null()
+        t = _null([b"J\r"])
         m = OxfordIPS120(transport=t)
         m.set_magnet_constant(0.5)
         m.set_target_field(1.0)
         assert t.write_log == [b"J1.0\r"]
 
     def test_set_ramp_rate_field_uses_native_field_command(self):
-        t = _null()
+        t = _null([b"T\r"])
         m = OxfordIPS120(transport=t)
         m.set_magnet_constant(0.5)
         m.set_ramp_rate_field(0.1)

@@ -125,11 +125,12 @@ class TestAutoCheckErrors:
         instrument = BaseInstrument(transport, OxfordProtocol(), auto_check_errors=True)
         assert instrument.query("R1") == "1.234"
 
-    def test_auto_check_errors_write_does_not_query_for_response_embedded(self):
-        transport = _null()
+    def test_auto_check_errors_write_consumes_oxford_ack_without_error_query(self):
+        transport = _null([b"H\r", b"R1.234\r"])
         instrument = BaseInstrument(transport, OxfordProtocol(), auto_check_errors=True)
         instrument.write("H1")
-        assert transport.write_log == [b"H1\r"]
+        assert instrument.query("R1") == "1.234"
+        assert transport.write_log == [b"H1\r", b"R1\r"]
 
 
 if __name__ == "__main__":

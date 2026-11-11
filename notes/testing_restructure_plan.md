@@ -1825,3 +1825,14 @@ enough evidence to remove distinct branch, error-path, or lifecycle contracts.
 - Verification: 362 tests passed on offscreen PyQt5 across the native input editor, temperature panels,
   Lake Shore/Oxford drivers, controller contracts, secondary service, Make Safe and legacy temperature tests.
   Ruff and `git diff --check` passed. Offscreen visual inspection confirmed every row is fully visible.
+
+## 2026-11-11: Shared Oxford protocol transactions
+
+- Added tests/unit/instruments/contracts/test_oxford_transactions.py for both legacy
+  Oxford drivers: acknowledgement ordering, rejection with error polling disabled,
+  reply-free commands, numeric echoes, timeouts, delay forwarding and lock coverage.
+- Existing driver, identity and engine tests retain coverage with explicit action replies.
+  No tests were moved. IPS120 connection cleanup now covers a rejected remote command.
+- Validation: 1,053 instrument and magnet tests passed on Python 3.14.7 and offscreen
+  PyQt5. Ruff passed for all changed Python files. See the shared protocol audit note
+  for the exact test scope and remaining physical hardware validation.

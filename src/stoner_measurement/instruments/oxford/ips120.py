@@ -47,7 +47,7 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         >>> from stoner_measurement.instruments.oxford import OxfordIPS120
         >>> from stoner_measurement.instruments.transport import NullTransport
         >>> t = NullTransport(
-        ...     responses=[b"VIPS120-10 3.07\\r"],
+        ...     responses=[b"VIPS120-10 3.07\\r", b"C\\r", b"VIPS120-10 3.07\\r", b"C\\r"],
         ... )
         >>> mps = OxfordIPS120(transport=t)
         >>> mps.connect()
@@ -81,7 +81,11 @@ class OxfordIPS120(MagnetController, MagnetSupply):
         remote/local mode so the front panel remains usable.
         """
         super().connect()
-        self._set_safe_remote_mode()
+        try:
+            self._set_safe_remote_mode()
+        except Exception:
+            super().disconnect()
+            raise
 
     def disconnect(self) -> None:
         """Return the IPS120 to local/manual control before disconnecting."""
@@ -390,24 +394,6 @@ class OxfordIPS120(MagnetController, MagnetSupply):
     def return_to_local(self) -> None:
         """Return the IPS120 to front-panel local mode."""
         self.write("C0")
-
-    def _query_float(self, command: str) -> float:
-        """Query the instrument and parse a numeric response.
-
-        Args:
-            command (str):
-                Instrument query command expected to return a numeric value.
-
-        Returns:
-            (float):
-                Parsed floating-point value from the response.
-        """
-        reply = self.query(command)
-        token = reply.split(",", maxsplit=1)[0].strip()
-        try:
-            return float(token)
-        except ValueError as exc:
-            raise ValueError(f"Invalid numeric response for {command}: {reply!r}") from exc
 
     def _wait_for_ramp_complete(self, *, timeout: float = 600.0, poll_period: float = 0.25) -> None:
         """Wait for ramp to reach a terminal or inactive state, timing out if unsuccessful.

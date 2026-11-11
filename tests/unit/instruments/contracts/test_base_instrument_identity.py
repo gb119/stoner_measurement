@@ -78,7 +78,7 @@ class TestIdentityAndQueueClearing:
         assert not controller.is_connected
 
     def test_magnet_controller_connect_closes_on_identity_failure(self):
-        transport = NullTransport(responses=[b"VWRONGMODEL 3.07\r"])
+        transport = NullTransport(responses=[b"VWRONGMODEL 3.07\r", b"C\r"])
         controller = OxfordIPS120(transport)
         with pytest.raises(InstrumentError, match="Unexpected instrument identity"):
             controller.connect()
