@@ -398,7 +398,7 @@ class BaseTransport(ABC):
         **VISA resource strings** follow the IVI/VISA convention and do not
         contain ``://``:
 
-        * ``GPIB[N]::address::INSTR`` — :class:`GpibTransport`.
+        * ``GPIB[N]::primary[::secondary][::INSTR]`` — :class:`GpibTransport`.
         * ``TCPIP[N]::host::port::SOCKET`` — :class:`EthernetTransport`.
         * ``TCPIP[N]::host::INSTR`` — :class:`EthernetTransport` on the
           default SCPI port ``5025``.
@@ -538,21 +538,16 @@ class BaseTransport(ABC):
 
         Recognised prefixes: ``GPIB``, ``TCPIP``, ``ASRL``.
         """
+        if resource.strip().upper().startswith("GPIB"):
+            from stoner_measurement.instruments.transport.gpib_transport import GpibTransport
+
+            return GpibTransport.from_resource_string(resource)
+
         if not _VISA_RE.match(resource):
             raise ValueError(f"Unrecognised VISA resource string: {resource!r}")
 
         parts = resource.split("::")
         prefix_upper = parts[0].upper()
-
-        if prefix_upper.startswith("GPIB"):
-            from stoner_measurement.instruments.transport.gpib_transport import (
-                GpibTransport,
-            )
-
-            board_str = parts[0][4:]
-            board = int(board_str) if board_str else 0
-            address = int(parts[1])
-            return GpibTransport(address=address, board=board)
 
         if prefix_upper.startswith("TCPIP"):
             from stoner_measurement.instruments.transport.ethernet_transport import (

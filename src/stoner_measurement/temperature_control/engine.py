@@ -1118,8 +1118,8 @@ class _ControllerSession(QObject):
     def get_loop_settings(self, loop: int) -> LoopSettings | None:
         """Query the hardware for all configurable settings of control *loop*.
 
-        Returns ``None`` when no instrument is connected.  Individual setting
-        reads that fail are logged and sensible defaults are substituted.
+        Returns ``None`` when disconnected or when the Kelvin setpoint cannot
+        be read. Other setting reads that fail use defaults.
 
         Args:
             loop (int):
@@ -1128,12 +1128,16 @@ class _ControllerSession(QObject):
         Returns:
             (LoopSettings | None):
                 Current hardware settings for *loop*, or ``None`` if
-                disconnected.
+                disconnected or the setpoint is unavailable.
         """
         with self._engine_lock:
             if self._driver is None:
                 return None
-            setpoint = self._safe_read_loop(self._driver.get_setpoint, loop, "setpoint", 0.0)
+            try:
+                setpoint = self._driver.get_setpoint(loop)
+            except Exception as exc:
+                logger.warning("TemperatureControllerEngine: loop %d settings unavailable: %s", loop, exc)
+                return None
             mode = self._safe_read_loop(
                 self._driver.get_loop_mode, loop, "loop mode", ControlMode.CLOSED_LOOP
             )
@@ -1475,19 +1479,33 @@ class _ControllerSession(QObject):
         loop_modes: dict[int, object] = {}
         input_channels: dict[int, str] = {}
         for lp in caps.loop_numbers:
-            setpoints[lp] = driver.get_setpoint(lp)
-            heater_outputs[lp] = driver.get_heater_output(lp)
-            loop_modes[lp] = driver.get_loop_mode(lp)
-            try:
-                input_channels[lp] = driver.get_input_channel(lp)
-            except (ConnectionError, ValueError, AttributeError):
-                logger.exception("Failed to read input channel for loop %d during poll", lp)
-            try:
-                heater_ranges[lp] = driver.get_heater_range(lp)
-            except NotImplementedError:
-                pass
-            except (ConnectionError, ValueError, AttributeError):
-                logger.exception("Failed to read heater range for loop %d during poll", lp)
+            for values, read in (
+                (loop_modes, driver.get_loop_mode),
+                (setpoints, driver.get_setpoint),
+                (heater_outputs, driver.get_heater_output),
+                (input_channels, driver.get_input_channel),
+                (heater_ranges, driver.get_heater_range),
+            ):
+                try:
+                    values[lp] = read(lp)
+                except NotImplementedError:
+                    # Optional loop telemetry must not discard sensor readings.
+                    # Retry next poll: front-panel configuration can change.
+                    pass
+                except (ConnectionError, ValueError, AttributeError):
+                    if values is not input_channels and values is not heater_ranges:
+                        raise
+                    logger.exception("Failed to read %s for loop %d during poll", read.__name__, lp)
+                if loop_modes.get(lp) is ControlMode.OFF:
+                    break
+            if lp not in setpoints:
+                # Never evaluate stability against a stale or invented target.
+                for tracking in (
+                    self._target_setpoints, self._at_setpoint_since, self._unstable_since,
+                    self._stable, self._stability_value_history, self._stability_diagnostics,
+                    self._stability_sources,
+                ):
+                    tracking.pop(lp, None)
         return setpoints, heater_outputs, heater_ranges, loop_modes, input_channels
 
     def _read_needle_valve(self, driver, caps) -> float | None:
@@ -1535,7 +1553,10 @@ class _ControllerSession(QObject):
         stable: dict[int, bool] = {}
 
         for lp in loop_numbers:
-            reported_setpoint = setpoints.get(lp, 0.0)
+            if lp not in setpoints:
+                at_setpoint[lp] = stable[lp] = False
+                continue
+            reported_setpoint = setpoints[lp]
             target_setpoint = self._target_setpoints.setdefault(lp, reported_setpoint)
             cfg = _select_stability_band(self._stability_config, target_setpoint)
             tolerance_reading = _reading_for_channel(readings, cfg.tolerance_channel)

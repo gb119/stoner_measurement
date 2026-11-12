@@ -17,14 +17,15 @@ from typing import TYPE_CHECKING
 
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.transport.base import BaseTransport
+from stoner_measurement.telemetry import timed_call
 
 if TYPE_CHECKING:
     import pyvisa
     import pyvisa.resources
 
 #: Regular expression that parses a GPIB VISA resource string of the form
-#: ``"GPIB<board>::<address>::INSTR"``.
-_GPIB_RESOURCE_RE = re.compile(r"^GPIB(\d+)::(\d+)::INSTR$", re.IGNORECASE)
+#: ``GPIB[board]::primary[::secondary][::INSTR]``.
+_GPIB_RESOURCE_RE = re.compile(r"GPIB([0-9]*)::([0-9]+)(?:::([0-9]+))?(?:::INSTR)?", re.IGNORECASE)
 _DEFAULT_GPIB_READ_TERMINATOR = None
 _DEFAULT_GPIB_WRITE_TERMINATOR = "\n"
 _DEFAULT_K6221_SERIAL_POLL = 0.05
@@ -48,13 +49,16 @@ class GpibTransport(BaseTransport):
 
     Wraps a PyVISA ``GPIBInstrument`` resource to provide the standard
     :class:`BaseTransport` interface.  The VISA resource string is
-    constructed from *address* and *board* as ``"GPIB<board>::<address>::INSTR"``.
+    constructed as ``GPIB<board>::<address>[::<secondary_address>]::INSTR``.
 
     Attributes:
         address (int):
             GPIB primary address of the instrument (0–30).
         board (int):
             GPIB board (interface) index.  Defaults to ``0``.
+        secondary_address (int | None):
+            Secondary address (0–30), or ``None`` when not used. Zero is a
+            real secondary address and is distinct from ``None``.
         timeout (float):
             Read timeout in seconds.  Defaults to ``2.0``.
 
@@ -77,6 +81,7 @@ class GpibTransport(BaseTransport):
         use_mav: bool = True,
         poll_time: float = 0.01,
         command_complete_mask: int | None = None,
+        secondary_address: int | None = None,
     ) -> None:
         """Initialise the GPIB transport.
 
@@ -98,6 +103,8 @@ class GpibTransport(BaseTransport):
                 command execution is complete. When supplied, a completed
                 query that never asserts MAV is bounded by *timeout*. Defaults
                 to ``None`` because this bit is not standard across instruments.
+            secondary_address (int | None):
+                GPIB secondary address (0–30), or ``None`` for none.
 
         Raises:
             ImportError:
@@ -111,8 +118,15 @@ class GpibTransport(BaseTransport):
             ) from exc
 
         super().__init__(timeout=timeout)
+        for name, value in (("address", address), ("board", board), ("secondary_address", secondary_address)):
+            if value is None and name == "secondary_address":
+                continue
+            if not isinstance(value, int) or value < 0 or (name != "board" and value > 30):
+                raise ValueError(f"Invalid GPIB {name}: {value!r}.")
         self.address = address
         self.board = board
+        self.secondary_address = secondary_address
+        self._connection_attempt = 0
         self._resource: pyvisa.resources.GPIBInstrument | None = None
         self._rm: pyvisa.ResourceManager | None = None
         self._read_termination: str | None = _DEFAULT_GPIB_READ_TERMINATOR
@@ -132,9 +146,8 @@ class GpibTransport(BaseTransport):
     ) -> GpibTransport:
         """Construct a :class:`GpibTransport` from a VISA resource string.
 
-        Parses the *board* and *address* components from a resource string of
-        the form ``"GPIB<board>::<address>::INSTR"`` and delegates to the
-        standard constructor.
+        Parses ``GPIB[board]::primary[::secondary][::INSTR]``. An omitted
+        board defaults to zero; an omitted secondary address means none.
 
         Args:
             resource_string (str):
@@ -164,13 +177,13 @@ class GpibTransport(BaseTransport):
             >>> t.resource_string
             'GPIB0::14::INSTR'
         """
-        m = _GPIB_RESOURCE_RE.match(resource_string.strip())
+        m = _GPIB_RESOURCE_RE.fullmatch(resource_string.strip())
         if not m:
             raise ValueError(
                 f"Cannot parse GPIB resource string {resource_string!r}. "
-                "Expected format: 'GPIB<board>::<address>::INSTR'."
+                "Expected format: 'GPIB[board]::primary[::secondary][::INSTR]'."
             )
-        board = int(m.group(1))
+        board = int(m.group(1) or 0)
         address = int(m.group(2))
         return cls(
             address=address,
@@ -179,6 +192,7 @@ class GpibTransport(BaseTransport):
             use_mav=use_mav,
             poll_time=poll_time,
             command_complete_mask=command_complete_mask,
+            secondary_address=int(m.group(3)) if m.group(3) is not None else None,
         )
 
     @property
@@ -187,14 +201,20 @@ class GpibTransport(BaseTransport):
 
         Returns:
             (str):
-                Resource string in the form ``"GPIB<board>::<address>::INSTR"``.
+                Canonical VISA string including the secondary address, if set.
 
         Examples:
             >>> from stoner_measurement.instruments.transport import GpibTransport
             >>> GpibTransport(address=14, board=1).resource_string
             'GPIB1::14::INSTR'
         """
-        return f"GPIB{self.board}::{self.address}::INSTR"
+        secondary = "" if self.secondary_address is None else f"::{self.secondary_address}"
+        return f"GPIB{self.board}::{self.address}{secondary}::INSTR"
+
+    def _visa_call(self, stage, function, *args, **kwargs):
+        """Run one native operation with optional connection timing diagnostics."""
+        connection = f"{id(self):x}/{self._connection_attempt}"
+        return timed_call(self.resource_string, connection, stage, function, *args, **kwargs)
 
     def open(self) -> None:
         """Open the GPIB resource via PyVISA.
@@ -206,11 +226,12 @@ class GpibTransport(BaseTransport):
         import pyvisa
 
         try:
-            self._rm = pyvisa.ResourceManager()
-            self._resource = self._rm.open_resource(self.resource_string)
-            self._resource.timeout = int(self._timeout * 1000)  # pyvisa uses milliseconds
-            self._resource.send_end = True
-            self._resource.read_termination = self._read_termination
+            self._connection_attempt += 1
+            self._rm = self._visa_call("resource_manager", pyvisa.ResourceManager)
+            self._resource = self._visa_call("open_resource", self._rm.open_resource, self.resource_string)
+            self._visa_call("set_timeout", setattr, self._resource, "timeout", int(self._timeout * 1000))
+            self._visa_call("set_send_end", setattr, self._resource, "send_end", True)
+            self._visa_call("set_read_termination", setattr, self._resource, "read_termination", self._read_termination)
             self._is_open = True
             self._log_comms_traffic("IEEE", "Connection opened.")
         except pyvisa.VisaIOError as exc:
@@ -226,7 +247,7 @@ class GpibTransport(BaseTransport):
         transports, so its process-level lifetime is left to PyVISA.
         """
         if self._resource is not None:
-            self._resource.close()
+            self._visa_call("close_resource", self._resource.close)
             self._resource = None
         self._rm = None
         self._is_open = False
@@ -252,10 +273,10 @@ class GpibTransport(BaseTransport):
         if self._resource is None:
             raise ConnectionError("GPIB transport is not open.")
         self._log_comms_traffic("TX", data)
-        self._resource.write_raw(data)
+        self._visa_call("write_raw", self._resource.write_raw, data)
         if slow is not None:
             sleep(slow / 1000)
-        rc = self._resource.read_stb()
+        rc = self._visa_call("write_serial_poll", self._resource.read_stb)
         if self._status_error_mask is not None and rc & self._status_error_mask:
             raise InstrumentError(f"Bad return status byte from {data.decode()}: STB={rc}")
         return rc
@@ -312,7 +333,7 @@ class GpibTransport(BaseTransport):
                         f"Timeout reading from GPIB address {self.address}; "
                         f"last STB={last_status_byte}."
                     )
-                frame = self._resource.read_raw(frame_limit)
+                frame = self._visa_call("read_raw", self._resource.read_raw, frame_limit)
                 response += frame
                 if self._use_mav:
                     sleep(self._poll_time)
@@ -397,7 +418,7 @@ class GpibTransport(BaseTransport):
         """
         if self._resource is None:
             return None
-        stb = self._resource.read_stb()
+        stb = self._visa_call("read_serial_poll", self._resource.read_stb)
         self._log_comms_traffic("IEEE", f"{stb=}")
         return stb
 
@@ -442,7 +463,7 @@ class GpibTransport(BaseTransport):
         import pyvisa
 
         try:
-            self._resource.clear()
+            self._visa_call("device_clear", self._resource.clear)
             self._log_comms_traffic("IEEE", "Connection flushed.")
         except pyvisa.VisaIOError as exc:
             logger.debug("Ignoring GPIB Device Clear failure for %s: %s", self.resource_string, exc)
@@ -496,6 +517,7 @@ class PassThroughGpibTransport(GpibTransport):
         poll_time: float = 0.01,
         command_complete_mask: int | None = None,
         max_read_chunks: int = 64,
+        secondary_address: int | None = None,
     ) -> None:
         """Initialise the GPIB transport.
 
@@ -511,6 +533,8 @@ class PassThroughGpibTransport(GpibTransport):
             max_read_chunks (int):
                 Maximum number of ``SYST:COMM:SER:ENT?`` chunks to poll while
                 collecting one relayed response.
+            secondary_address (int | None):
+                GPIB secondary address of the 6221, or ``None`` for none.
 
         Raises:
             ImportError:
@@ -528,6 +552,7 @@ class PassThroughGpibTransport(GpibTransport):
             board=board,
             timeout=timeout,
             use_mav=use_mav,
+            secondary_address=secondary_address,
             poll_time=poll_time,
             command_complete_mask=command_complete_mask,
         )

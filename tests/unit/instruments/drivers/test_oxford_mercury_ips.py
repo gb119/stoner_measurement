@@ -48,10 +48,12 @@ class TestOxfordMercuryIPS:
         assert not driver.is_connected
         assert transport.write_log == [b"*IDN?\n"]
 
-    def test_native_model_and_firmware(self):
-        driver = OxfordMercuryIPS(_null([b"IDN:OXFORD INSTRUMENTS:MERCURY iPS:12345:2.7.0\n"] * 2))
-        assert driver.get_model() == "MERCURY iPS"
-        assert driver.get_firmware_version() == "2.7.0"
+    @pytest.mark.parametrize("firmware", ["2.7.0", "2.2.6.20", "3.1.12.4"])
+    def test_native_model_and_firmware(self, firmware):
+        identity = f"IDN:OXFORD INSTRUMENTS:MERCURY IPS:12355001:{firmware}\n".encode()
+        driver = OxfordMercuryIPS(_null([identity] * 2))
+        assert driver.get_model() == "MERCURY IPS"
+        assert driver.get_firmware_version() == firmware
 
     @pytest.mark.parametrize("reply", [
         b"STAT:DEV:GRPZ:PSU:SIG:FSET:INVALID\n",
@@ -108,7 +110,7 @@ class TestOxfordMercuryIPS:
                 return 0x04
 
             def read_raw(self, count):
-                return b"IDN:OXFORD INSTRUMENTS:MERCURY iPS:12345:2.7.0\n"
+                return b"IDN:OXFORD INSTRUMENTS:MERCURY IPS:12355001:2.2.6.20\n"
 
             def clear(self):
                 pass
@@ -118,13 +120,14 @@ class TestOxfordMercuryIPS:
 
         class Manager:
             def open_resource(self, address):
+                assert address == "GPIB0::25::1::INSTR"
                 return Resource()
 
         monkeypatch.setattr(pyvisa, "ResourceManager", Manager)
         engine = MagnetControllerEngine()
         engine.set_polling_rate(0)
         try:
-            engine.connect_driver("OxfordMercuryIPS", "GPIB", "GPIB0::12::INSTR")
+            engine.connect_driver("OxfordMercuryIPS", "GPIB", "GPIB0::25::1::INSTR")
             driver = engine.connected_driver
             assert isinstance(driver, OxfordMercuryIPS)
             assert driver.is_connected

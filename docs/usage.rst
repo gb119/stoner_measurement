@@ -27,6 +27,40 @@ Or from Python:
     from stoner_measurement.main import main
     main()
 
+Capturing diagnostic telemetry
+------------------------------
+
+To investigate slow GPIB connections, launch a diagnostic session from
+PowerShell in the environment where the application is installed:
+
+.. code-block:: powershell
+
+    stoner-measurement --telemetry-log "$env:TEMP\stoner-telemetry.log"
+
+The switch is optional. Without it, timing capture and file writes are disabled.
+The selected file is appended to, and its parent directory must already exist.
+You can also add the switch and a quoted absolute filename to the application's
+Windows shortcut target.
+
+Capture records currently cover GPIB resource-manager creation, resource opening,
+session attributes, Device Clear, writes, serial polls, reads and closing.
+Each call has a START record followed by END or FAILED with elapsed milliseconds,
+the resource, connection attempt and thread. Records are written directly to disk
+and flushed without waiting for the GUI. If the UI stays frozen, the last START
+without END or FAILED identifies the operation still waiting to return.
+
+For a remote test, connect once to the Lake Shore 340, disconnect, then repeat
+with the ITC503. Close the application after reproducing the delay and copy
+``stoner-telemetry.log`` from the Windows temporary directory. If the application
+must be terminated, copy the file afterwards; already-flushed records remain
+available. Include the instrument order, approximate delay, and installed NI-VISA
+and NI-488.2 versions when returning the file. Python, platform, PyVISA version
+and the selected VISA backend are included automatically.
+
+Capture includes command text and continues during polling, so keep the test
+session short. Remove the switch for normal use. Capture diagnoses the blocking
+operation; it does not move communications off the GUI thread or cancel VISA calls.
+
 Application layout
 ------------------
 

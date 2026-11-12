@@ -1,5 +1,42 @@
 # Testing Restructure Plan
 
+## 2026-11-12: Opt-in GPIB timing capture
+
+- Added focused capture tests in
+  `tests/unit/instruments/transport/test_gpib_diagnostics.py` and CLI routing
+  tests in `tests/unit/test_main_telemetry.py`. No tests moved or removed.
+- Verified disabled capture avoids clock reads, START is flushed before a
+  blocked call completes, errors propagate unchanged, swallowed Device Clear
+  failures are captured, and CLI options leave Qt arguments intact.
+- Conda/offscreen PyQt5 run: 306 passed across these modules, all transports,
+  Lake Shore, Oxford temperature and Mercury iPS drivers. An initial native
+  SciPy DLL failure was resolved by placing environment DLL paths first.
+  Ruff is unavailable. `git diff --check` passed.
+
+## 2026-11-12: GPIB secondary addresses
+
+- Extended the existing GPIB and Mercury iPS modules for shared VISA parsing,
+  secondary-address round trips (including zero), optional board/suffix,
+  invalid resources and the observed four-component firmware identity.
+  The engine connection test now opens `GPIB0::25::1::INSTR` exactly.
+  No tests moved or removed.
+- Conda/offscreen PyQt5 run of `tests/unit/instruments/transport`,
+  `tests/unit/instruments/drivers/test_oxford_mercury_ips.py` and
+  `tests/unit/instruments/contracts/test_instrument_locking.py`: 187 passed.
+  `git diff --check` passed. Ruff remains unavailable in this environment.
+
+## 2026-11-12: Optional temperature loop telemetry
+
+- Added `tests/unit/control/temperature/test_optional_loop_telemetry.py` for
+  native Model 340 monitoring with unsupported targets, disabled-loop query
+  suppression, primary/secondary isolation, recovery and connection failure.
+  No tests moved or removed.
+- Validation and bench limits are recorded in
+  `notes/2026-11-12-lakeshore340-monitor-polling.md`.
+- Conda/offscreen PyQt5 regression run: 185 passed across the temperature
+  control directory, secondary service, Lake Shore drivers and legacy
+  temperature-control module. Ruff is unavailable in this environment.
+
 ## 2026-11-11: Controller failure waits
 
 - Added focused command/scan/sweep failure checks in

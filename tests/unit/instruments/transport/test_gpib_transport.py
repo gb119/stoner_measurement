@@ -6,6 +6,34 @@ import pytest
 
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol
+from stoner_measurement.instruments.transport import BaseTransport, GpibTransport, PassThroughGpibTransport
+
+
+@pytest.mark.parametrize("factory", [
+    GpibTransport.from_resource_string, BaseTransport.from_uri, PassThroughGpibTransport.from_resource_string,
+])
+@pytest.mark.parametrize("resource,canonical,secondary", [
+    ("GPIB0::25::1::INSTR", "GPIB0::25::1::INSTR", 1),
+    (" gpib::25::0::instr ", "GPIB0::25::0::INSTR", 0),
+    ("GPIB2::30::30", "GPIB2::30::30::INSTR", 30),
+    ("GPIB::25", "GPIB0::25::INSTR", None),
+    ("GPIB0::25::INSTR", "GPIB0::25::INSTR", None),
+])
+def test_gpib_resource_round_trip(factory, resource, canonical, secondary):
+    transport = factory(resource)
+    assert transport.resource_string == canonical
+    assert transport.secondary_address == secondary
+    assert factory(transport.resource_string).resource_string == canonical
+
+
+@pytest.mark.parametrize("factory", [GpibTransport.from_resource_string, BaseTransport.from_uri])
+@pytest.mark.parametrize("resource", [
+    "GPIB0::31::INSTR", "GPIB0::25::31::INSTR", "GPIB0::25::-1::INSTR",
+    "GPIB0::25::1::2::INSTR", "GPIB0::25::SOCKET", "GPIB0::INTFC", "GPIB0::25::INSTR::junk",
+])
+def test_invalid_gpib_instrument_resource_rejected(factory, resource):
+    with pytest.raises(ValueError):
+        factory(resource)
 
 
 class TestGpibProtocolTermination:
