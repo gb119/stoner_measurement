@@ -1041,27 +1041,6 @@ class TestTemperatureControlPanel:
         # Reset.
         panel._on_gas_auto_changed(0)
 
-    def test_input_settings_curve_selector_uses_curve_names(self, qapp, monkeypatch, managed_temperature_panel):
-        from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
-        panel = managed_temperature_panel()
-        monkeypatch.setattr(panel._engine, "get_calibration_curve_names", lambda: {5: "Standard Diode"})
-
-        panel._configure_input_settings_tab(
-            ControllerCapabilities(
-                num_inputs=1,
-                num_loops=1,
-                input_channels=("A",),
-                loop_numbers=(1,),
-                has_input_settings=True,
-            )
-        )
-
-        curve_combo = panel._input_settings_widget._editors["A"]["curve_number"]
-        named_curve_index = curve_combo.findData(5)
-        assert named_curve_index >= 0
-        assert curve_combo.itemText(named_curve_index) == "Standard Diode (5)"
-        assert curve_combo.itemText(curve_combo.findData(2)) == "2"
-
     def test_chart_widgets_exist(self, qapp, managed_temperature_panel):
         panel = managed_temperature_panel()
         assert hasattr(panel, "_chart_widget")
@@ -1151,40 +1130,6 @@ class TestTemperatureControlPanel:
         range_combo = zone_widget._table.cellWidget(0, 5)
         assert range_combo.currentText() == "Medium"
         assert zone_widget._collect_entries()[0].ramp_rate == pytest.approx(2.5)
-
-    def test_connected_panel_runs_all_hardware_reads(self, qapp, monkeypatch, managed_temperature_panel):
-        from types import SimpleNamespace
-        from unittest.mock import MagicMock
-
-        from stoner_measurement.instruments.temperature_controller import ControllerCapabilities
-        panel = managed_temperature_panel()
-        caps = ControllerCapabilities(
-            num_inputs=1,
-            num_loops=1,
-            input_channels=("A",),
-            loop_numbers=(1,),
-            has_zone=True,
-            has_input_settings=True,
-            has_cryogen_control=True,
-        )
-        panel._engine._driver = SimpleNamespace(get_capabilities=lambda: caps)
-        loop_group = SimpleNamespace(read_from_hardware=MagicMock())
-        monkeypatch.setattr(panel, "_rebuild_loop_groups", lambda _caps: None)
-        panel._loop_groups = {1: loop_group}
-        monkeypatch.setattr(panel, "_configure_zone_tab", lambda _caps: None)
-        monkeypatch.setattr(panel, "_configure_input_settings_tab", lambda _caps: None)
-        monkeypatch.setattr(panel, "_refresh_stability_channel_selectors", lambda: None)
-        monkeypatch.setattr(panel._zone_table_widget, "read_from_hardware", MagicMock())
-        monkeypatch.setattr(panel._input_settings_widget, "read_all", MagicMock())
-        monkeypatch.setattr(panel, "_on_read_needle", MagicMock())
-        monkeypatch.setattr(panel._engine, "read_controller_state", lambda: None)
-
-        panel._sync_connected_driver_ui()
-
-        loop_group.read_from_hardware.assert_called_once_with()
-        panel._zone_table_widget.read_from_hardware.assert_called_once_with(show_warning=False)
-        panel._input_settings_widget.read_all.assert_called_once_with(show_warning=False)
-        panel._on_read_needle.assert_called_once_with()
 
     def test_chart_uses_stability_rate_channel(self, qapp, managed_temperature_panel):
         panel = managed_temperature_panel()

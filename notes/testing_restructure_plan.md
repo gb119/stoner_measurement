@@ -1,5 +1,22 @@
 # Testing Restructure Plan
 
+## 2026-11-12: Lazy temperature-panel readbacks
+
+- Relocated/adapted the legacy curve-label and eager-connection-read scenarios
+  from `tests/test_temperature_control.py` into
+  `tests/unit/ui/panels/test_temperature_panel_readbacks.py`. The new focused
+  tests replace the eager-read expectation with deferred loading and preserve
+  curve-label coverage while adding duplicate-notification, peer connection,
+  reconnect, edit-preservation, loading/failed disabled controls and retry checks.
+  The remaining legacy temperature module is unchanged.
+- Updated native 340 and secondary-panel tests for per-controller input tabs.
+  Apply wire-command tests now establish a successful settings read before
+  clicking Apply, matching the disabled-until-read editor contract.
+- Source and destination modules passed together in the final 243-test
+  controller/panel/driver selection on offscreen PyQt5 through Miniforge Conda.
+  Full collection succeeded: 4,534 tests. `git diff --check` passed.
+  Ruff remains unavailable; physical controller timing needs remote confirmation.
+
 ## 2026-11-12: Opt-in GPIB timing capture
 
 - Added focused capture tests in

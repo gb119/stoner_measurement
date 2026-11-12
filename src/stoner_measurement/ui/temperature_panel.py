@@ -223,9 +223,17 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         # Current capabilities (populated after connection).
         self._capabilities = None
         self._secondary_cryogen = None
+        self._synced_drivers = {}
+        self._input_settings_loaded = set()
+        self._zone_target = None
+        self._zone_loaded = None
+        self._syncing_connection = False
+        self._loading_settings = False
         self._allow_exit_close = False
 
         self._build_ui()
+        self._tabs.currentChanged.connect(self._load_visible_settings)
+        self._input_tabs.currentChanged.connect(lambda _index: self._load_visible_settings(self._tabs.currentIndex()))
         self._load_connection_preferences()
         self._connect_engine_signals()
 
@@ -555,12 +563,16 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
 
         # Settings table
         self._input_settings_widget = _InputSettingsTableWidget(self._engine)
-        layout.addWidget(QLabel("Primary"))
-        layout.addWidget(self._input_settings_widget)
-
-        layout.addWidget(QLabel("Secondary"))
         self._secondary_input_settings = _InputSettingsTableWidget(self._engine.controller("secondary"))
-        layout.addWidget(self._secondary_input_settings)
+        self._input_tabs = FontAwareTabWidget()
+        for editor, title in ((self._input_settings_widget, "Primary"),
+                              (self._secondary_input_settings, "Secondary")):
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            page_layout.addWidget(editor)
+            page_layout.addStretch()
+            self._input_tabs.addTab(page, title)
+        layout.addWidget(self._input_tabs)
         layout.addStretch()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -918,11 +930,12 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         """Tell the engine to disconnect."""
         self._engine.disconnect_instrument()
         self._sync_existing_connection_state()
+        self._set_address_widget_status(3, VisaResourceStatus.DISCONNECTED)
 
     def _apply_disconnected_ui_state(self) -> None:
         """Clear connected-only UI state without issuing engine commands."""
         self._capabilities = None
-        self._clear_loop_groups()
+        self._clear_loop_groups("primary")
         self._needle_group.hide()
         self._gas_auto_row_label.hide()
         self._gas_auto_check.hide()
@@ -933,6 +946,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         self._zone_loop_combo.blockSignals(False)
         self._zone_loop_selector_widget.hide()
         self._zone_table_widget.clear_table()
+        self._zone_loaded = None
         # Disable input settings tab.
         self._tabs.setTabEnabled(self._input_settings_tab_index, False)
         self._rate_source_channel = None
@@ -946,52 +960,79 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
 
     def _sync_existing_connection_state(self) -> None:
         """Mirror an already-open engine connection into the panel widgets."""
+        if self._syncing_connection:
+            return
+        drivers = {slot: session.connected_driver for slot, session in self._engine.controllers.items()}
+        changed = {slot for slot, driver in drivers.items()
+                   if slot not in self._synced_drivers or self._synced_drivers[slot] is not driver}
+        if not changed:
+            self._sync_secondary_ui(refresh_settings=False)
+            return
+        self._syncing_connection = True
+        blocked = self._tabs.blockSignals(True)
+        try:
+            self._sync_connection_changes(drivers, changed)
+        finally:
+            self._tabs.blockSignals(blocked)
+            self._syncing_connection = False
+        self._load_visible_settings(self._tabs.currentIndex())
+
+    def _sync_connection_changes(self, drivers, changed):
+        """Refresh only sessions whose connected driver identity changed."""
+        self._synced_drivers = drivers
+        self._input_settings_loaded.difference_update(changed)
         self._sync_driver_choice()
         transport_name = self._engine.connected_transport_name
         address = self._engine.connected_address
-        if self._engine.connected_driver is None:
-            self._apply_disconnected_ui_state()
-            self._sync_secondary_ui()
-            self._on_engine_status_changed(self._engine.status)
-            return
-        if transport_name:
+        if transport_name and "primary" in changed:
             self._sync_live_connection_widgets(transport_name, address or "")
         try:
-            self._sync_connected_driver_ui()
-            self._sync_secondary_ui()
+            if "primary" in changed:
+                if drivers["primary"] is None:
+                    self._apply_disconnected_ui_state()
+                else:
+                    self._sync_connected_driver_ui()
+            self._rebuild_loop_groups()
+            self._sync_secondary_ui(refresh_settings="secondary" in changed)
         except Exception:
             logger.exception("Failed to refresh temperature panel from existing connection")
 
-    def _sync_secondary_ui(self):
+    def _sync_secondary_ui(self, *, refresh_settings=True):
         """Refresh combined controls with capabilities from each owning session."""
         self._secondary_enabled.blockSignals(True)
         self._secondary_enabled.setChecked(self._engine.controller_enabled("secondary"))
         self._secondary_enabled.blockSignals(False)
         self._secondary_connection.setEnabled(self._secondary_enabled.isChecked())
         self._control_tabs.setTabVisible(1, self._secondary_enabled.isChecked())
+        self._input_tabs.setTabVisible(1, self._secondary_enabled.isChecked())
         if self._engine.connected_driver is None and self._engine.controller("secondary").connected_driver is not None:
             self._control_tabs.setCurrentIndex(1)
-        self._rebuild_loop_groups()
-        for group in self._loop_groups.values():
-            group.read_from_hardware()
         session = self._engine.controller("secondary")
         driver = session.connected_driver
         caps = driver.get_capabilities() if driver is not None else None
         has_inputs = caps is not None and caps.has_input_settings
-        if has_inputs:
+        if has_inputs and refresh_settings:
             self._select_input_settings_editor("_secondary_input_settings", session, caps)
-            self._secondary_input_settings.set_curve_names(session.get_calibration_curve_names())
+            self._secondary_input_settings.set_curve_names({})
             self._secondary_input_settings.set_channels(caps.input_channels)
-            self._secondary_input_settings.read_all(show_warning=False)
             self._tabs.setTabEnabled(self._input_settings_tab_index, True)
-        else:
+        elif not has_inputs:
             self._secondary_input_settings.clear()
         self._secondary_input_settings.setVisible(has_inputs)
-        if self._secondary_cryogen is not None:
+        primary = self._engine.connected_driver
+        self._tabs.setTabEnabled(
+            self._input_settings_tab_index,
+            has_inputs or (primary is not None and primary.get_capabilities().has_input_settings),
+        )
+        self._input_tabs.setTabEnabled(0, primary is not None and primary.get_capabilities().has_input_settings)
+        self._input_tabs.setTabEnabled(1, has_inputs)
+        if not self._input_tabs.isTabEnabled(self._input_tabs.currentIndex()):
+            self._input_tabs.setCurrentIndex(0 if self._input_tabs.isTabEnabled(0) else 1)
+        if self._secondary_cryogen is not None and refresh_settings:
             self._secondary_control_layout.removeWidget(self._secondary_cryogen)
             self._secondary_cryogen.deleteLater()
             self._secondary_cryogen = None
-        if caps is not None and caps.has_cryogen_control:
+        if caps is not None and caps.has_cryogen_control and refresh_settings:
             self._secondary_cryogen = _CryogenGroup(session, caps)
             self._secondary_control_layout.insertWidget(
                 self._secondary_control_layout.count() - 1, self._secondary_cryogen
@@ -1011,8 +1052,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         has_zones = self._zone_loop_combo.count() > 0
         self._tabs.setTabEnabled(self._zone_tab_index, has_zones)
         self._zone_loop_selector_widget.setVisible(has_zones)
-        if has_zones:
-            self._on_zone_loop_changed(self._zone_loop_combo.currentIndex())
+        self._on_zone_loop_changed(self._zone_loop_combo.currentIndex())
         self._refresh_stability_channel_selectors()
 
     def _sync_live_connection_widgets(self, transport_name: str, address: str) -> None:
@@ -1032,56 +1072,21 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
             return
         caps = driver.get_capabilities()
         self._capabilities = caps
-        self._rebuild_loop_groups(caps)
         self._needle_group.setVisible(caps.has_cryogen_control)
         self._gas_auto_row_label.setVisible(caps.has_gas_auto_mode)
         self._gas_auto_check.setVisible(caps.has_gas_auto_mode)
-        self._configure_zone_tab(caps)
         self._configure_input_settings_tab(caps)
         self._refresh_stability_channel_selectors()
-        for group in self._loop_groups.values():
-            group.read_from_hardware()
-        if caps.has_zone:
-            self._zone_table_widget.read_from_hardware(show_warning=False)
-        if caps.has_input_settings:
-            self._input_settings_widget.read_all(show_warning=False)
         if caps.has_cryogen_control:
             self._on_read_needle()
-        state = self._engine.read_controller_state()
-        if state is not None:
-            self._on_state_updated(state)
+        else:
+            state = self._engine.read_controller_state()
+            if state is not None:
+                self._on_state_updated(state)
 
     # ------------------------------------------------------------------
     # Control tab slots
     # ------------------------------------------------------------------
-
-    def _configure_zone_tab(self, caps: ControllerCapabilities) -> None:
-        """Enable or disable the zone tab based on driver capabilities.
-
-        Populates the loop selector with loops that support zone control and
-        shows it only when there is more than one loop.
-
-        Args:
-            caps (ControllerCapabilities):
-                The driver's capability descriptor.
-        """
-        enabled = caps.has_zone
-        self._tabs.setTabEnabled(self._zone_tab_index, enabled)
-        self._zone_loop_combo.blockSignals(True)
-        self._zone_loop_combo.clear()
-        if enabled:
-            for lp in caps.loop_numbers:
-                self._zone_loop_combo.addItem(f"Loop {lp}", lp)
-            if len(caps.loop_numbers) > 1:
-                self._zone_loop_selector_widget.show()
-            else:
-                self._zone_loop_selector_widget.hide()
-            loop = caps.loop_numbers[0] if caps.loop_numbers else 1
-            self._zone_table_widget.set_loop(loop, caps.heater_range_labels.get(loop, ()))
-        else:
-            self._zone_loop_selector_widget.hide()
-            self._zone_table_widget.clear_table()
-        self._zone_loop_combo.blockSignals(False)
 
     @pyqtSlot(int)
     def _on_zone_loop_changed(self, index: int) -> None:
@@ -1097,8 +1102,49 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
             local = loop.loop if isinstance(loop, LoopRef) else loop
             driver = self._engine.controller(slot).connected_driver
             labels = driver.get_capabilities().heater_range_labels.get(local, ()) if driver else ()
+            target = (driver, loop)
+            changed = target != self._zone_target
+            if changed:
+                self._zone_table_widget.clear_table()
+                self._zone_target = target
+                self._zone_loaded = None
             self._zone_table_widget.set_loop(loop, labels)
-            self._zone_table_widget.read_from_hardware(show_warning=False)
+            if changed and not self._syncing_connection:
+                self._load_visible_settings(self._tabs.currentIndex())
+        else:
+            self._zone_target = self._zone_loaded = None
+            self._zone_table_widget.clear_table()
+
+    def _load_visible_settings(self, index):
+        """Load expensive tables once on first use in the current connection."""
+        if self._loading_settings or self._syncing_connection:
+            return
+        self._loading_settings = True
+        try:
+            self._load_settings_page(index)
+        finally:
+            self._loading_settings = False
+
+    def _load_settings_page(self, index):
+        """Read only the selected table and its owning controller."""
+        if index == self._zone_tab_index and self._zone_target is not None:
+            if self._zone_loaded != self._zone_target:
+                if self._zone_table_widget.read_from_hardware(show_warning=False):
+                    self._zone_loaded = self._zone_target
+        elif index == self._input_settings_tab_index:
+            for slot, attribute in (("primary", "_input_settings_widget"),
+                                    ("secondary", "_secondary_input_settings")):
+                if (slot == "secondary") != (self._input_tabs.currentIndex() == 1):
+                    continue
+                session = self._engine.controller(slot)
+                driver = session.connected_driver
+                if driver is None or not driver.get_capabilities().has_input_settings:
+                    continue
+                if slot not in self._input_settings_loaded:
+                    editor = getattr(self, attribute)
+                    editor.set_curve_names(session.get_calibration_curve_names())
+                    if editor.read_all(show_warning=False):
+                        self._input_settings_loaded.add(slot)
 
     def _configure_input_settings_tab(self, caps: ControllerCapabilities) -> None:
         """Enable or disable the Input Settings tab based on driver capabilities.
@@ -1115,7 +1161,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
 
         if enabled:
             self._select_input_settings_editor("_input_settings_widget", self._engine, caps)
-            self._input_settings_widget.set_curve_names(self._engine.get_calibration_curve_names())
+            self._input_settings_widget.set_curve_names({})
             self._input_settings_widget.set_channels(caps.input_channels)
         else:
             self._input_settings_widget.set_curve_names({})
@@ -1348,24 +1394,41 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
 
     def _rebuild_loop_groups(self, caps=None):
         """Combine all advertised loops while preserving native session ownership."""
-        self._clear_loop_groups()
+        desired = {}
         for descriptor in self._engine.loop_catalogue():
             ref = descriptor.reference
             session = self._engine.controller(ref.controller_id)
-            group = _LoopControlGroup(ref.loop, session, descriptor.capabilities)
-            group.setTitle(descriptor.label)
             key = ref.loop if ref.controller_id == "primary" else ref
+            desired[key] = (descriptor, session)
+        for key, group in list(self._loop_groups.items()):
+            target = desired.get(key)
+            if target is None or group._connected_driver is not target[1].connected_driver:
+                layout = self._secondary_loop_layout if isinstance(key, LoopRef) else self._loop_layout
+                layout.removeWidget(group)
+                group.deleteLater()
+                del self._loop_groups[key]
+        for key, (descriptor, session) in desired.items():
+            if key in self._loop_groups:
+                continue
+            ref = descriptor.reference
+            group = _LoopControlGroup(ref.loop, session, descriptor.capabilities)
+            group._connected_driver = session.connected_driver
+            group.setTitle(descriptor.label)
             self._loop_groups[key] = group
             layout = self._loop_layout if ref.controller_id == "primary" else self._secondary_loop_layout
             layout.addWidget(group)
+            group.read_from_hardware()
 
-    def _clear_loop_groups(self) -> None:
+    def _clear_loop_groups(self, controller_id=None) -> None:
         """Remove all existing per-loop control group widgets."""
-        for key, group in self._loop_groups.items():
+        for key, group in list(self._loop_groups.items()):
+            slot = "secondary" if isinstance(key, LoopRef) else "primary"
+            if controller_id is not None and slot != controller_id:
+                continue
             layout = self._secondary_loop_layout if isinstance(key, LoopRef) else self._loop_layout
             layout.removeWidget(group)
             group.deleteLater()
-        self._loop_groups.clear()
+            del self._loop_groups[key]
 
     @pyqtSlot()
     @_report_hardware_error
@@ -1376,14 +1439,21 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
     @pyqtSlot()
     def _on_read_needle(self) -> None:
         """Read the needle valve position and automatic mode from the instrument."""
+        self._needle_spin.setEnabled(False)
+        self._needle_apply_btn.setEnabled(False)
+        self._gas_auto_check.setEnabled(False)
+        self._needle_group.repaint()
         state = self._engine.read_controller_state()
         if state is None:
             return
         if state.needle_valve is not None:
+            self._needle_spin.setEnabled(not state.gas_auto_mode)
+            self._needle_apply_btn.setEnabled(not state.gas_auto_mode)
             self._needle_spin.blockSignals(True)
             self._needle_spin.setValue(state.needle_valve)
             self._needle_spin.blockSignals(False)
         if state.gas_auto_mode is not None:
+            self._gas_auto_check.setEnabled(True)
             self._gas_auto_check.blockSignals(True)
             self._gas_auto_check.setChecked(state.gas_auto_mode)
             self._gas_auto_check.blockSignals(False)
@@ -1692,6 +1762,10 @@ class _CryogenGroup(QGroupBox):
         self._apply.setEnabled(not enabled)
 
     def _read(self):
+        self._position.setEnabled(False)
+        self._apply.setEnabled(False)
+        self._auto.setEnabled(False)
+        self.repaint()
         state = self._session.read_controller_state()
         self.update_state(state)
 
@@ -1700,7 +1774,10 @@ class _CryogenGroup(QGroupBox):
             return
         if state.needle_valve is not None:
             self._position.setValue(state.needle_valve)
+            self._position.setEnabled(not state.gas_auto_mode)
+            self._apply.setEnabled(not state.gas_auto_mode)
         if state.gas_auto_mode is not None:
+            self._auto.setEnabled(True)
             self._auto.blockSignals(True)
             self._auto.setChecked(state.gas_auto_mode)
             self._auto.blockSignals(False)
@@ -1751,6 +1828,8 @@ class _ZoneTableWidget(QWidget):
     def clear_table(self) -> None:
         """Remove all rows from the zone table."""
         self._table.setRowCount(0)
+        self._table.setEnabled(False)
+        self._apply_button.setEnabled(False)
         self._input_channels.clear()
 
     # ------------------------------------------------------------------
@@ -1784,6 +1863,9 @@ class _ZoneTableWidget(QWidget):
             ("Save JSON", self._on_save_json),
         ):
             btn = QPushButton(label)
+            if label == "Apply":
+                self._apply_button = btn
+                btn.setEnabled(False)
             btn.clicked.connect(slot)
             btn_row.addWidget(btn)
         btn_row.addStretch()
@@ -1912,12 +1994,17 @@ class _ZoneTableWidget(QWidget):
 
     def read_from_hardware(self, *, show_warning: bool = True) -> bool:
         """Read the active loop's zone table and update the editor."""
+        self._table.setEnabled(False)
+        self._apply_button.setEnabled(False)
+        self.repaint()
         entries = self._engine.get_zone_table(self._loop)
         if entries is None:
             if show_warning:
                 QMessageBox.warning(self, "Zone Table", "No instrument connected.")
             return False
         self._populate_table(entries)
+        self._table.setEnabled(True)
+        self._apply_button.setEnabled(True)
         return True
 
     @pyqtSlot()
@@ -2334,6 +2421,8 @@ class _InputSettingsTableWidget(QWidget):
 
     def set_channels(self, channels: tuple[str, ...]) -> None:
         """Rebuild the table with one column for each input channel."""
+        self._table.setEnabled(False)
+        self._write_button.setEnabled(False)
         self._channels = tuple(channels)
         self._editors.clear()
         self._table.setColumnCount(len(self._channels))
@@ -2370,6 +2459,9 @@ class _InputSettingsTableWidget(QWidget):
 
     def read_all(self, *, show_warning: bool = True) -> bool:
         """Read every channel from hardware and populate successful columns."""
+        self._table.setEnabled(False)
+        self._write_button.setEnabled(False)
+        self.repaint()
         failed = []
         for channel in self._channels:
             settings = self._engine.get_input_channel_settings(channel)
@@ -2383,7 +2475,10 @@ class _InputSettingsTableWidget(QWidget):
                 "Input Settings",
                 f"Could not read input settings for: {', '.join(failed)}.",
             )
-        return not failed
+        ready = bool(self._channels) and not failed
+        self._table.setEnabled(ready)
+        self._write_button.setEnabled(ready)
+        return ready
 
     def write_all(self) -> None:
         """Write every channel's current table values to the hardware."""
@@ -2392,6 +2487,10 @@ class _InputSettingsTableWidget(QWidget):
 
     @pyqtSlot()
     def _on_read(self) -> None:
+        self._table.setEnabled(False)
+        self._write_button.setEnabled(False)
+        self.repaint()
+        self.set_curve_names(self._engine.get_calibration_curve_names())
         self.read_all()
 
     @pyqtSlot()
@@ -2514,13 +2613,20 @@ class _LoopControlGroup(QGroupBox):
 
     def _build(self) -> None:
         """Build the form layout."""
-        form = QFormLayout(self)
+        layout = QVBoxLayout(self)
+        self._settings_body = QWidget()
+        form = QFormLayout(self._settings_body)
         self._build_readback_rows(form)
         self._build_control_rows(form)
         self._build_pid_row(form)
-        self._build_button_row(form)
+        layout.addWidget(self._settings_body)
+        buttons = QFormLayout()
+        layout.addLayout(buttons)
+        self._build_button_row(buttons)
         # Apply initial visibility based on the default mode selection.
         self._update_mode_visibility(self._mode_combo.currentData())
+        self._settings_body.setEnabled(False)
+        self._apply_button.setEnabled(False)
 
     def _build_readback_rows(self, form: QFormLayout) -> None:
         """Add live-readback label rows to *form*."""
@@ -2620,6 +2726,7 @@ class _LoopControlGroup(QGroupBox):
         read_btn.setToolTip("Read all loop settings from the instrument and update this panel")
         read_btn.clicked.connect(self._on_read)
         apply_btn = QPushButton("Apply")
+        self._apply_button = apply_btn
         apply_btn.setToolTip("Send all loop settings to the instrument")
         apply_btn.clicked.connect(self._on_apply_all)
         btn_row.addWidget(read_btn)
@@ -2774,6 +2881,9 @@ class _LoopControlGroup(QGroupBox):
 
     def read_from_hardware(self) -> bool:
         """Query the hardware for all loop settings and update the UI."""
+        self._settings_body.setEnabled(False)
+        self._apply_button.setEnabled(False)
+        self.repaint()
         settings = self._engine.get_loop_settings(self._loop)
         if settings is None:
             return False
@@ -2821,6 +2931,8 @@ class _LoopControlGroup(QGroupBox):
             self._manual_output_spin.blockSignals(True)
             self._manual_output_spin.setValue(settings.manual_output)
             self._manual_output_spin.blockSignals(False)
+        self._settings_body.setEnabled(True)
+        self._apply_button.setEnabled(True)
         return True
 
 

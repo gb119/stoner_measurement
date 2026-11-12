@@ -423,6 +423,12 @@ def test_primary_340_apply_configures_ramp_and_native_output_before_target(
     service._driver = driver
     try:
         group = managed_qt_widget(_LoopControlGroup(loop, service, driver.get_capabilities()))
+        from stoner_measurement.temperature_control.types import LoopSettings
+
+        monkeypatch.setattr(service, "get_loop_settings", lambda loop: LoopSettings(
+            4.2, ControlMode.CLOSED_LOOP, "A", False, 0, 1, 1, 1,
+        ))
+        assert group.read_from_hardware()
         group._channel_combo.setCurrentIndex(group._channel_combo.findData("B"))
         group._mode_combo.setCurrentIndex(group._mode_combo.findData(ControlMode.CLOSED_LOOP))
         group._sp_spin.setValue(30)

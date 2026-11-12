@@ -68,9 +68,8 @@ def test_shared_stability_selectors_preserve_missing_selection(rig, managed_temp
 
 def test_input_settings_share_page_with_separate_owner_tables(rig, managed_temperature_panel):
     panel = managed_temperature_panel()
-    tab = panel._tabs.widget(panel._input_settings_tab_index)
-    assert tab.widget().layout().indexOf(panel._input_settings_widget) >= 0
-    assert tab.widget().layout().indexOf(panel._secondary_input_settings) >= 0
+    assert panel._input_tabs.widget(0).layout().indexOf(panel._input_settings_widget) >= 0
+    assert panel._input_tabs.widget(1).layout().indexOf(panel._secondary_input_settings) >= 0
     assert panel._secondary_input_settings._engine is rig.controller("secondary")
 
 
@@ -149,6 +148,9 @@ def test_secondary_zone_curves_and_gas_controls_use_own_capabilities(
     panel = managed_temperature_panel()
     panel._sync_existing_connection_state()
     assert panel._zone_loop_combo.currentData() == LoopRef("secondary", 1)
+    assert panel._secondary_input_settings._curve_names == {}
+    panel._tabs.setCurrentIndex(panel._input_settings_tab_index)
+    panel._input_tabs.setCurrentIndex(1)
     assert panel._secondary_input_settings._curve_names == {1: "Secondary curve"}
     assert not panel._input_settings_widget._channels
     assert panel._needle_group.isHidden()
@@ -288,7 +290,7 @@ def test_control_edits_survive_poll_until_explicit_read(
 
 
 @pytest.mark.parametrize("mode_name", ["CLOSED_LOOP", "ZONE", "OPEN_LOOP", "OFF"])
-def test_primary_itc503_apply_reaches_hardware(rig, managed_qt_widget, mode_name):
+def test_primary_itc503_apply_reaches_hardware(rig, managed_qt_widget, mode_name, monkeypatch):
     from qtpy.QtWidgets import QPushButton
 
     from stoner_measurement.instruments.oxford import OxfordITC503
@@ -313,6 +315,12 @@ def test_primary_itc503_apply_reaches_hardware(rig, managed_qt_widget, mode_name
     driver = OxfordITC503(transport=transport)
     rig._driver = driver
     group = managed_qt_widget(_LoopControlGroup(1, rig, driver.get_capabilities()))
+    from stoner_measurement.temperature_control.types import LoopSettings
+
+    monkeypatch.setattr(rig, "get_loop_settings", lambda loop: LoopSettings(
+        4.2, ControlMode.CLOSED_LOOP, "A", False, 0, 1, 1, 1,
+    ))
+    assert group.read_from_hardware()
     group._channel_combo.setCurrentIndex(group._channel_combo.findData("B"))
     group._mode_combo.setCurrentIndex(group._mode_combo.findData(mode))
     group._sp_spin.setValue(12)

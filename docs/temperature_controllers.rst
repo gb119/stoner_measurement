@@ -48,10 +48,21 @@ list contains only inputs supported by that loop on its own instrument. Identica
 distinct on the two controllers. Disconnecting or replacing one controller does
 not renumber the other controller's loops.
 
-Zone-table selectors include the owning controller. Input settings and calibration
-curve names are kept in separate labelled tables on the same page. Cryogen controls
-appear for each instrument that supports them. Heater ranges and other optional
-features belong to the selected instrument.
+Zone-table selectors include the owning controller. A zone table is read when
+the Zone Table page is first opened or its selected loop changes, rather than
+during connection. Use **Read** for an explicit refresh.
+
+Input Settings has Primary and Secondary sub-tabs, matching the Control page.
+Each controller's input settings and calibration-curve names load only when its
+sub-tab is first accessed. Returning to a loaded page preserves edits; use
+**Read All** to refresh it. Reconnecting a controller invalidates its settings,
+without reloading the other controller's settings or discarding its edits.
+
+Unread settings are greyed out, remain greyed out while loading, and become
+editable after a successful read. Failed reads leave the controls and Apply or
+Write buttons disabled; **Read** and **Read All** remain available to retry.
+Cryogen controls appear for each instrument that supports them. Heater ranges
+and other optional features belong to the selected instrument.
 
 For a **Lake Shore 340**, Input Settings provides native controls for each A/B
 input, including input enable, sensor type, excitation, voltage range,

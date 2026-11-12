@@ -243,6 +243,12 @@ def test_primary_apply_configures_native_ramp_before_target(mercury, monkeypatch
     service._driver = driver
     try:
         group = managed_qt_widget(_LoopControlGroup(1, service, driver.get_capabilities()))
+        from stoner_measurement.temperature_control.types import LoopSettings
+
+        monkeypatch.setattr(service, "get_loop_settings", lambda loop: LoopSettings(
+            4.2, ControlMode.CLOSED_LOOP, "MB1.T1", False, 0, 1, 1, 1,
+        ))
+        assert group.read_from_hardware()
         group._mode_combo.setCurrentIndex(group._mode_combo.findData(ControlMode.CLOSED_LOOP))
         group._sp_spin.setValue(30)
         group._ramp_rate_spin.setValue(5)

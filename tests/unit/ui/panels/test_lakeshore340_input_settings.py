@@ -293,9 +293,11 @@ def test_panel_selects_native_editor_for_its_owning_session_and_switches_back(
     assert widget._engine is session
     assert panel._tabs.isTabEnabled(panel._input_settings_tab_index)
     assert widget._channels == ("A", "B")
+    panel._tabs.setCurrentIndex(panel._input_settings_tab_index)
+    panel._input_tabs.setCurrentIndex(0 if slot == "primary" else 1)
     assert widget._editors["A"]["curve_number"].itemText(22) == "Curve 22 (22)"
-    scroll = panel._tabs.widget(panel._input_settings_tab_index)
-    assert scroll.widget().layout().indexOf(widget) >= 0
+    page = panel._input_tabs.widget(0 if slot == "primary" else 1)
+    assert page.layout().indexOf(widget) >= 0
     panel._select_input_settings_editor(
         attribute, session, Lakeshore335(NullTransport()).get_capabilities()
     )
