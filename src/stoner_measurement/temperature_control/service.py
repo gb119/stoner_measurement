@@ -350,6 +350,7 @@ class TemperatureServiceMixin:
                 "enabled": self._enabled[slot],
                 "label": slot.title(),
                 "connection": local["connection"],
+                "itc503_calibration": local["itc503_calibration"],
             }
         config.update(schema_version=3, controllers=controllers)
         return config

@@ -1,5 +1,38 @@
 # Testing Restructure Plan
 
+## 2026-11-12: Primary temperature connection address colour
+
+- Added a regression to the existing lazy-readback panel module reproducing the
+  two notifications from `connect_driver`: a new driver followed by its completed
+  address metadata. Before the fix, the primary GPIB field stayed CONNECTING.
+- The panel now refreshes connection details independently of driver identity,
+  while keeping expensive settings reads gated by identity changes. The test
+  checks green success, the actual address, no duplicate settings reads and
+  disconnected colour reset. No tests moved or removed.
+- Panel readback, ITC503/340 input editors, secondary controller and legacy
+  temperature tests passed together: 139 tests on offscreen PyQt5 through Conda.
+  Ruff and `git diff --check` passed. Markdownlint is unavailable in the environment.
+
+## 2026-11-12: Per-sensor ITC503 NI-DAQmx temperature scales
+
+- Added focused NI scale extraction/validation tests and an ITC503 input-editor
+  module covering direction, None, offline snapshots, explicit reload, YAML save
+  rollback, slot isolation, restart restoration and editor routing. Extended the
+  Oxford driver tests for channel conversion and hardware-selected setpoint/zone
+  conversion. No existing tests moved or removed.
+- Validation and source references are recorded in
+  [the calibration note](2026-11-12-itc503-temperature-scales.md).
+
+## 2026-11-12: ITC503 Auto-PID table early termination
+
+- Extended the existing Oxford driver module with empty, partial and full-table
+  wire-command checks through the temperature engine, including a calibration
+  offset that must not affect the raw zero sentinel. No tests moved or removed.
+- Oxford driver, legacy temperature engine, temperature-controller contracts and
+  Oxford transaction tests: 275 passed on offscreen PyQt5 through Miniforge Conda.
+  Used a repository-local pytest temporary directory after system-temp access errors.
+  Ruff and `git diff --check` passed. Physical instrument readback remains unverified.
+
 ## 2026-11-12: Lazy temperature-panel readbacks
 
 - Relocated/adapted the legacy curve-label and eager-connection-read scenarios

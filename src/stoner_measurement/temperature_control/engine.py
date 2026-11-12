@@ -18,6 +18,7 @@ import math
 import threading
 import time
 from collections import deque
+from copy import deepcopy
 from dataclasses import replace
 from datetime import UTC, datetime
 from traceback import format_exc
@@ -166,6 +167,8 @@ class _ControllerSession(QObject):
 
     def _apply_configuration(self, config: dict) -> None:
         """Apply engine configuration values from a mapping."""
+        local = config.get("controllers", {}).get("primary", config)
+        self._itc503_calibration = deepcopy(local.get("itc503_calibration", {}))
         connection = config.get("connection")
         if isinstance(connection, dict):
             self._preferred_driver_name = str(connection.get("driver", ""))
@@ -262,6 +265,8 @@ class _ControllerSession(QObject):
             self._connected_address = None
             self._invalidate_state()
             try:
+                if driver.get_capabilities().input_settings_model == "itc503":
+                    driver.configure_temperature_scales(self._itc503_calibration)
                 if not driver.is_connected:
                     driver.connect()
                 else:
@@ -557,6 +562,7 @@ class _ControllerSession(QObject):
         """Return the current engine configuration as a serialisable mapping."""
         return {
             "poll_interval_ms": self._timer.interval(),
+            "itc503_calibration": deepcopy(self._itc503_calibration),
             "polling_rate_hz": self._polling_rate_hz,
             "connection": {
                 "driver": self._preferred_driver_name,
@@ -582,6 +588,46 @@ class _ControllerSession(QObject):
     def save_configuration(self):
         """Persist the current engine configuration to the machine config file."""
         return save_temperature_controller_config(self.configuration_dict())
+
+    def get_itc503_temperature_scales(self) -> dict:
+        """Return this controller's active software calibration snapshots.
+
+        Returns:
+            (dict): Per-channel table snapshots, with ``None`` disabling conversion.
+
+        Raises:
+            RuntimeError: If this session has no connected ITC503.
+        """
+        with self._engine_lock:
+            if self._driver is None or self._driver.get_capabilities().input_settings_model != "itc503":
+                raise RuntimeError("No ITC503 is connected to this controller slot.")
+            return self._driver.temperature_scales()
+
+    def set_itc503_temperature_scales(self, scales: dict) -> None:
+        """Apply all sensor scales and persist both controllers' YAML settings.
+
+        Args:
+            scales (dict): Per-channel table snapshots or explicit ``None`` entries.
+
+        Raises:
+            RuntimeError: If no ITC503 is connected.
+            ValueError: If any scale is invalid.
+            OSError: If settings cannot be saved; active scales are restored.
+        """
+        service = getattr(self, "_service", self)
+        with service._engine_lock, self._engine_lock:
+            previous = self.get_itc503_temperature_scales()
+            previous_config = self._itc503_calibration
+            self._driver.configure_temperature_scales(scales)
+            self._itc503_calibration = self._driver.temperature_scales()
+            try:
+                service.save_configuration()
+            except Exception:
+                self._driver.configure_temperature_scales(previous)
+                self._itc503_calibration = previous_config
+                raise
+            self._target_setpoints.clear()
+            self._invalidate_state()
 
     def set_setpoint(self, loop: int, value: float) -> None:
         """Set the temperature setpoint for *loop*.
@@ -937,6 +983,7 @@ class _ControllerSession(QObject):
         :meth:`~stoner_measurement.instruments.temperature_controller.TemperatureController.get_num_zones`
         raises or returns ``0``, an empty list is returned.  Individual zone
         reads that raise are logged and the entry is skipped.
+        Reading stops when a driver returns ``None`` for an unused row.
 
         Args:
             loop (int):
@@ -969,7 +1016,10 @@ class _ControllerSession(QObject):
             entries = []
             for i in range(1, num + 1):
                 try:
-                    entries.append(self._driver.get_zone(loop, i))
+                    entry = self._driver.get_zone(loop, i)
+                    if entry is None:
+                        break
+                    entries.append(entry)
                 except Exception:
                     logger.exception("Failed to read zone %d for loop %d", i, loop)
             return entries

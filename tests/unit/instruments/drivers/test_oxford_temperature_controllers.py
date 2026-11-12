@@ -19,6 +19,7 @@ from stoner_measurement.instruments.temperature_controller import (
     ZoneEntry,
 )
 from stoner_measurement.instruments.transport import NullTransport
+from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 
 
 def _null(responses=None):
@@ -38,6 +39,60 @@ def _null(responses=None):
 
 
 class TestOxfordTemperatureControllers:
+    @pytest.mark.parametrize(
+        ("direction", "raw", "corrected"),
+        [("nominal_to_corrected", 15, 25), ("corrected_to_nominal", 25, 15)],
+    )
+    def test_itc503_sensor_scales_follow_hardware_control_input(self, direction, raw, corrected):
+        status = b"X0A1C3S00H2L0\r"
+        transport = _null(responses=[
+            b"R15\r", f"R{raw}\r".encode(), b"R15\r",
+            status, f"R{raw}\r".encode(), status,
+            f"Q{raw}\r".encode(), status, b"Q30\r", b"Q4\r", b"Q0.5\r", status,
+        ])
+        driver = OxfordITC503(transport)
+        driver.configure_temperature_scales({
+            "A": None,
+            "B": {"scale_name": "Cernox", "direction": direction,
+                  "pre_scaled_values": [10, 20, 30, 40], "scaled_values": [10, 40, 90, 160]},
+        })
+        assert driver.get_temperature("A") == 15
+        assert driver.get_temperature("B") == corrected
+        assert driver.get_temperature("C") == 15  # Existing YAML fallback.
+        assert driver.get_setpoint(1) == corrected
+        driver.set_setpoint(1, corrected)
+        zone = driver.get_zone(1, 1)
+        assert zone.upper_bound == corrected
+        driver.set_zone(1, 1, zone)
+        assert f"T{float(raw)}\r".encode() in transport.write_log
+        assert f"p{float(raw)}\r".encode() in transport.write_log
+        # The scale is entirely software-defined; reading sensors uses only R registers.
+        assert transport.write_log[:3] == [b"R1\r", b"R2\r", b"R3\r"]
+
+    def test_itc503_invalid_scale_keeps_existing_selection(self):
+        driver = OxfordITC503(_null())
+        driver.configure_temperature_scales({"A": None})
+        with pytest.raises(ValueError):
+            driver.configure_temperature_scales({
+                "A": {"pre_scaled_values": [1, 2], "scaled_values": [3, 3]},
+            })
+        assert driver.temperature_scales() == {"A": None}
+
+    def test_itc503_none_disables_legacy_calibration_only_for_selected_sensor(self, monkeypatch):
+        driver = OxfordITC503(_null(responses=[b"R10\r", b"R10\r"]))
+        monkeypatch.setattr(driver, "_itc503_to_true_temperature", lambda value: value * 2)
+        driver.configure_temperature_scales({"A": None})
+        assert driver.get_temperature("A") == 10
+        assert driver.get_temperature("B") == 20
+
+    def test_itc503_all_uncorrected_channels_avoid_control_sensor_queries(self):
+        transport = _null(responses=[b"R10\r"])
+        driver = OxfordITC503(transport)
+        driver.configure_temperature_scales({"A": None, "B": None, "C": None})
+        assert driver.get_setpoint(1) == 10
+        driver.set_setpoint(1, 12)
+        assert transport.write_log == [b"R0\r", b"T12.0\r"]
+
     def test_default_protocols(self):
         assert isinstance(OxfordITC503(transport=NullTransport()).protocol, OxfordProtocol)
         assert isinstance(OxfordMercuryTemperatureController(transport=NullTransport()).protocol, ScpiProtocol)
@@ -262,6 +317,34 @@ class TestOxfordTemperatureControllers:
             b"y4\r",
             b"q\r",
         ]
+
+    @pytest.mark.parametrize("populated_rows", [0, 2, 32])
+    def test_itc503_zone_table_stops_at_raw_zero_temperature(self, qapp, monkeypatch, populated_rows):
+        responses = []
+        expected_commands = []
+        for row in range(1, populated_rows + 1):
+            responses.extend([f"Q{row * 10}\r".encode(), b"Q30\r", b"Q4\r", b"Q0.5\r"])
+            for column in range(1, 5):
+                expected_commands.extend([f"x{row}\r".encode(), f"y{column}\r".encode(), b"q\r"])
+        if populated_rows < 32:
+            responses.append(b"Q0\r")
+            expected_commands.extend([f"x{populated_rows + 1}\r".encode(), b"y1\r", b"q\r"])
+        transport = _null(responses=responses)
+        driver = OxfordITC503(transport=transport)
+        # A calibration offset must not turn the raw end marker into a zone.
+        monkeypatch.setattr(driver, "_itc503_to_true_temperature", lambda value: value + 5)
+        engine = TemperatureControllerEngine()
+        engine._driver = driver
+        try:
+            entries = engine.get_zone_table(1)
+            assert entries == [
+                ZoneEntry(row * 10 + 5, 30.0, 4.0, 0.5, 0.0, 0, 0.0)
+                for row in range(1, populated_rows + 1)
+            ]
+            assert transport.write_log == expected_commands
+        finally:
+            engine._driver = None
+            engine.shutdown()
 
     def test_itc503_set_zone_uses_pointer_and_p_commands(self):
         t = _null()
