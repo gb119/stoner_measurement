@@ -379,12 +379,14 @@ class ControllerCapabilities:
             Configure ramp and output settings before writing the target in Apply.
         input_settings_model (str):
             Input editor schema. The default uses the shared 335/336 layout;
-            ``lakeshore340`` selects the Model 340 native input editor.
+            ``lakeshore340`` selects the Model 340 native input editor and
+            ``itc503`` selects per-sensor software temperature scales.
         has_input_settings (bool):
             ``True`` if the driver supports reading and writing per-channel
             input configuration (sensor type, range, filter, calibration curve
             assignment) via :meth:`~TemperatureController.get_input_channel_settings`
-            and :meth:`~TemperatureController.set_input_channel_settings`.
+            and :meth:`~TemperatureController.set_input_channel_settings`, or
+            through the specialised software-scale API for ``itc503``.
         heater_range_labels (dict[int, tuple[str, ...]]):
             Optional per-loop mapping of heater range index to human-readable
             label.  The tuple index corresponds to the integer range index passed
@@ -1271,7 +1273,7 @@ class TemperatureController(BaseInstrument):
             "Check get_capabilities().has_zone before calling this method."
         )
 
-    def get_zone(self, loop: int, zone_index: int) -> ZoneEntry:
+    def get_zone(self, loop: int, zone_index: int) -> ZoneEntry | None:
         """Return the parameters of zone entry *zone_index* for *loop*.
 
         Args:
@@ -1281,9 +1283,10 @@ class TemperatureController(BaseInstrument):
                 Zone entry index (1-based).
 
         Returns:
-            (ZoneEntry):
+            (ZoneEntry | None):
                 Zone parameters including PID gains, ramp rate, heater range
-                and heater output power for this table entry.
+                and heater output power for this table entry. ``None`` marks
+                the end of the populated table for drivers with unused rows.
 
         Raises:
             NotImplementedError:

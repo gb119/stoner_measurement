@@ -26,6 +26,7 @@ from stoner_measurement.instruments.temperature_controller import (
     TemperatureController,
     ZoneEntry,
 )
+from stoner_measurement.instruments.temperature_scales import normalise_temperature_scale
 from stoner_measurement.instruments.transport.base import BaseTransport
 from stoner_measurement.resources import bundled_resource_path, user_resource_file
 
@@ -342,6 +343,8 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         has_gas_auto_mode=True,
         has_manual_heater_output=True,
         has_heater_range=False,
+        has_input_settings=True,
+        input_settings_model="itc503",
         control_modes=(ControlMode.OFF, ControlMode.OPEN_LOOP, ControlMode.CLOSED_LOOP, ControlMode.ZONE),
     )
 
@@ -354,6 +357,67 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
             true_temperatures,
             itc503_temperatures,
         )
+        self._temperature_scales: dict[str, dict | None] = {}
+        self._channel_temperature_maps: dict[str, tuple[Callable, Callable]] = {}
+
+    def configure_temperature_scales(self, scales: Mapping[str, dict | None]) -> None:
+        """Replace per-channel software scales atomically without hardware writes.
+
+        Args:
+            scales (Mapping[str, dict | None]): Channel to saved NI table snapshot,
+                or ``None`` for uncorrected readings. Omitted channels retain the
+                legacy instrument YAML calibration.
+
+        Raises:
+            ValueError: If a channel or table is invalid; existing scales are retained.
+        """
+        snapshots = {}
+        maps = {}
+        for channel, scale in scales.items():
+            channel = self._normalise_channel(channel)
+            if scale is None:
+                snapshots[channel] = None
+                maps[channel] = (_identity_temperature_map, _identity_temperature_map)
+            else:
+                snapshot = normalise_temperature_scale(scale)
+                x, y = snapshot["pre_scaled_values"], snapshot["scaled_values"]
+                if snapshot["direction"] == "corrected_to_nominal":
+                    x, y = y, x
+                snapshots[channel] = snapshot
+                maps[channel] = (
+                    _BoundedTemperatureMap(x, y, kind="linear"),
+                    _BoundedTemperatureMap(y, x, kind="linear"),
+                )
+        with self._lock:
+            self._temperature_scales = snapshots
+            self._channel_temperature_maps = maps
+
+    def temperature_scales(self) -> dict[str, dict | None]:
+        """Return an independent YAML-compatible copy of the channel selections.
+
+        Returns:
+            (dict[str, dict | None]): Selected table snapshots or explicit no-scale entries.
+        """
+        with self._lock:
+            return {
+                channel: normalise_temperature_scale(scale) if scale is not None else None
+                for channel, scale in self._temperature_scales.items()
+            }
+
+    def _temperature_maps(self, channel: str) -> tuple[Callable, Callable]:
+        """Return the channel override or the legacy shared temperature maps."""
+        return self._channel_temperature_maps.get(
+            channel, (self._itc503_to_true_temperature, self._true_to_itc503_temperature)
+        )
+
+    def _loop_temperature_maps(self, loop: int) -> tuple[Callable, Callable]:
+        """Use the hardware-selected heater sensor when per-channel scales exist."""
+        if self._channel_temperature_maps:
+            maps = [self._temperature_maps(channel) for channel in self._CAPABILITIES.input_channels]
+            if all(pair == maps[0] for pair in maps[1:]):
+                return maps[0]
+            return self._temperature_maps(self.get_input_channel(loop))
+        return self._itc503_to_true_temperature, self._true_to_itc503_temperature
 
     def confirm_identity(self) -> str:
         """Verify the ITC503 and select remote control with the front panel unlocked.
@@ -372,17 +436,23 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
 
     def get_temperature(self, channel: str) -> float:
         """Return calibrated channel temperature in Kelvin."""
-        return self._itc503_to_true_temperature(super().get_temperature(channel))
+        channel = self._normalise_channel(channel)
+        with self._lock:
+            forward, _ = self._temperature_maps(channel)
+            return forward(super().get_temperature(channel))
 
     def get_setpoint(self, loop: int) -> float:
         """Return calibrated setpoint in Kelvin."""
-        return self._itc503_to_true_temperature(super().get_setpoint(loop))
+        with self._lock:
+            forward, _ = self._loop_temperature_maps(loop)
+            return forward(super().get_setpoint(loop))
 
     def set_setpoint(self, loop: int, value: float) -> None:
         """Set true setpoint in Kelvin, applying ITC503 calibration when available."""
         self._validate_value(value, 0.0, math.inf, "setpoint in kelvin")
-        itc503_value = self._true_to_itc503_temperature(value)
-        super().set_setpoint(loop, itc503_value)
+        with self._lock:
+            _, reverse = self._loop_temperature_maps(loop)
+            super().set_setpoint(loop, reverse(value))
 
     def get_heater_range(self, loop: int) -> int:
         """Reject heater-range readback: ITC503 has a voltage limit, not ranges."""
@@ -649,13 +719,15 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         self._normalise_loop(loop)
         return self._PID_TABLE_ROWS
 
-    def get_zone(self, loop: int, zone_index: int) -> ZoneEntry:
+    def get_zone(self, loop: int, zone_index: int) -> ZoneEntry | None:
         """Return auto-PID table row *zone_index* for *loop*.
 
         The ITC503 Chapter 10 auto-PID table is addressed through the ``x``
         (row) and ``y`` (column) pointer commands, read back via ``q``.
         Fields not present in the ITC503 table (ramp rate, heater range and
         heater output) are returned as ``0`` for API compatibility.
+        A raw temperature of zero marks the end of the increasing table;
+        its PID columns are not queried.
 
         Args:
             loop (int):
@@ -664,14 +736,18 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
                 Auto-PID table row index (1-based, 1–32).
 
         Returns:
-            (ZoneEntry):
-                Zone entry populated from the ITC503 auto-PID table row.
+            (ZoneEntry | None):
+                Zone entry, or ``None`` at the end of the populated table.
         """
         self._normalise_loop(loop)
         row = self._normalise_pid_table_row(zone_index)
         with self._lock:
+            temperature = self._query_pid_table_value(row, 1)
+            if temperature == 0.0:
+                return None
+            forward, _ = self._loop_temperature_maps(loop)
             return ZoneEntry(
-                upper_bound=self._itc503_to_true_temperature(self._query_pid_table_value(row, 1)),
+                upper_bound=forward(temperature),
                 p=self._query_pid_table_value(row, 2),
                 i=self._query_pid_table_value(row, 3),
                 d=self._query_pid_table_value(row, 4),
@@ -702,7 +778,8 @@ class OxfordITC503(_OxfordTemperatureControllerBase):
         self._validate_value(entry.i, 0.0, 140.0, "integral time in minutes")
         self._validate_value(entry.d, 0.0, 273.0, "derivative time in minutes")
         with self._lock:
-            self._write_pid_table_value(row, 1, self._true_to_itc503_temperature(entry.upper_bound))
+            _, reverse = self._loop_temperature_maps(loop)
+            self._write_pid_table_value(row, 1, reverse(entry.upper_bound))
             self._write_pid_table_value(row, 2, entry.p)
             self._write_pid_table_value(row, 3, entry.i)
             self._write_pid_table_value(row, 4, entry.d)

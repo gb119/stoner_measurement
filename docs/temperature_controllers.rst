@@ -76,6 +76,36 @@ interrupt that call. Closing the panel hides it and allows pending work to finis
 Application shutdown drains running work before releasing the controller sessions.
 Console and plugin calls to the engine retain their synchronous behaviour.
 
+For an **Oxford ITC503**, Input Settings offers an NI-DAQmx custom-scale selector
+for each sensor A, B and C, in either controller slot. The scale must be a
+**Table** scale whose two columns contain temperatures in kelvin. Linear,
+polynomial and voltage/resistance-to-temperature scales cannot be imported here.
+Use **Refresh NI Scale List** to discover scales saved in NI MAX on this computer.
+Discovery and importing require the optional ``nidaqmx`` package and NI-DAQmx runtime.
+
+Select **ITC503 → Corrected** when the NI table's pre-scaled column contains
+ITC503 readings and its scaled column contains corrected temperatures. Select
+**Corrected → ITC503** for the opposite definition. **None** disables conversion
+for that sensor. **Existing YAML lookup** retains the previous shared lookup
+from ``instruments/oxford_itc503.yaml``; existing configurations keep using it
+until you explicitly change their selections.
+
+**Apply** validates all selected tables, activates the software conversion and
+saves the scale names, directions and table values under each controller's
+``itc503_calibration`` entry in ``temperature_controller.yaml``. The imported
+snapshot works after restarting without NI-DAQmx. Applying an already saved
+scale uses its saved table. To import a changed NI table with the same name,
+check **Reload selected tables from NI-DAQmx on Apply** before applying.
+NI scales themselves are never modified.
+
+Imported tables use piecewise linear interpolation. Both temperature columns
+must contain at least two finite, non-negative, strictly increasing values;
+outside the table's range the temperature is left unchanged. Sensor readings
+use their individual scales. Setpoints and PID-zone temperatures use the scale
+of the heater sensor selected on the ITC503, including inverse conversion when
+writing a corrected setpoint. Applying a scale does not rewrite a hardware
+setpoint; loop settings are refreshed and cached zone-table values are discarded.
+
 For a **Lake Shore 340**, Input Settings provides native controls for each A/B
 input, including input enable, sensor type, excitation, voltage range,
 compensation, filtering and calibration curve. It works in either controller

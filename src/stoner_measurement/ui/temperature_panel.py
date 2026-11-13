@@ -970,6 +970,13 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         if self._syncing_connection:
             return
         drivers = {slot: session.connected_driver for slot, session in self._engine.controllers.items()}
+        # connect_driver publishes the driver before storing its connection
+        # metadata. Refresh address/status on the follow-up notification too,
+        # even though the driver identity (and its loaded settings) is unchanged.
+        self._sync_driver_choice()
+        transport_name = self._engine.connected_transport_name
+        if drivers["primary"] is not None and transport_name:
+            self._sync_live_connection_widgets(transport_name, self._engine.connected_address or "")
         changed = {slot for slot, driver in drivers.items()
                    if slot not in self._synced_drivers or self._synced_drivers[slot] is not driver}
         if not changed:
@@ -988,11 +995,6 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         """Refresh only sessions whose connected driver identity changed."""
         self._synced_drivers = drivers
         self._input_settings_loaded.difference_update(changed)
-        self._sync_driver_choice()
-        transport_name = self._engine.connected_transport_name
-        address = self._engine.connected_address
-        if transport_name and "primary" in changed:
-            self._sync_live_connection_widgets(transport_name, address or "")
         try:
             if "primary" in changed:
                 if drivers["primary"] is None:
@@ -1184,7 +1186,11 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
     def _select_input_settings_editor(self, attribute, session, caps):
         """Install the owning controller's input editor while preserving page position."""
         editor_type = _InputSettingsTableWidget
-        if caps.input_settings_model == "lakeshore340":
+        if caps.input_settings_model == "itc503":
+            from stoner_measurement.ui.itc503_input_settings import ITC503InputSettingsTable
+
+            editor_type = ITC503InputSettingsTable
+        elif caps.input_settings_model == "lakeshore340":
             # Imported when needed, after the shared table class is defined.
             from stoner_measurement.ui.lakeshore340_input_settings import (
                 Lakeshore340InputSettingsTable,
@@ -1204,8 +1210,19 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         current.close()
         current.deleteLater()
         replacement = editor_type(session, parent)
+        if caps.input_settings_model == "itc503":
+            replacement.calibration_changed.connect(lambda: self._on_temperature_scales_changed(session))
         layout.insertWidget(index, replacement)
         setattr(self, attribute, replacement)
+
+    def _on_temperature_scales_changed(self, session):
+        """Refresh loop values and discard zone temperatures in the previous scale."""
+        for group in self._loop_groups.values():
+            if group._engine is session:
+                group.read_from_hardware()
+        if self._zone_target is not None and self._zone_target[0] is session.connected_driver:
+            self._zone_loaded = None
+            self._zone_table_widget.clear_table()
 
     def _on_legend_item_changed(self, item, _column: int) -> None:
         """Show/hide traces from legend checkboxes."""

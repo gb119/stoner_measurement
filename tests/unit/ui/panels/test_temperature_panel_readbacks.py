@@ -10,6 +10,7 @@ from stoner_measurement.instruments.temperature_controller import InputChannelSe
 from stoner_measurement.temperature_control import engine as engine_module
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 from stoner_measurement.temperature_control.references import LoopRef
+from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceStatus
 
 
 class CountingController(SimulatedTemperatureController):
@@ -71,6 +72,26 @@ def test_secondary_connect_preserves_primary_controls_and_reads(rig, managed_tem
     assert panel._loop_groups[1] is controls
     assert controls._sp_spin.value() == 123
     assert LoopRef("secondary", 1) in panel._loop_groups
+
+
+def test_primary_address_turns_green_after_connection_metadata_arrives(
+    rig, managed_temperature_panel, monkeypatch
+):
+    panel = managed_temperature_panel()
+    driver = CountingController()
+    monkeypatch.setattr(rig, "_resolve_driver_class", lambda _name: lambda **_kwargs: driver)
+    monkeypatch.setattr(rig, "_build_transport", lambda *_args: driver.transport)
+    transport_index = panel._transport_combo.findText("GPIB")
+    panel._transport_combo.setCurrentIndex(transport_index)
+    panel._set_address_widget_status(transport_index, VisaResourceStatus.CONNECTING)
+    rig.connect_driver("SimulatedTemperatureController", "GPIB", "GPIB0::24::INSTR")
+    assert panel._gpib_resource_combo.status == VisaResourceStatus.CONNECTED
+    assert panel._gpib_resource_combo.current_resource() == "GPIB0::24::INSTR"
+    before = driver.reads.copy()
+    panel._sync_existing_connection_state()
+    assert driver.reads == before
+    rig.disconnect_instrument()
+    assert panel._gpib_resource_combo.status == VisaResourceStatus.DISCONNECTED
 
 
 def test_tables_load_on_first_use_and_preserve_edits(rig, managed_temperature_panel, wait_temperature_tasks):

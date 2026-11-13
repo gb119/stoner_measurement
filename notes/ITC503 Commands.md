@@ -72,6 +72,11 @@ Ramp, heater range and heater output fields in the generic ZoneEntry have no ITC
 Auto-PID equivalent and are not written. Existing temperature calibration applies to T,
 R0, temperature registers and table upper temperatures. This audit preserves that calibration.
 
+The populated Auto-PID temperatures increase monotonically; the first raw zero temperature
+marks the end of the table (operator clarification, 12 November 2026). `get_zone` returns
+`None` for this marker without querying its PID columns, and the table reader stops there.
+The marker is checked before temperature calibration. A full table still reads all 32 rows.
+
 Apply selects the input before writing the target, then configures supported settings
 before selecting the final mode. Zone mode skips individual PID writes. Make Safe skips
 unsupported heater ranges and uses the driver Off operation to zero heater output.
