@@ -1,5 +1,18 @@
 # Testing Restructure Plan
 
+## 2026-11-13: Preserve offset lock-in sensitivity during per-point ranging
+
+- Extended the existing multi-lock-in module with mixed-instrument cases for
+  positive/negative manual offsets, automatic X/Y/R offsets and zero offsets.
+  Both range directions are checked; an unaffected peer still ranges while
+  offset-bearing entries retain their sensitivity, offsets and expansion,
+  independently of software offset addition. No tests moved or removed.
+- Conda/offscreen PyQt5: 168 passed across
+  `tests/test_k6221_multi_sr830_plugin.py`,
+  `tests/unit/plugins/trace/test_k6221_lockin_settings.py` and
+  `tests/unit/instruments/drivers/test_srs830.py`.
+  `git diff --check` passed. Ruff remains unavailable in this environment.
+
 ## 2026-11-13: Advertise derived lock-in resistance averages
 
 - Extended existing lock-in tests to evaluate an advertised resistance mean

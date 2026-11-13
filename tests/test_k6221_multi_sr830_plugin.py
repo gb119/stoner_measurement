@@ -1001,6 +1001,49 @@ class TestRateLimitAndAutoSensitivity:
         assert entry.sensitivity == pytest.approx(2e-3)
         lockin.set_sensitivity.assert_called_once_with(2e-3)
 
+    @pytest.mark.parametrize("signal, expected_range", [(5e-5, 5e-4), (0.95e-3, 2e-3)])
+    @pytest.mark.parametrize(
+        "offset_pct, auto_offsets, protected",
+        [
+            (25.0, {}, True),
+            (-25.0, {}, True),
+            (0.0, {"X": 10.0}, True),
+            (0.0, {"Y": -10.0}, True),
+            (0.0, {"R": 10.0}, True),
+            (0.0, {"X": 0.0, "Y": 0.0}, False),
+        ],
+    )
+    def test_auto_sensitivity_preserves_offset_lockin_and_ranges_peer(
+        self, qapp, signal, expected_range, offset_pct, auto_offsets, protected
+    ):
+        plugin = _make_plugin()
+        plugin._auto_sensitivity_enabled = True
+        # Software offset addition is independent of hardware offset protection.
+        plugin._offset_enabled = False
+        entry = LockInEntry(
+            resource="GPIB0::8::INSTR", sensitivity=1e-3,
+            offset_pct=offset_pct, auto_offsets=auto_offsets.copy(),
+            expand=LockInExpandFactor.X10,
+        )
+        peer = LockInEntry(resource="GPIB0::9::INSTR", sensitivity=1e-3)
+        lockin, peer_lockin = MagicMock(), MagicMock()
+        plugin._lockin_entries = [entry, peer]
+        plugin._lockins = [lockin, peer_lockin]
+        plugin._apply_auto_sensitivity({
+            item.resource: LockInReading(output_values={}, ratio_signal=signal)
+            for item in (entry, peer)
+        })
+        peer_lockin.set_sensitivity.assert_called_once_with(expected_range)
+        assert peer.sensitivity == pytest.approx(expected_range)
+        if protected:
+            lockin.set_sensitivity.assert_not_called()
+            assert entry.sensitivity == 1e-3
+        else:
+            lockin.set_sensitivity.assert_called_once_with(expected_range)
+        assert entry.offset_pct == offset_pct
+        assert entry.auto_offsets == auto_offsets
+        assert entry.expand is LockInExpandFactor.X10
+
     def test_auto_sensitivity_respects_limits(self, qapp):
         plugin = _make_plugin()
         plugin._auto_sensitivity_enabled = True

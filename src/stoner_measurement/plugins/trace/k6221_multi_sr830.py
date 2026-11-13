@@ -290,6 +290,8 @@ class LockInEntry:
         auto_sensitivity (bool):
             When ``True``, this lock-in participates in dynamic auto-sensitivity
             during measurement (subject to the plugin-level master enable).
+            A nonzero manual or automatic output offset prevents per-point
+            sensitivity changes for this lock-in.
         auto_offsets (dict[str, float]):
             Per-channel offset percentages populated by :meth:`~Keithley6221_MultiSR830Plugin.auto_offset`.
             Keys are :class:`~stoner_measurement.instruments.lockin_amplifier.LockInOutputChannel`
@@ -377,6 +379,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     to add derived resistance channels from the measured lock-in voltages.
     When channel statistics are enabled, these channels also advertise mean
     outputs named ``instance.label.output.resistance``, with units of ohms.
+    Per-point auto-ranging skips lock-ins with nonzero output offsets, preserving
+    their offset scaling while other lock-ins continue to adjust independently.
 
     The second tab contains the lock-in configuration table. Each column
     represents one instrument. For each lock-in you choose its model and set a
@@ -1283,6 +1287,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         )
 
         auto_enabled = QCheckBox("Enable auto-ranging")
+        auto_enabled.setToolTip(
+            "Adjust sensitivity between points for each eligible lock-in. "
+            "Lock-ins with nonzero manual or automatic output offsets keep their sensitivity."
+        )
         auto_enabled.setChecked(self._auto_sensitivity_enabled)
         auto_enabled.toggled.connect(
             lambda checked: setattr(self, "_auto_sensitivity_enabled", bool(checked))
@@ -2234,6 +2242,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 step up or down from the current setting.
         """
         if not entry.auto_sensitivity:
+            return
+        if _lockin_has_output_offsets(entry.model) and (
+            entry.offset_pct != 0.0 or any(value != 0.0 for value in entry.auto_offsets.values())
+        ):
             return
         if entry.sensitivity <= 0.0:
             return

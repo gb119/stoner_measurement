@@ -25,6 +25,13 @@ adjusting an auto-enabled lock-in between measurements. The `Auto` dropdown
 choice removes the previous ambiguity where a displayed numeric range could
 coexist with an enabled per-lock-in auto-sensitivity flag.
 
+Per-point auto-ranging skips each SR830 with a nonzero manual offset or any
+nonzero stored automatic channel offset. Its sensitivity and offset/expand
+settings remain fixed while other eligible lock-ins continue to range. This
+guard applies even when software offset addition is disabled; zero offsets and
+expansion alone do not block ranging. Initial configuration-time auto gain is
+unchanged and occurs before the configured offsets are applied.
+
 ## Per-lock-in input and filter settings (2026-09-14)
 
 Filter slope, input coupling, line filtering, and input source are stored on
