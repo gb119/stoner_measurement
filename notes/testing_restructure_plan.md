@@ -1,5 +1,17 @@
 # Testing Restructure Plan
 
+## 2026-11-13: Current CI and Codacy review
+
+- Latest main CI passed all four Python/Qt jobs and coverage before this change.
+- Removed redundant transport and temperature-test imports. The lock-in
+  resistance-output test now evaluates the advertised expression with asteval,
+  preserving the numerical assertion without Python's unrestricted eval.
+  No tests moved, added or removed.
+- Affected five modules: 278 passed on Python 3.14.7/PyQt5 with offscreen Qt
+  and a repository-local temporary directory (system temp was inaccessible).
+  Ruff passed across src/tests/docs; targeted Pylint W0611/W0404 and Bandit B307
+  passed. Import spacing/order fixes also cover the two physics fit functions.
+
 ## 2026-11-13: Preserve offset lock-in sensitivity during per-point ranging
 
 - Extended the existing multi-lock-in module with mixed-instrument cases for

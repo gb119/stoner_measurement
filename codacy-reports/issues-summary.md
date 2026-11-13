@@ -1,40 +1,37 @@
 # Codacy Issues Summary
 
-Repository: `gh/gb119/stoner_measurement`, branch `main`
+Repository: gh/gb119/stoner_measurement, branch main
 
-Analysed commit: `e8e8578517c2d4861843e265ebbe5f7677c7095b`
+Remote analysed commit: a38d98d8316656648583b2b6f0e019d056e145dc
 
-Analysis completed: 2026-11-11T22:30:31.268Z
+Analysis completed: 2026-11-13T17:21:24.391Z
 
 ## Current result
 
-**Zero active issues**, verified by the complete issue pull and repository count.
+Four active remote findings, all fixed locally and awaiting push/reanalysis.
+The complete issue search returned total 4 with no next cursor; the repository
+summary independently reports 4 issues for the latest main commit.
 
-## Review of the 12 findings
-
-| Findings | Disposition |
+| Findings | Local fix |
 | --- | --- |
-| Oxford re-export: Pyflakes F401 and Pylint W0611 (2) | Explicit public exports preserve the Mercury compatibility import |
-| Lake Shore nested CSV formatter: E306 (1) | Added the required blank lines |
-| Editor selection and regression: C0123 (2) | Exact type is required to switch from the specialised subclass back to the generic editor; documented line-scoped suppressions |
-| Packaged guide launch: B606 (1) | Intentional Windows association launch of the fixed-name cached bundled guide; documented call-scoped suppression |
-| Build script and test imports: B404 (2) | Intentional subprocess use; the test mocks execution; documented import-scoped suppressions |
-| Sphinx and HHC calls: B603 (2) | Trusted developer build tools, separate arguments, no command shell; documented call-scoped suppressions |
-| HHC environment-selected tool: Opengrep (1) | Explicit compiler selection is intentional build capability, not untrusted application input; exact-rule suppression |
-| CHM stylesheet: declaration-no-important (1) | Replaced !important with a more specific html body selector |
+| Pylint W0611: unused VisaResourceStatus import (1) | Removed unused temperature-test import |
+| Pylint W0404: transport reimports (2) | Reused module-level imports throughout the transport test module |
+| Bandit B307: eval in lock-in test (1) | Used the existing asteval dependency with errors propagated; retained the numerical expression assertion |
 
-No remote ignore states or global analyser exclusions were changed. The subprocess
-findings identify intentional developer tooling, not an application command-input
-path. Compiler selection, shell-free invocation and artifact checks are preserved.
+No remote ignore states or analyser exclusions changed. The Bandit finding is
+in a regression test evaluating a plugin-generated expression, with no external
+input. Historical confirmed resolutions remain in resolved-issues.csv.
 
-## Validation and evidence
+## Validation
 
-- 168 affected guide, controller and editor tests passed on Python 3.14.7/PyQt5.
-- Ruff and targeted Pylint W0611, C0123 and W0012 passed.
-- Targeted Bandit B404, B603 and B606 passed.
-- Strict Sphinx HTML Help build passed after correcting literal markup in the
-  Mercury identity docstring; the generated stylesheet retains the same gutter.
-- `issues.json` and `repository.json` hold the current remote snapshot.
-- `issues.csv` records active findings and dispositions.
-- `resolved-issues.csv` preserves earlier resolutions and, after remote confirmation,
-  records these findings with the immutable source-fix commit and analysis time.
+- Latest main CI passed all four Python 3.12/3.14 and PyQt5/PyQt6 jobs plus
+  coverage: GitHub Actions run 43471883445.
+- All 278 tests in the five affected test modules passed locally on Python
+  3.14.7/PyQt5 using offscreen Qt and a repository-local temporary directory.
+- Ruff passed across src/tests/docs; six import/spacing findings fixed.
+- Targeted Pylint W0611/W0404 and Bandit B307 passed.
+- git diff --check passed.
+- The usual Codacy client was unavailable in the Conda environment. Snapshots
+  were retrieved from authenticated Codacy v3 issue-search and repository APIs;
+  credentials were not included in reports.
+- Remote confirmation is pending analysis of the source-fix commit.

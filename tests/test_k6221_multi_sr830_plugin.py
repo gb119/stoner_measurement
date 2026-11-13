@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 import pytest
+from asteval import Interpreter
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -1143,7 +1144,8 @@ class TestChannelsAndResistance:
         assert trace.units["X label resistance"] == "\u03a9"
         output = f"{plugin.instance_name}.X label.X.resistance"
         expression = plugin.reported_values()[output]
-        assert eval(expression, {plugin.instance_name: plugin}) == pytest.approx(15.0)
+        interpreter = Interpreter(symtable={plugin.instance_name: plugin}, use_numpy=False)
+        assert interpreter.eval(expression, raise_errors=True) == pytest.approx(15.0)
         assert plugin.reported_value_units()[output] == "\u03a9"
 
     def test_resistance_output_catalogue_tracks_channel_options(self, qapp):

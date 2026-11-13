@@ -3,6 +3,7 @@
 import numpy as np
 from scipy.integrate import quad
 
+
 def _bgintegrand(x, n):
     """Calculate the integrand for the Bloch Grueneisen model."""
     return x**n / ((np.exp(x) - 1) * (1 - np.exp(-x)))

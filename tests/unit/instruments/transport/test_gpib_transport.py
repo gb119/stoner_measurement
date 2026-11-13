@@ -6,7 +6,11 @@ import pytest
 
 from stoner_measurement.instruments.errors import InstrumentError
 from stoner_measurement.instruments.protocol import LakeshoreProtocol, OxfordProtocol
-from stoner_measurement.instruments.transport import BaseTransport, GpibTransport, PassThroughGpibTransport
+from stoner_measurement.instruments.transport import (
+    BaseTransport,
+    GpibTransport,
+    PassThroughGpibTransport,
+)
 
 
 @pytest.mark.parametrize("factory", [
@@ -78,8 +82,6 @@ class TestGpibProtocolTermination:
         pytest.importorskip("pyvisa")
         import pyvisa
 
-        from stoner_measurement.instruments.transport import GpibTransport
-
         resource, rm_factory = self._make_fake_gpib_resource_manager()
         monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
 
@@ -93,8 +95,6 @@ class TestGpibProtocolTermination:
     def test_gpib_protocol_set_after_open_updates_read_termination(self, monkeypatch):
         pytest.importorskip("pyvisa")
         import pyvisa
-
-        from stoner_measurement.instruments.transport import GpibTransport
 
         resource, rm_factory = self._make_fake_gpib_resource_manager()
         monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
@@ -110,8 +110,6 @@ class TestGpibProtocolTermination:
         pytest.importorskip("pyvisa")
         import pyvisa
 
-        from stoner_measurement.instruments.transport import GpibTransport
-
         resource, rm_factory = self._make_fake_gpib_resource_manager()
         monkeypatch.setattr(pyvisa, "ResourceManager", rm_factory)
 
@@ -125,8 +123,6 @@ class TestGpibProtocolTermination:
     def test_read_times_out_when_mav_never_appears(self, monkeypatch, complete_mask):
         pytest.importorskip("pyvisa")
         import pyvisa
-
-        from stoner_measurement.instruments.transport import GpibTransport
 
         resource, rm_factory = self._make_fake_gpib_resource_manager()
         resource.read_stb = lambda: 11
@@ -143,8 +139,6 @@ class TestGpibProtocolTermination:
         import pyvisa
 
         import stoner_measurement.instruments.transport.gpib_transport as gpib_module
-        from stoner_measurement.instruments.transport import GpibTransport
-
         resource, rm_factory = self._make_fake_gpib_resource_manager()
         resource.read_stb = lambda: 16
         resource.read_raw = lambda count: b"partial"
@@ -165,8 +159,6 @@ class TestGpibProtocolTermination:
         import pyvisa
 
         import stoner_measurement.instruments.transport.gpib_transport as gpib_module
-        from stoner_measurement.instruments.transport import GpibTransport
-
         resource, rm_factory = self._make_fake_gpib_resource_manager()
         statuses = iter((0, 0, 18, 18, 0))
         resource.read_stb = lambda: next(statuses)
@@ -183,8 +175,6 @@ class TestGpibProtocolTermination:
         transport.close()
 
     def test_command_complete_status_is_opt_in(self):
-        from stoner_measurement.instruments.transport import GpibTransport
-
         transport = GpibTransport(address=22)
 
         assert transport._command_complete_mask is None
@@ -192,8 +182,6 @@ class TestGpibProtocolTermination:
     def test_close_leaves_shared_resource_manager_and_other_resources_open(self, monkeypatch):
         pytest.importorskip("pyvisa")
         import pyvisa
-
-        from stoner_measurement.instruments.transport import GpibTransport
 
         class _FakeResource:
             def __init__(self):
@@ -255,8 +243,6 @@ class TestPassThroughGpibTransport:
             return 0x00
 
     def test_write_wraps_command_for_6221_serial_send(self):
-        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
-
         transport = PassThroughGpibTransport(address=22)
         resource = self._FakeResource(responses=[b"0\n\n"])
         transport._resource = resource
@@ -267,8 +253,6 @@ class TestPassThroughGpibTransport:
         assert transport.last_stb == 0
 
     def test_status_error_check_can_be_suppressed_for_recovery_command(self):
-        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
-
         transport = PassThroughGpibTransport(address=22)
         resource = self._FakeResource(responses=[b"4\n\n"])
         transport._resource = resource
@@ -280,8 +264,6 @@ class TestPassThroughGpibTransport:
         assert transport._status_error_mask == 4
 
     def test_status_error_still_raises_outside_recovery_command(self):
-        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
-
         transport = PassThroughGpibTransport(address=22)
         resource = self._FakeResource(responses=[b"4\n\n"])
         transport._resource = resource
@@ -291,8 +273,6 @@ class TestPassThroughGpibTransport:
 
     def test_serial_entry_retries_a_temporarily_empty_response(self, monkeypatch):
         import stoner_measurement.instruments.transport.gpib_transport as gpib_module
-        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
-
         monkeypatch.setattr(gpib_module, "sleep", lambda _seconds: None)
         transport = PassThroughGpibTransport(address=22)
         resource = self._FakeResource(responses=[b"\n\n", b"1\n\n"])
@@ -302,8 +282,6 @@ class TestPassThroughGpibTransport:
         assert resource.write_log == [b"SYST:COMM:SER:ENT?"]
 
     def test_read_queries_ent_and_returns_payload_bytes(self):
-        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
-
         transport = PassThroughGpibTransport(address=22)
         resource = self._FakeResource(responses=[b"1.23\r\n;0\n\n"])
         transport._resource = resource
@@ -316,8 +294,6 @@ class TestPassThroughGpibTransport:
 
     def test_slow_query_collects_trace_before_requesting_status_byte(self, monkeypatch):
         import stoner_measurement.instruments.transport.gpib_transport as gpib_module
-        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
-
         monkeypatch.setattr(gpib_module, "sleep", lambda _seconds: None)
         transport = PassThroughGpibTransport(address=22)
         resource = self._FakeResource(
@@ -338,8 +314,6 @@ class TestPassThroughGpibTransport:
 
     def test_slow_query_preserves_binary_whitespace_bytes(self, monkeypatch):
         import stoner_measurement.instruments.transport.gpib_transport as gpib_module
-        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
-
         monkeypatch.setattr(gpib_module, "sleep", lambda _seconds: None)
         transport = PassThroughGpibTransport(address=22)
         resource = self._FakeResource(
@@ -353,8 +327,6 @@ class TestPassThroughGpibTransport:
         assert transport.last_stb == 16
 
     def test_read_status_byte_returns_cached_last_stb(self):
-        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport
-
         transport = PassThroughGpibTransport(address=22)
         resource = self._FakeResource()
         transport._resource = resource

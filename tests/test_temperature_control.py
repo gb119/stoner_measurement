@@ -28,7 +28,6 @@ from stoner_measurement.temperature_control.types import (
     TemperatureEngineState,
 )
 from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
-from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceStatus
 
 # ---------------------------------------------------------------------------
 # Helpers

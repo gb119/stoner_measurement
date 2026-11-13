@@ -3,6 +3,7 @@
 import numpy as np
 from scipy.constants import e
 
+
 def fit(x, n_q, offset):
     """Return a straight line."""
     slope=1/(n_q*e)

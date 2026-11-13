@@ -5,7 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from stoner_measurement.core.controller_polling import raise_for_controller_failure
-from stoner_measurement.plugins.command import SetFieldCommand, SetPositionCommand, SetTemperatureCommand
+from stoner_measurement.plugins.command import (
+    SetFieldCommand,
+    SetPositionCommand,
+    SetTemperatureCommand,
+)
 from stoner_measurement.plugins.command.make_safe import MakeSafeCommand
 from stoner_measurement.plugins.command.pressure_set_flow import PressureSetFlowCommand
 from stoner_measurement.plugins.state_scan import (

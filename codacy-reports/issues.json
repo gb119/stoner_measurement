@@ -1,3 +1,113 @@
 {
-  "issues": []
+  "issues": [
+    {
+      "issueId": "cdac973e28d9246f49e18215354ab0f6",
+      "resultDataId": 131565434425,
+      "filePath": "tests/test_temperature_control.py",
+      "fileId": 246568750168,
+      "patternInfo": {
+        "id": "PyLintPython3_W0611",
+        "category": "UnusedCode",
+        "level": "Warning",
+        "severityLevel": "Warning"
+      },
+      "toolInfo": {
+        "uuid": "31677b6d-4ae0-4f56-8041-606a8d7a8e61",
+        "name": "Pylint"
+      },
+      "lineNumber": 31,
+      "message": "Unused VisaResourceStatus imported from stoner_measurement.ui.widgets.visa_resource_widget",
+      "language": "Python",
+      "lineText": "from stoner_measurement.ui.widgets.visa_resource_widget import VisaResourceStatus",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "bd6c589ed667b3c96a79f5ee5f1308e319b4c7b1",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-13T11:38:35Z"
+      }
+    },
+    {
+      "issueId": "c299e98226eacc33961896369757dcfd",
+      "resultDataId": 131564922500,
+      "filePath": "tests/unit/instruments/transport/test_gpib_transport.py",
+      "fileId": 246568749862,
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "category": "CodeStyle",
+        "level": "Info",
+        "severityLevel": "Info"
+      },
+      "toolInfo": {
+        "uuid": "31677b6d-4ae0-4f56-8041-606a8d7a8e61",
+        "name": "Pylint"
+      },
+      "lineNumber": 81,
+      "message": "Reimport 'GpibTransport' (imported line 9)",
+      "language": "Python",
+      "lineText": "        from stoner_measurement.instruments.transport import GpibTransport",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "34a67c8b1458241866634c81bb6838dc17c3c507",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-12T10:52:10Z"
+      }
+    },
+    {
+      "issueId": "e72695874b528e7afacaaf8478b968d4",
+      "resultDataId": 131564922501,
+      "filePath": "tests/unit/instruments/transport/test_gpib_transport.py",
+      "fileId": 246568749862,
+      "patternInfo": {
+        "id": "PyLintPython3_W0404",
+        "category": "CodeStyle",
+        "level": "Info",
+        "severityLevel": "Info"
+      },
+      "toolInfo": {
+        "uuid": "31677b6d-4ae0-4f56-8041-606a8d7a8e61",
+        "name": "Pylint"
+      },
+      "lineNumber": 258,
+      "message": "Reimport 'PassThroughGpibTransport' (imported line 9)",
+      "language": "Python",
+      "lineText": "        from stoner_measurement.instruments.transport.gpib_transport import PassThroughGpibTransport",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "34a67c8b1458241866634c81bb6838dc17c3c507",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-12T10:52:10Z"
+      }
+    },
+    {
+      "issueId": "99095ad4dc7a86c5d937b3dab101f3b5",
+      "resultDataId": 131566990832,
+      "filePath": "tests/test_k6221_multi_sr830_plugin.py",
+      "fileId": 246568749940,
+      "patternInfo": {
+        "id": "Bandit_B307",
+        "category": "Security",
+        "level": "Warning",
+        "severityLevel": "Warning",
+        "subCategory": "InsecureModulesLibraries"
+      },
+      "toolInfo": {
+        "uuid": "89b6fc6a-9137-4cf3-8b9f-dcc3bedfa738",
+        "name": "Bandit"
+      },
+      "lineNumber": 1146,
+      "message": "Use of possibly insecure function - consider using safer ast.literal_eval.",
+      "language": "Python",
+      "lineText": "        assert eval(expression, {plugin.instance_name: plugin}) == pytest.approx(15.0)",
+      "falsePositiveThreshold": 80,
+      "commitInfo": {
+        "sha": "ca2fa209aede6fdd6fc49c2c807d38b980b92454",
+        "commiter": "g.burnell@leeds.ac.uk",
+        "commiterName": "Gavin Burnell",
+        "timestamp": "2026-11-13T16:55:46Z"
+      }
+    }
+  ]
 }

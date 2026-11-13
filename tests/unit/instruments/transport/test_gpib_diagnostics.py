@@ -4,8 +4,8 @@ import threading
 
 import pytest
 
-from stoner_measurement.instruments.transport import GpibTransport
 from stoner_measurement import telemetry as diagnostics
+from stoner_measurement.instruments.transport import GpibTransport
 
 
 @pytest.fixture(autouse=True)

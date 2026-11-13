@@ -18,10 +18,10 @@
       "addedState": "Added",
       "repositoryId": 857542,
       "remoteIdentifier": "1199443664",
-      "lastUpdated": "2026-11-11T22:29:46.309Z",
+      "lastUpdated": "2026-11-13T17:20:50.848Z",
       "permission": "admin",
       "stack": {
-        "commitUuid": "e8e8578517c2d4861843e265ebbe5f7677c7095b",
+        "commitUuid": "a38d98d8316656648583b2b6f0e019d056e145dc",
         "stackTags": [
           "fwk:github-actions",
           "lib:numpy",
@@ -30,7 +30,7 @@
           "lib:scipy",
           "tool:black"
         ],
-        "discoveredAt": "2026-11-11T22:30:19.200203Z"
+        "discoveredAt": "2026-11-13T17:21:12.831661Z"
       },
       "defaultBranch": {
         "id": 57541956,
@@ -38,8 +38,8 @@
         "isDefault": true,
         "isEnabled": true,
         "branchType": "Branch",
-        "lastUpdated": "2026-11-11T22:29:46.309Z",
-        "lastCommit": "e8e8578517c2d4861843e265ebbe5f7677c7095b"
+        "lastUpdated": "2026-11-13T17:20:50.848Z",
+        "lastCommit": "a38d98d8316656648583b2b6f0e019d056e145dc"
       },
       "badges": {
         "grade": "https://app.codacy.com/project/badge/Grade/f20d5771398343cd87a26c21ca6b7c7e",
@@ -47,34 +47,34 @@
       }
     },
     "lastAnalysedCommit": {
-      "sha": "e8e8578517c2d4861843e265ebbe5f7677c7095b",
-      "id": 1215654748,
-      "commitTimestamp": "2026-11-11T22:29:40Z",
+      "sha": "a38d98d8316656648583b2b6f0e019d056e145dc",
+      "id": 1216895659,
+      "commitTimestamp": "2026-11-13T17:20:51Z",
       "authorName": "Gavin Burnell",
       "authorEmail": "g.burnell@leeds.ac.uk",
-      "message": "Review and address existing Codacy findings",
-      "startedAnalysis": "2026-11-11T22:29:54.436Z",
-      "endedAnalysis": "2026-11-11T22:30:31.268Z",
+      "message": "Preserve offset lock-in sensitivity during per-point auto-ranging",
+      "startedAnalysis": "2026-11-13T17:21:01.453Z",
+      "endedAnalysis": "2026-11-13T17:21:24.391Z",
       "isMergeCommit": false,
       "parents": [
-        "4f5fb24182e7a0566ab664d16036c22b308cea87"
+        "ca2fa209aede6fdd6fc49c2c807d38b980b92454"
       ]
     },
-    "grade": 100,
+    "grade": 99,
     "gradeLetter": "A",
     "issuesPercentage": 0,
-    "issuesCount": 0,
-    "loc": 99802,
+    "issuesCount": 4,
+    "loc": 100956,
     "complexFilesPercentage": 27,
-    "complexFilesCount": 176,
+    "complexFilesCount": 178,
     "branch": {
       "id": 57541956,
       "name": "main",
       "isDefault": true,
       "isEnabled": true,
       "branchType": "Branch",
-      "lastUpdated": "2026-11-11T22:29:46.309Z",
-      "lastCommit": "e8e8578517c2d4861843e265ebbe5f7677c7095b"
+      "lastUpdated": "2026-11-13T17:20:50.848Z",
+      "lastCommit": "a38d98d8316656648583b2b6f0e019d056e145dc"
     },
     "selectedBranch": {
       "id": 57541956,
@@ -82,21 +82,21 @@
       "isDefault": true,
       "isEnabled": true,
       "branchType": "Branch",
-      "lastUpdated": "2026-11-11T22:29:46.309Z",
-      "lastCommit": "e8e8578517c2d4861843e265ebbe5f7677c7095b"
+      "lastUpdated": "2026-11-13T17:20:50.848Z",
+      "lastCommit": "a38d98d8316656648583b2b6f0e019d056e145dc"
     },
     "coverage": {
-      "filesUncovered": 321,
+      "filesUncovered": 333,
       "filesWithLowCoverage": 95,
-      "coveragePercentage": 86,
-      "coveragePercentageWithDecimals": 86.78,
-      "numberTotalFiles": 630,
-      "numberCoveredLines": 46265,
-      "numberCoverableLines": 53310,
-      "status": "Waiting",
-      "lastCommitWithCoverage": "4f5fb24182e7a0566ab664d16036c22b308cea87",
-      "statusUpdatedAt": "2026-11-11T22:30:31.707713Z",
-      "valueUpdatedAt": "2026-11-11T21:31:22.962321Z"
+      "coveragePercentage": 87,
+      "coveragePercentageWithDecimals": 87.04,
+      "numberTotalFiles": 646,
+      "numberCoveredLines": 47015,
+      "numberCoverableLines": 54014,
+      "status": "UpToDate",
+      "lastCommitWithCoverage": "a38d98d8316656648583b2b6f0e019d056e145dc",
+      "statusUpdatedAt": "2026-11-13T17:35:18.900414Z",
+      "valueUpdatedAt": "2026-11-13T17:35:18.900414Z"
     },
     "goals": {
       "maxIssuePercentage": 2,
