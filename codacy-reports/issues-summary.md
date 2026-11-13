@@ -2,15 +2,15 @@
 
 Repository: gh/gb119/stoner_measurement, branch main
 
-Remote analysed commit: a38d98d8316656648583b2b6f0e019d056e145dc
+Remote analysed commit: 0c87f03eddd12dc643a3673689e6231ca6164981
 
-Analysis completed: 2026-11-13T17:21:24.391Z
+Analysis completed: 2026-11-13T21:52:01.1Z
 
 ## Current result
 
-Four active remote findings, all fixed locally and awaiting push/reanalysis.
-The complete issue search returned total 4 with no next cursor; the repository
-summary independently reports 4 issues for the latest main commit.
+Zero active remote findings, confirmed after pushing the source fixes.
+The complete issue search returned total 0 with no next cursor; the repository
+summary independently reports 0 issues for the source-fix commit.
 
 | Findings | Local fix |
 | --- | --- |
@@ -34,4 +34,4 @@ input. Historical confirmed resolutions remain in resolved-issues.csv.
 - The usual Codacy client was unavailable in the Conda environment. Snapshots
   were retrieved from authenticated Codacy v3 issue-search and repository APIs;
   credentials were not included in reports.
-- Remote confirmation is pending analysis of the source-fix commit.
+- Remote reanalysis confirmed all four findings resolved in 0c87f03.

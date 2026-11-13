@@ -18,10 +18,10 @@
       "addedState": "Added",
       "repositoryId": 857542,
       "remoteIdentifier": "1199443664",
-      "lastUpdated": "2026-11-13T17:20:50.848Z",
+      "lastUpdated": "2026-11-13T21:51:31.819Z",
       "permission": "admin",
       "stack": {
-        "commitUuid": "a38d98d8316656648583b2b6f0e019d056e145dc",
+        "commitUuid": "0c87f03eddd12dc643a3673689e6231ca6164981",
         "stackTags": [
           "fwk:github-actions",
           "lib:numpy",
@@ -30,7 +30,7 @@
           "lib:scipy",
           "tool:black"
         ],
-        "discoveredAt": "2026-11-13T17:21:12.831661Z"
+        "discoveredAt": "2026-11-13T21:51:52.243651Z"
       },
       "defaultBranch": {
         "id": 57541956,
@@ -38,8 +38,8 @@
         "isDefault": true,
         "isEnabled": true,
         "branchType": "Branch",
-        "lastUpdated": "2026-11-13T17:20:50.848Z",
-        "lastCommit": "a38d98d8316656648583b2b6f0e019d056e145dc"
+        "lastUpdated": "2026-11-13T21:51:31.819Z",
+        "lastCommit": "0c87f03eddd12dc643a3673689e6231ca6164981"
       },
       "badges": {
         "grade": "https://app.codacy.com/project/badge/Grade/f20d5771398343cd87a26c21ca6b7c7e",
@@ -47,24 +47,24 @@
       }
     },
     "lastAnalysedCommit": {
-      "sha": "a38d98d8316656648583b2b6f0e019d056e145dc",
-      "id": 1216895659,
-      "commitTimestamp": "2026-11-13T17:20:51Z",
+      "sha": "0c87f03eddd12dc643a3673689e6231ca6164981",
+      "id": 1217335219,
+      "commitTimestamp": "2026-11-13T21:51:16Z",
       "authorName": "Gavin Burnell",
       "authorEmail": "g.burnell@leeds.ac.uk",
-      "message": "Preserve offset lock-in sensitivity during per-point auto-ranging",
-      "startedAnalysis": "2026-11-13T17:21:01.453Z",
-      "endedAnalysis": "2026-11-13T17:21:24.391Z",
+      "message": "Clear current Codacy findings and import lint issues",
+      "startedAnalysis": "2026-11-13T21:51:40.525Z",
+      "endedAnalysis": "2026-11-13T21:52:01.1Z",
       "isMergeCommit": false,
       "parents": [
-        "ca2fa209aede6fdd6fc49c2c807d38b980b92454"
+        "a38d98d8316656648583b2b6f0e019d056e145dc"
       ]
     },
-    "grade": 99,
+    "grade": 100,
     "gradeLetter": "A",
     "issuesPercentage": 0,
-    "issuesCount": 4,
-    "loc": 100956,
+    "issuesCount": 0,
+    "loc": 101074,
     "complexFilesPercentage": 27,
     "complexFilesCount": 178,
     "branch": {
@@ -73,8 +73,8 @@
       "isDefault": true,
       "isEnabled": true,
       "branchType": "Branch",
-      "lastUpdated": "2026-11-13T17:20:50.848Z",
-      "lastCommit": "a38d98d8316656648583b2b6f0e019d056e145dc"
+      "lastUpdated": "2026-11-13T21:51:31.819Z",
+      "lastCommit": "0c87f03eddd12dc643a3673689e6231ca6164981"
     },
     "selectedBranch": {
       "id": 57541956,
@@ -82,8 +82,8 @@
       "isDefault": true,
       "isEnabled": true,
       "branchType": "Branch",
-      "lastUpdated": "2026-11-13T17:20:50.848Z",
-      "lastCommit": "a38d98d8316656648583b2b6f0e019d056e145dc"
+      "lastUpdated": "2026-11-13T21:51:31.819Z",
+      "lastCommit": "0c87f03eddd12dc643a3673689e6231ca6164981"
     },
     "coverage": {
       "filesUncovered": 333,
@@ -93,9 +93,9 @@
       "numberTotalFiles": 646,
       "numberCoveredLines": 47015,
       "numberCoverableLines": 54014,
-      "status": "UpToDate",
+      "status": "Waiting",
       "lastCommitWithCoverage": "a38d98d8316656648583b2b6f0e019d056e145dc",
-      "statusUpdatedAt": "2026-11-13T17:35:18.900414Z",
+      "statusUpdatedAt": "2026-11-13T21:52:01.51818Z",
       "valueUpdatedAt": "2026-11-13T17:35:18.900414Z"
     },
     "goals": {
