@@ -1098,6 +1098,34 @@ class TestChannelsAndResistance:
         assert trace.columns == ["x", "X label", "X label resistance"]
         assert trace.units["X label"] == "V"
         assert trace.units["X label resistance"] == "\u03a9"
+        output = f"{plugin.instance_name}.X label.X.resistance"
+        expression = plugin.reported_values()[output]
+        assert eval(expression, {plugin.instance_name: plugin}) == pytest.approx(15.0)
+        assert plugin.reported_value_units()[output] == "\u03a9"
+
+    def test_resistance_output_catalogue_tracks_channel_options(self, qapp):
+        plugin = _make_plugin()
+        plugin.instance_name = "measure"
+        plugin._resistance_enabled = True
+        plugin._lockin_entries = [
+            LockInEntry(label="LIA", outputs=tuple(LockInOutput)),
+        ]
+        resistance_outputs = {
+            f"measure.LIA.{output}.resistance" for output in ("X", "Y", "R")
+        }
+        assert resistance_outputs <= plugin.reported_values().keys()
+        assert {
+            name: unit for name, unit in plugin.reported_value_units().items()
+            if name.endswith(".resistance")
+        } == dict.fromkeys(resistance_outputs, "\u03a9")
+        assert "measure.LIA.THETA.resistance" not in plugin.reported_values()
+        plugin._resistance_enabled = False
+        assert not resistance_outputs.intersection(plugin.reported_values())
+        assert not resistance_outputs.intersection(plugin.reported_value_units())
+        plugin._resistance_enabled = True
+        plugin._set_report_channel_statistics(False)
+        assert not resistance_outputs.intersection(plugin.reported_values())
+        assert not resistance_outputs.intersection(plugin.reported_value_units())
 
     def test_resistance_conversion_uses_rms_current_from_peak_amplitude(self, qapp):
         plugin = _make_plugin()

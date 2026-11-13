@@ -133,6 +133,8 @@ def test_current_input_ranges_configure_and_auto_range_in_amperes(qapp, model, s
     assert [(spec.unit, spec.derived_resistance) for spec in plugin._channel_specs()] == [
         ("A", False)
     ]
+    assert not any(name.endswith(".resistance") for name in plugin.reported_values())
+    assert not any(name.endswith(".resistance") for name in plugin.reported_value_units())
 
 
 def test_readback_updates_each_instrument_without_overwriting_its_neighbour(qapp):

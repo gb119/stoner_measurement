@@ -1,5 +1,18 @@
 # Testing Restructure Plan
 
+## 2026-11-13: Advertise derived lock-in resistance averages
+
+- Extended existing lock-in tests to evaluate an advertised resistance mean
+  against acquired trace data, check ohm units and multiple selected outputs,
+  and exclude phase/current inputs and disabled resistance/statistics options.
+  No tests moved or removed. Existing voltage output names remain unchanged;
+  derived means append `.resistance` to their corresponding output names.
+- Conda/offscreen PyQt5: 159 passed across
+  `tests/test_k6221_multi_sr830_plugin.py`,
+  `tests/unit/plugins/trace/test_k6221_lockin_settings.py` and
+  `tests/unit/plugins/trace/test_trace_plugin.py`.
+  `git diff --check` passed. Ruff remains unavailable in this environment.
+
 ## 2026-11-13: Temperature status-bar connection actions
 
 - Extended the existing asynchronous temperature-panel tests for enabled/disabled

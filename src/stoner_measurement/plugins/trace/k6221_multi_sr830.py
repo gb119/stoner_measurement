@@ -375,6 +375,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     and the cooldown multiple used to decide how long to wait
     between successive readings. A resistance-conversion option can be enabled
     to add derived resistance channels from the measured lock-in voltages.
+    When channel statistics are enabled, these channels also advertise mean
+    outputs named ``instance.label.output.resistance``, with units of ohms.
 
     The second tab contains the lock-in configuration table. Each column
     represents one instrument. For each lock-in you choose its model and set a
@@ -564,7 +566,8 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
 
         Lock-in catalogue names use ``instance.label.output`` so that every
         selected output remains independently addressable even though the
-        acquired data is stored in one shared multicolumn trace.
+        acquired data is stored in one shared multicolumn trace. Derived
+        resistance means append ``.resistance`` to the corresponding output name.
         """
         var = self.instance_name
         values = {
@@ -575,15 +578,9 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         if not self._report_channel_statistics:
             return values
 
-        for index, entry in enumerate(self._lockin_entries):
-            label = entry.label.strip() or f"LIA {index + 1}"
-            multiple_outputs = len(entry.outputs) > 1
-            for output in entry.outputs:
-                column = f"{label} {output.value}" if multiple_outputs else label
-                statistic_key = f"{_TRACE_NAME} {column}"
-                values[f"{var}.{label}.{output.value}"] = (
-                    f"{var}.get_channel_statistic({statistic_key!r}, 'mean')"
-                )
+        for name, spec in self._reported_channel_specs():
+            statistic_key = f"{_TRACE_NAME} {spec.name}"
+            values[name] = f"{var}.get_channel_statistic({statistic_key!r}, 'mean')"
         return values
 
     def reported_value_units(self) -> dict[str, str]:
@@ -597,11 +594,21 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         if not self._report_channel_statistics:
             return units
 
-        for index, entry in enumerate(self._lockin_entries):
-            label = entry.label.strip() or f"LIA {index + 1}"
-            for output in entry.outputs:
-                units[f"{var}.{label}.{output.value}"] = _output_unit(entry, output)
+        for name, spec in self._reported_channel_specs():
+            units[name] = spec.unit
         return units
+
+    def _reported_channel_specs(self) -> list[tuple[str, ChannelSpec]]:
+        """Pair scalar output names with the channels actually acquired."""
+        channels = []
+        for spec in self._channel_specs():
+            entry = self._lockin_entries[spec.lockin_index]
+            label = entry.label.strip() or f"LIA {spec.lockin_index + 1}"
+            name = f"{self.instance_name}.{label}.{spec.output.value}"
+            if spec.derived_resistance:
+                name += ".resistance"
+            channels.append((name, spec))
+        return channels
 
     def set_scan_generator_class(self, cls) -> None:
         """Replace the scan generator class and update the displayed units."""
