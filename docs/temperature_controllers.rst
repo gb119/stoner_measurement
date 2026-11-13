@@ -64,6 +64,18 @@ Write buttons disabled; **Read** and **Read All** remain available to retry.
 Cryogen controls appear for each instrument that supports them. Heater ranges
 and other optional features belong to the selected instrument.
 
+Panel connections, disconnections, reads, Apply and Write All run in a background
+temperature-operation queue. Other panels remain responsive while a controller
+or a large zone table is loading. Requests are serialised with polling and other
+operations on the same session. Repeated Read clicks do not build up duplicate
+work, and results for a previous connection or selection are discarded.
+
+Controls stay greyed out until the read finishes successfully. A requested
+disconnect waits for any native instrument call already running; it does not
+interrupt that call. Closing the panel hides it and allows pending work to finish.
+Application shutdown drains running work before releasing the controller sessions.
+Console and plugin calls to the engine retain their synchronous behaviour.
+
 For a **Lake Shore 340**, Input Settings provides native controls for each A/B
 input, including input enable, sensor type, excitation, voltage range,
 compensation, filtering and calibration curve. It works in either controller

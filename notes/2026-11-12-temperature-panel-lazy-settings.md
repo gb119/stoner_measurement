@@ -27,6 +27,8 @@ without permitting concurrent user actions during hardware reads.
 The first-access reads remain synchronous; moving all session operations to
 workers is separate work. Opening an ITC503 zone table can still be slow,
 but it is no longer incidental connection work or automatically repeated.
+This initial limitation is addressed by the subsequent
+[background-operation implementation](2026-11-12-temperature-background-operations.md).
 
 The remote magnet was a Mercury iPS. The user confirmed its initial write
 timeout occurred while remote access was disabled at the front panel; it

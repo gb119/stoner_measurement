@@ -407,7 +407,7 @@ def test_340_invalid_control_readback_prevents_configuration_write(response):
 
 @pytest.mark.parametrize("loop", [1, 2])
 def test_primary_340_apply_configures_ramp_and_native_output_before_target(
-    loop, monkeypatch, managed_qt_widget
+    loop, monkeypatch, managed_qt_widget, wait_temperature_tasks
 ):
     from qtpy.QtWidgets import QPushButton
 
@@ -442,6 +442,7 @@ def test_primary_340_apply_configures_ramp_and_native_output_before_target(
         else:
             assert group._heater_range_spin.isHidden()
         next(button for button in group.findChildren(QPushButton) if button.text() == "Apply").click()
+        wait_temperature_tasks(service)
         commands = [data for data in transport.write_log if data != b"*ESR?\r\n"]
         assert commands[:6] == [f"CSET? {loop}\r\n".encode(), f"CSET {loop},B,1,1,0\r\n".encode(),
                                 f"RAMP? {loop}\r\n".encode(), f"RAMP {loop},0,5.0\r\n".encode(),

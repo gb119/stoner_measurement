@@ -20,6 +20,7 @@ from qtpy.QtWidgets import (
 from stoner_measurement.instruments.addressing import DEFAULT_ETHERNET_HOST, DEFAULT_ETHERNET_PORT
 from stoner_measurement.instruments.temperature_controller import TemperatureController
 from stoner_measurement.qt_compat import pyqtSlot
+from stoner_measurement.ui.temperature_tasks import tasks_for
 from stoner_measurement.ui.widgets import (
     FILTER_GPIB,
     FILTER_SERIAL,
@@ -93,6 +94,7 @@ class TemperatureConnectionMixin:
         self._btn_connect = QPushButton("Connect")
         self._btn_connect.clicked.connect(self._on_connect)
         self._btn_disconnect = QPushButton("Disconnect")
+        tasks_for(self._engine).changed.connect(self._update_connection_buttons)
         self._btn_disconnect.setEnabled(False)
         self._btn_disconnect.clicked.connect(self._on_disconnect)
         btn_row.addWidget(self._btn_connect)
@@ -220,19 +222,48 @@ class TemperatureConnectionMixin:
             self._engine.preferred_transport_name = transport_name
             self._engine.preferred_address = address
             self._service._check_connection(self._slot, transport_name, address)
-            if not self._service.controller_enabled(self._slot):
-                self._service.set_controller_enabled(self._slot, True)
-            self._engine.connect_driver(
-                driver_name=resolved_driver_name,
-                transport_name=transport_name,
-                address=address,
-            )
         except Exception:
             logger.exception("Failed to connect temperature controller")
             self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
             return
 
-        self._sync_existing_connection_state()
+        engine, service, slot = self._engine, self._service, self._slot
+
+        def connect():
+            if not service.controller_enabled(slot):
+                service.set_controller_enabled(slot, True)
+            engine.connect_driver(resolved_driver_name, transport_name, address)
+
+        self._btn_connect.setEnabled(False)
+        self._btn_disconnect.setEnabled(False)
+
+        def finished(_result):
+            self._sync_existing_connection_state()
+            self._update_connection_buttons()
+
+        def failed(error):
+            finished(None)
+            self._set_address_widget_status(transport_index, VisaResourceStatus.ERROR)
+            QMessageBox.warning(self, "Temperature connection", str(error))
+
+        tasks_for(engine).submit(self, "connection", engine, connect, finished, failed, lifecycle=True)
+
+    def _request_disconnect(self):
+        """Queue disconnection without waiting for an outstanding hardware read."""
+        engine = self._engine
+        self._btn_connect.setEnabled(False)
+        self._btn_disconnect.setEnabled(False)
+
+        def finished(_result):
+            self._sync_existing_connection_state()
+            self._update_connection_buttons()
+
+        def failed(error):
+            finished(None)
+            QMessageBox.warning(self, "Temperature disconnection", str(error))
+
+        tasks_for(engine).submit(self, "connection", engine, engine.disconnect_instrument,
+                                 finished, failed, lifecycle=True)
 
     def _set_address_widget_status(self, transport_index: int, status: VisaResourceStatus) -> None:
         """Update the connection-status colour on the active address widget.
@@ -247,6 +278,13 @@ class TemperatureConnectionMixin:
                 Status to apply.
         """
         set_address_widget_status(self, transport_index, status)
+
+    def _update_connection_buttons(self):
+        """Reflect queued lifecycle work, including requests made from another panel."""
+        connected = self._engine.connected_driver is not None
+        busy = tasks_for(self._engine).connection_pending(self._engine)
+        self._btn_connect.setEnabled(not connected and not busy)
+        self._btn_disconnect.setEnabled(connected and not busy)
 
     def _selected_transport(self, index: int) -> tuple[str, str]:
         """Return selected transport type and address string.
@@ -302,8 +340,7 @@ class TemperatureConnectionGroup(TemperatureConnectionMixin, QGroupBox):
     def _sync_existing_connection_state(self):
         self._sync_driver_choice()
         connected = self._engine.connected_driver is not None
-        self._btn_connect.setEnabled(not connected)
-        self._btn_disconnect.setEnabled(connected)
+        self._update_connection_buttons()
         self._connection_status.setText(self._engine.status.value)
         self._set_address_widget_status(
             self._transport_combo.currentIndex(),
@@ -311,7 +348,4 @@ class TemperatureConnectionGroup(TemperatureConnectionMixin, QGroupBox):
         )
 
     def _on_disconnect(self):
-        try:
-            self._engine.disconnect_instrument()
-        except Exception as error:
-            QMessageBox.warning(self, "Temperature controller", str(error))
+        self._request_disconnect()

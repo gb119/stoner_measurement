@@ -1008,12 +1008,6 @@ class TestTemperatureControlPanel:
 
         assert "background-color" in panel._null_form_widget.styleSheet()
 
-    def test_disconnect_clears_null_transport_address_status(self, qapp, managed_temperature_panel):
-        panel = managed_temperature_panel()
-        panel._set_address_widget_status(3, VisaResourceStatus.CONNECTED)
-        panel._on_disconnect()
-        assert panel._null_form_widget.styleSheet() == ""
-
     def test_has_input_settings_tab(self, qapp, managed_temperature_panel):
         panel = managed_temperature_panel()
         tabs = panel._tabs

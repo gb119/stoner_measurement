@@ -1,5 +1,21 @@
 # Testing Restructure Plan
 
+## 2026-11-12: Background temperature-panel operations
+
+- Added `tests/unit/ui/panels/test_temperature_panel_async.py` for blocked
+  hardware with a live GUI timer, worker versus GUI thread assertions, queued
+  ordering, duplicate coalescing, stale selections/lifecycle results, deleted
+  widgets, dropped queued work, failures and retries.
+- Moved the legacy null-address disconnect case from
+  `tests/test_temperature_control.py` to that module and adapted panel/native
+  Apply tests to wait for explicit queue completion. Hardware-command assertions
+  are preserved. `wait_temperature_tasks` uses pytest-qt conditions, not sleeps.
+- Full single-process offscreen PyQt5 run through Miniforge Conda: 4,538 passed,
+  2 skipped. Follow-up controller/UI regressions passed (218 tests); after final
+  invalidation, worker-exit and button-state guards, the focused selections passed
+  101 and 16 tests. Final collection succeeded: 4,544 tests. Ruff is unavailable.
+  No hardware or alternate Qt binding tested.
+
 ## 2026-11-12: Lazy temperature-panel readbacks
 
 - Relocated/adapted the legacy curve-label and eager-connection-read scenarios

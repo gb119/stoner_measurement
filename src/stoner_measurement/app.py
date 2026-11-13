@@ -464,6 +464,16 @@ class MeasurementApp(QMainWindow):
 
     def _connect_engine_from_indicator(self, engine_label: str, engine: object) -> None:
         """Connect an engine from its persisted preferred settings."""
+        from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+
+        if isinstance(engine, TemperatureControllerEngine):
+            from stoner_measurement.ui.temperature_tasks import tasks_for
+
+            tasks_for(engine).submit(
+                self, "temperature-connection", engine, engine.connect_preferred_driver, lambda _result: None,
+                lambda error: QMessageBox.warning(self, "Temperature Connect", str(error)), lifecycle=True,
+            )
+            return
         try:
             engine.connect_preferred_driver()
         except Exception as exc:
@@ -475,6 +485,16 @@ class MeasurementApp(QMainWindow):
 
     def _disconnect_engine_from_indicator(self, engine_label: str, engine: object) -> None:
         """Disconnect an engine so it stops polling hardware."""
+        from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+
+        if isinstance(engine, TemperatureControllerEngine):
+            from stoner_measurement.ui.temperature_tasks import tasks_for
+
+            tasks_for(engine).submit(
+                self, "temperature-connection", engine, engine.disconnect_instrument, lambda _result: None,
+                lambda error: QMessageBox.warning(self, "Temperature Disconnect", str(error)), lifecycle=True,
+            )
+            return
         try:
             engine.disconnect_instrument()
         except Exception as exc:

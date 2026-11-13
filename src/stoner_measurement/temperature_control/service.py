@@ -356,6 +356,10 @@ class TemperatureServiceMixin:
 
     def shutdown(self):
         """Attempt both cleanups, preserving failures for the caller."""
+        tasks = getattr(self, "_temperature_tasks", None)
+        if tasks is not None:
+            tasks.close()
+            tasks.join()
         self._controller_poller.close()
         self._controller_poller.join()
         was_singleton = type(self)._singleton is self

@@ -54,15 +54,17 @@ def rig(monkeypatch, qapp):
     service.shutdown()
 
 
-def test_secondary_connect_preserves_primary_controls_and_reads(rig, managed_temperature_panel):
+def test_secondary_connect_preserves_primary_controls_and_reads(rig, managed_temperature_panel, wait_temperature_tasks):
     panel = managed_temperature_panel()
     primary = CountingController()
     rig.connect_instrument(primary)
+    wait_temperature_tasks(rig)
     controls = panel._loop_groups[1]
     controls._sp_spin.setValue(123)
     before = primary.reads.copy()
     assert before["zone"] == before["curves"] == before["input"] == 0
     rig.connect_instrument(CountingController(), controller_id="secondary")
+    wait_temperature_tasks(rig)
     panel._sync_existing_connection_state()
     panel._sync_existing_connection_state()
     assert primary.reads == before
@@ -71,11 +73,12 @@ def test_secondary_connect_preserves_primary_controls_and_reads(rig, managed_tem
     assert LoopRef("secondary", 1) in panel._loop_groups
 
 
-def test_tables_load_on_first_use_and_preserve_edits(rig, managed_temperature_panel):
+def test_tables_load_on_first_use_and_preserve_edits(rig, managed_temperature_panel, wait_temperature_tasks):
     panel = managed_temperature_panel()
     primary = CountingController()
     rig.connect_instrument(primary)
     panel._tabs.setCurrentIndex(panel._zone_tab_index)
+    wait_temperature_tasks(rig)
     assert primary.reads["zone"] == 2
     panel._zone_table_widget._table.cellWidget(0, 0).setValue(250)
     panel._tabs.setCurrentIndex(0)
@@ -83,12 +86,14 @@ def test_tables_load_on_first_use_and_preserve_edits(rig, managed_temperature_pa
     assert primary.reads["zone"] == 2
     secondary = CountingController()
     rig.connect_instrument(secondary, controller_id="secondary")
+    wait_temperature_tasks(rig)
     assert primary.reads["zone"] == 2
     assert secondary.reads["zone"] == 0
     assert panel._zone_table_widget._table.cellWidget(0, 0).value() == 250
     panel._tabs.setCurrentIndex(panel._input_settings_tab_index)
     assert secondary.reads["curves"] == secondary.reads["input"] == 0
     panel._input_tabs.setCurrentIndex(1)
+    wait_temperature_tasks(rig)
     assert primary.reads["curves"] == secondary.reads["curves"] == 1
     assert primary.reads["input"] == secondary.reads["input"] == 2
     combo = panel._input_settings_widget._editors["A"]["curve_number"]
@@ -102,41 +107,48 @@ def test_tables_load_on_first_use_and_preserve_edits(rig, managed_temperature_pa
     assert combo.currentData() == 2
 
 
-def test_reconnect_invalidates_only_replaced_sessions_tables(rig, managed_temperature_panel):
+def test_reconnect_invalidates_only_replaced_sessions_tables(rig, managed_temperature_panel, wait_temperature_tasks):
     panel = managed_temperature_panel()
     primary, secondary = CountingController(), CountingController()
     rig.connect_instrument(primary)
     rig.connect_instrument(secondary, controller_id="secondary")
     panel._tabs.setCurrentIndex(panel._input_settings_tab_index)
     panel._input_tabs.setCurrentIndex(1)
+    wait_temperature_tasks(rig)
     before = primary.reads.copy()
     primary_editor = panel._input_settings_widget._editors["A"]
     replacement = CountingController()
     rig.connect_instrument(replacement, controller_id="secondary")
+    wait_temperature_tasks(rig)
     assert primary.reads == before
     assert panel._input_settings_widget._editors["A"] is primary_editor
     assert replacement.reads["curves"] == 1
     assert replacement.reads["input"] == 2
 
 
-def test_failed_zone_load_can_be_retried(rig, managed_temperature_panel, monkeypatch):
+def test_failed_zone_load_can_be_retried(rig, managed_temperature_panel, monkeypatch, wait_temperature_tasks):
     panel = managed_temperature_panel()
     rig.connect_instrument(CountingController())
     original = rig.get_zone_table
     monkeypatch.setattr(rig, "get_zone_table", lambda loop: None)
     panel._tabs.setCurrentIndex(panel._zone_tab_index)
+    wait_temperature_tasks(rig)
     assert panel._zone_loaded is None
     monkeypatch.setattr(rig, "get_zone_table", original)
     panel._tabs.setCurrentIndex(0)
     panel._tabs.setCurrentIndex(panel._zone_tab_index)
+    wait_temperature_tasks(rig)
     assert panel._zone_loaded == panel._zone_target
     assert panel._zone_table_widget._table.rowCount() == 2
 
 
-def test_unread_loading_and_failed_settings_are_disabled(rig, managed_temperature_panel, monkeypatch):
+def test_unread_loading_and_failed_settings_are_disabled(
+    rig, managed_temperature_panel, monkeypatch, wait_temperature_tasks
+):
     panel = managed_temperature_panel()
     driver = CountingController()
     rig.connect_instrument(driver)
+    wait_temperature_tasks(rig)
     loop = panel._loop_groups[1]
     assert loop._settings_body.isEnabled()
     assert loop._apply_button.isEnabled()
@@ -144,12 +156,13 @@ def test_unread_loading_and_failed_settings_are_disabled(rig, managed_temperatur
     assert not panel._input_settings_widget._table.isEnabled()
 
     def read_zone(loop, index):
-        assert not panel._zone_table_widget._table.isEnabled()
-        assert not panel._zone_table_widget._apply_button.isEnabled()
         return ZoneEntry(300, 1, 2, 3, 0, 0, 0)
 
     monkeypatch.setattr(driver, "get_zone", read_zone)
     panel._tabs.setCurrentIndex(panel._zone_tab_index)
+    assert not panel._zone_table_widget._table.isEnabled()
+    assert not panel._zone_table_widget._apply_button.isEnabled()
+    wait_temperature_tasks(rig)
     assert panel._zone_table_widget._table.isEnabled()
 
     original = rig.get_loop_settings
@@ -167,12 +180,13 @@ def test_unread_loading_and_failed_settings_are_disabled(rig, managed_temperatur
     assert loop._settings_body.isEnabled()
 
     def read_input(channel):
-        assert not panel._input_settings_widget._table.isEnabled()
-        assert not panel._input_settings_widget._write_button.isEnabled()
         return InputChannelSettings(curve_number=5)
 
     monkeypatch.setattr(driver, "get_input_channel_settings", read_input)
     panel._tabs.setCurrentIndex(panel._input_settings_tab_index)
+    assert not panel._input_settings_widget._table.isEnabled()
+    assert not panel._input_settings_widget._write_button.isEnabled()
+    wait_temperature_tasks(rig)
     assert panel._input_settings_widget._table.isEnabled()
     monkeypatch.setattr(rig, "get_input_channel_settings", lambda channel: None)
     assert not panel._input_settings_widget.read_all(show_warning=False)

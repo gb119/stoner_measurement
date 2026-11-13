@@ -132,13 +132,14 @@ def _click(widget, text):
     next(button for button in widget.findChildren(QPushButton) if button.text() == text).click()
 
 
-def test_read_enables_native_controls_and_preserves_paused_compensation(editor):
+def test_read_enables_native_controls_and_preserves_paused_compensation(editor, wait_temperature_tasks):
     widget, transport = editor
     assert not widget._write_button.isEnabled()
     with pytest.raises(RuntimeError, match="Read input"):
         widget.write_all()
     assert not transport.write_log
     _click(widget, "Read All")
+    wait_temperature_tasks(widget._engine)
     controls = widget._editors["A"]
     assert widget._write_button.isEnabled()
     assert controls["sensor_type"].currentText() == "Cernox"
@@ -150,15 +151,17 @@ def test_read_enables_native_controls_and_preserves_paused_compensation(editor):
     assert "autorange" not in controls and "units" not in controls
     transport.write_log.clear()
     _click(widget, "Write All")
+    wait_temperature_tasks(widget._engine)
     assert transport.write_log == []
 
 
-def test_sensor_preset_write_leaves_native_defaults_implicit_and_reads_them_back(editor):
+def test_sensor_preset_write_leaves_native_defaults_implicit_and_reads_them_back(editor, wait_temperature_tasks):
     widget, transport = editor
     widget.read_all()
     _select(widget._editors["A"]["sensor_type"], 1)
     transport.write_log.clear()
     _click(widget, "Write All")
+    wait_temperature_tasks(widget._engine)
     assert transport.write_log == [
         b"INTYPE A,1,,,,\r\n",
         b"*ESR?\r\n",
@@ -174,7 +177,7 @@ def test_sensor_preset_write_leaves_native_defaults_implicit_and_reads_them_back
     assert widget._write_button.isEnabled()
 
 
-def test_special_sensor_writes_native_fields_through_engine_and_driver(editor):
+def test_special_sensor_writes_native_fields_through_engine_and_driver(editor, wait_temperature_tasks):
     widget, transport = editor
     widget.read_all()
     controls = widget._editors["A"]
@@ -195,6 +198,7 @@ def test_special_sensor_writes_native_fields_through_engine_and_driver(editor):
     controls["filter_window"].setValue(5)
     transport.write_log.clear()
     _click(widget, "Write All")
+    wait_temperature_tasks(widget._engine)
     assert transport.write_log[:8] == [
         b"INTYPE A,0,1,2,11,12\r\n",
         b"*ESR?\r\n",
@@ -273,7 +277,7 @@ def test_every_native_row_is_visible_without_inner_vertical_scrolling(editor, qt
 
 @pytest.mark.parametrize("slot", ["primary", "secondary"])
 def test_panel_selects_native_editor_for_its_owning_session_and_switches_back(
-    rig, slot, managed_temperature_panel, monkeypatch
+    rig, slot, managed_temperature_panel, monkeypatch, wait_temperature_tasks
 ):
     panel = managed_temperature_panel()
     transport = InputTransport()
@@ -295,6 +299,7 @@ def test_panel_selects_native_editor_for_its_owning_session_and_switches_back(
     assert widget._channels == ("A", "B")
     panel._tabs.setCurrentIndex(panel._input_settings_tab_index)
     panel._input_tabs.setCurrentIndex(0 if slot == "primary" else 1)
+    wait_temperature_tasks(rig)
     assert widget._editors["A"]["curve_number"].itemText(22) == "Curve 22 (22)"
     page = panel._input_tabs.widget(0 if slot == "primary" else 1)
     assert page.layout().indexOf(widget) >= 0

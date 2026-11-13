@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import fields
 from datetime import UTC, datetime
 from functools import wraps
 
@@ -66,7 +67,7 @@ from stoner_measurement.instruments.temperature_controller import (
 )
 from stoner_measurement.qt_compat import pyqtSlot
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
-from stoner_measurement.temperature_control.references import LoopRef
+from stoner_measurement.temperature_control.references import LoopRef, loop_ref
 from stoner_measurement.temperature_control.types import (
     EngineStatus,
     StabilityBand,
@@ -80,6 +81,7 @@ from stoner_measurement.ui.temperature_connection import (
     TemperatureConnectionGroup,
     TemperatureConnectionMixin,
 )
+from stoner_measurement.ui.temperature_tasks import invalidate_request, read_session, tasks_for
 from stoner_measurement.ui.theme import (
     colour,
     disabled_tab_stylesheet,
@@ -364,15 +366,24 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         return scroll
 
     def _set_secondary_enabled(self, enabled):
-        try:
-            self._engine.set_controller_enabled("secondary", enabled)
-        except Exception as error:
+        engine = self._engine
+        session = engine.controller("secondary")
+        self._secondary_enabled.setEnabled(False)
+
+        def done(_result):
+            self._secondary_enabled.setEnabled(True)
+            self._secondary_connection.setEnabled(enabled)
+
+        def failed(error):
+            self._secondary_enabled.setEnabled(True)
             self._secondary_enabled.blockSignals(True)
             self._secondary_enabled.setChecked(not enabled)
             self._secondary_enabled.blockSignals(False)
             QMessageBox.warning(self, "Secondary controller", str(error))
-            return
-        self._secondary_connection.setEnabled(enabled)
+
+        tasks_for(engine).submit(self, "secondary-enabled", session,
+                                 lambda: engine.set_controller_enabled("secondary", enabled),
+                                 done, failed, lifecycle=True)
 
     # --- Control tab ---
 
@@ -697,9 +708,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         self._status_label.setText(f"{dot} Engine: {status.value}")
         primary_status = self._engine.get_engine_state().controller_statuses.get("primary", status)
         self._primary_connection_status.setText(primary_status.value)
-        connected = self._engine.connected_driver is not None
-        self._btn_connect.setEnabled(not connected)
-        self._btn_disconnect.setEnabled(connected)
+        self._update_connection_buttons()
 
     @pyqtSlot(TemperatureEngineState)
     def _on_state_updated(self, state: TemperatureEngineState) -> None:
@@ -928,9 +937,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
     @_report_hardware_error
     def _on_disconnect(self) -> None:
         """Tell the engine to disconnect."""
-        self._engine.disconnect_instrument()
-        self._sync_existing_connection_state()
-        self._set_address_widget_status(3, VisaResourceStatus.DISCONNECTED)
+        self._request_disconnect()
 
     def _apply_disconnected_ui_state(self) -> None:
         """Clear connected-only UI state without issuing engine commands."""
@@ -1080,9 +1087,12 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         if caps.has_cryogen_control:
             self._on_read_needle()
         else:
-            state = self._engine.read_controller_state()
-            if state is not None:
-                self._on_state_updated(state)
+            session = self._engine
+            tasks_for(session).submit(
+                self, "initial-state", session, lambda: read_session(session),
+                lambda _state: self._on_state_updated(session.get_engine_state()),
+                lambda error: logger.error("Initial temperature read failed: %s", error),
+            )
 
     # ------------------------------------------------------------------
     # Control tab slots
@@ -1129,8 +1139,11 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         """Read only the selected table and its owning controller."""
         if index == self._zone_tab_index and self._zone_target is not None:
             if self._zone_loaded != self._zone_target:
-                if self._zone_table_widget.read_from_hardware(show_warning=False):
-                    self._zone_loaded = self._zone_target
+                target = self._zone_target
+                self._zone_table_widget.request_read(
+                    show_warning=False,
+                    completed=lambda success: setattr(self, "_zone_loaded", target) if success else None,
+                )
         elif index == self._input_settings_tab_index:
             for slot, attribute in (("primary", "_input_settings_widget"),
                                     ("secondary", "_secondary_input_settings")):
@@ -1142,9 +1155,10 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
                     continue
                 if slot not in self._input_settings_loaded:
                     editor = getattr(self, attribute)
-                    editor.set_curve_names(session.get_calibration_curve_names())
-                    if editor.read_all(show_warning=False):
-                        self._input_settings_loaded.add(slot)
+                    editor.request_read(
+                        show_warning=False,
+                        completed=lambda success, slot=slot: self._input_settings_loaded.add(slot) if success else None,
+                    )
 
     def _configure_input_settings_tab(self, caps: ControllerCapabilities) -> None:
         """Enable or disable the Input Settings tab based on driver capabilities.
@@ -1417,7 +1431,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
             self._loop_groups[key] = group
             layout = self._loop_layout if ref.controller_id == "primary" else self._secondary_loop_layout
             layout.addWidget(group)
-            group.read_from_hardware()
+            group.request_read()
 
     def _clear_loop_groups(self, controller_id=None) -> None:
         """Remove all existing per-loop control group widgets."""
@@ -1434,7 +1448,13 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
     @_report_hardware_error
     def _on_apply_needle(self) -> None:
         """Send the needle valve position to the engine."""
-        self._engine.set_needle_valve(self._needle_spin.value())
+        engine, position = self._engine, self._needle_spin.value()
+        self._needle_apply_btn.setEnabled(False)
+        tasks_for(engine).submit(
+            self, "needle", engine, lambda: engine.set_needle_valve(position),
+            lambda _result: self._needle_apply_btn.setEnabled(not self._gas_auto_check.isChecked()),
+            lambda error: QMessageBox.warning(self, "Needle valve", str(error)), context="write",
+        )
 
     @pyqtSlot()
     def _on_read_needle(self) -> None:
@@ -1443,7 +1463,14 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         self._needle_apply_btn.setEnabled(False)
         self._gas_auto_check.setEnabled(False)
         self._needle_group.repaint()
-        state = self._engine.read_controller_state()
+        engine = self._engine
+        tasks_for(engine).submit(
+            self, "needle", engine, lambda: read_session(engine), self._apply_needle_state,
+            lambda error: QMessageBox.warning(self, "Needle valve", str(error)), context="read",
+        )
+
+    def _apply_needle_state(self, state):
+        """Apply a completed primary valve read on the GUI thread."""
         if state is None:
             return
         if state.needle_valve is not None:
@@ -1471,7 +1498,11 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         """
         auto = bool(state)
         if self._engine.connected_driver is not None:
-            self._engine.set_gas_auto(auto)
+            engine = self._engine
+            tasks_for(engine).submit(
+                self, "gas-auto", engine, lambda: engine.set_gas_auto(auto), lambda _result: None,
+                lambda error: QMessageBox.warning(self, "Gas flow", str(error)), context=auto,
+            )
         # Disable manual position when in auto mode; Read is always available
         # so the operator can check (and update) the current valve state.
         self._needle_spin.setEnabled(not auto)
@@ -1748,16 +1779,20 @@ class _CryogenGroup(QGroupBox):
         self._read()
 
     def _write(self):
-        try:
-            self._session.set_needle_valve(self._position.value())
-        except Exception as error:
-            QMessageBox.warning(self, "Secondary gas flow", str(error))
+        session, position = self._session, self._position.value()
+        self._apply.setEnabled(False)
+        tasks_for(session).submit(
+            self, "cryogen", session, lambda: session.set_needle_valve(position),
+            lambda _result: self._apply.setEnabled(not self._auto.isChecked()),
+            lambda error: QMessageBox.warning(self, "Secondary gas flow", str(error)), context="write",
+        )
 
     def _set_auto(self, enabled):
-        try:
-            self._session.set_gas_auto(enabled)
-        except Exception as error:
-            QMessageBox.warning(self, "Secondary gas flow", str(error))
+        session = self._session
+        tasks_for(session).submit(
+            self, "gas-auto", session, lambda: session.set_gas_auto(enabled), lambda _result: None,
+            lambda error: QMessageBox.warning(self, "Secondary gas flow", str(error)), context=enabled,
+        )
         self._position.setEnabled(not enabled)
         self._apply.setEnabled(not enabled)
 
@@ -1766,8 +1801,11 @@ class _CryogenGroup(QGroupBox):
         self._apply.setEnabled(False)
         self._auto.setEnabled(False)
         self.repaint()
-        state = self._session.read_controller_state()
-        self.update_state(state)
+        session = self._session
+        tasks_for(session).submit(
+            self, "cryogen", session, lambda: read_session(session), self.update_state,
+            lambda error: QMessageBox.warning(self, "Secondary gas flow", str(error)), context="read",
+        )
 
     def update_state(self, state):
         if state is None:
@@ -1822,14 +1860,16 @@ class _ZoneTableWidget(QWidget):
                 Control loop number (1-based) whose zone table will be
                 read or written.
         """
+        if loop != self._loop:
+            invalidate_request(self._engine, self, "table")
         self._loop = loop
         self._heater_range_labels = heater_range_labels
 
     def clear_table(self) -> None:
         """Remove all rows from the zone table."""
+        invalidate_request(self._engine, self, "table")
         self._table.setRowCount(0)
-        self._table.setEnabled(False)
-        self._apply_button.setEnabled(False)
+        self._set_table_ready(False)
         self._input_channels.clear()
 
     # ------------------------------------------------------------------
@@ -1854,6 +1894,7 @@ class _ZoneTableWidget(QWidget):
         # Button row
         btn_row = QHBoxLayout()
         btn_row.setSpacing(4)
+        self._editing_buttons = []
         for label, slot in (
             ("Read", self._on_read),
             ("Apply", self._on_apply),
@@ -1863,6 +1904,9 @@ class _ZoneTableWidget(QWidget):
             ("Save JSON", self._on_save_json),
         ):
             btn = QPushButton(label)
+            if label != "Read":
+                self._editing_buttons.append(btn)
+                btn.setEnabled(False)
             if label == "Apply":
                 self._apply_button = btn
                 btn.setEnabled(False)
@@ -1870,6 +1914,12 @@ class _ZoneTableWidget(QWidget):
             btn_row.addWidget(btn)
         btn_row.addStretch()
         layout.addLayout(btn_row)
+
+    def _set_table_ready(self, ready):
+        """Keep table mutations unavailable while asynchronous work is outstanding."""
+        self._table.setEnabled(ready)
+        for button in self._editing_buttons:
+            button.setEnabled(ready)
 
     # ------------------------------------------------------------------
     # Table helpers
@@ -1990,12 +2040,37 @@ class _ZoneTableWidget(QWidget):
     @pyqtSlot()
     def _on_read(self) -> None:
         """Read the zone table from the instrument via the engine."""
-        self.read_from_hardware()
+        self.request_read()
+
+    def request_read(self, *, show_warning=True, completed=None):
+        """Read the selected table on the temperature worker."""
+        engine, loop = self._engine, self._loop
+        ref = loop_ref(loop)
+        session = engine.controller(ref.controller_id)
+        self._set_table_ready(False)
+
+        def done(entries):
+            ready = entries is not None
+            if ready:
+                self._populate_table(entries)
+            self._set_table_ready(ready)
+            if not ready and show_warning:
+                QMessageBox.warning(self, "Zone Table", "Could not read the zone table.")
+            if completed is not None:
+                completed(ready)
+
+        def failed(error):
+            if show_warning:
+                QMessageBox.warning(self, "Zone Table", str(error))
+            if completed is not None:
+                completed(False)
+
+        tasks_for(session).submit(self, "table", session, lambda: engine.get_zone_table(loop),
+                                  done, failed, context=loop)
 
     def read_from_hardware(self, *, show_warning: bool = True) -> bool:
         """Read the active loop's zone table and update the editor."""
-        self._table.setEnabled(False)
-        self._apply_button.setEnabled(False)
+        self._set_table_ready(False)
         self.repaint()
         entries = self._engine.get_zone_table(self._loop)
         if entries is None:
@@ -2003,8 +2078,7 @@ class _ZoneTableWidget(QWidget):
                 QMessageBox.warning(self, "Zone Table", "No instrument connected.")
             return False
         self._populate_table(entries)
-        self._table.setEnabled(True)
-        self._apply_button.setEnabled(True)
+        self._set_table_ready(True)
         return True
 
     @pyqtSlot()
@@ -2012,7 +2086,17 @@ class _ZoneTableWidget(QWidget):
     def _on_apply(self) -> None:
         """Write the current table contents to the instrument via the engine."""
         entries = self._collect_entries()
-        self._engine.set_zone_table(self._loop, entries)
+        engine, loop = self._engine, self._loop
+        session = engine.controller(loop_ref(loop).controller_id)
+        self._set_table_ready(False)
+
+        def done(_result):
+            self._set_table_ready(True)
+
+        tasks_for(session).submit(
+            self, "table", session, lambda: engine.set_zone_table(loop, entries), done,
+            lambda error: QMessageBox.warning(self, "Zone Table", str(error)), context=("write", loop),
+        )
 
     @pyqtSlot()
     def _on_add_row(self) -> None:
@@ -2421,6 +2505,7 @@ class _InputSettingsTableWidget(QWidget):
 
     def set_channels(self, channels: tuple[str, ...]) -> None:
         """Rebuild the table with one column for each input channel."""
+        invalidate_request(self._engine, self, "inputs")
         self._table.setEnabled(False)
         self._write_button.setEnabled(False)
         self._channels = tuple(channels)
@@ -2487,16 +2572,81 @@ class _InputSettingsTableWidget(QWidget):
 
     @pyqtSlot()
     def _on_read(self) -> None:
+        self.request_read()
+
+    def request_read(self, *, show_warning=True, completed=None):
+        """Fetch input settings and curve names without accessing widgets in a worker."""
+        engine, channels = self._engine, self._channels
         self._table.setEnabled(False)
         self._write_button.setEnabled(False)
-        self.repaint()
-        self.set_curve_names(self._engine.get_calibration_curve_names())
-        self.read_all()
+        if hasattr(self, "_snapshots"):
+            self._snapshots.clear()
+
+        def read():
+            names = engine.get_calibration_curve_names()
+            settings = {channel: engine.get_input_channel_settings(channel) for channel in channels}
+            return names, settings
+
+        def done(result):
+            names, settings = result
+            self.set_curve_names(names)
+            for channel, value in settings.items():
+                if value is not None:
+                    self._populate_channel(channel, value)
+            ready = bool(channels) and all(value is not None for value in settings.values())
+            self._table.setEnabled(ready)
+            self._write_button.setEnabled(ready)
+            if not ready and show_warning:
+                QMessageBox.warning(self, "Input Settings", "Could not read all input settings.")
+            if completed is not None:
+                completed(ready)
+
+        def failed(error):
+            if show_warning:
+                QMessageBox.warning(self, "Input Settings", str(error))
+            if completed is not None:
+                completed(False)
+
+        tasks_for(engine).submit(self, "inputs", engine, read, done, failed, context=channels)
 
     @pyqtSlot()
     @_report_hardware_error
     def _on_write(self) -> None:
-        self.write_all()
+        engine = self._engine
+        settings = {channel: self._collect_channel(channel) for channel in self._channels}
+        changes = {channel: value for channel, value in settings.items()
+                   if any(getattr(value, field.name) is not None for field in fields(value))}
+        if not changes:
+            return
+        self._table.setEnabled(False)
+        self._write_button.setEnabled(False)
+        if hasattr(self, "_snapshots"):
+            for channel in changes:
+                self._snapshots.pop(channel, None)
+
+        def write():
+            readbacks = {}
+            for channel, value in changes.items():
+                engine.set_input_channel_settings(channel, value)
+                readbacks[channel] = engine.get_input_channel_settings(channel)
+                if readbacks[channel] is None:
+                    raise RuntimeError(f"Input {channel} was written but readback failed. Use Read All.")
+            return readbacks
+
+        def done(readbacks):
+            for channel, value in readbacks.items():
+                if value is not None:
+                    self._populate_channel(channel, value)
+            ready = bool(settings) and all(value is not None for value in readbacks.values())
+            self._table.setEnabled(ready)
+            self._write_button.setEnabled(ready)
+            if not ready:
+                QMessageBox.warning(self, "Input Settings", "Settings were written but readback failed. Use Read All.")
+
+        tasks_for(engine).submit(
+            self, "inputs", engine, write, done,
+            lambda error: QMessageBox.warning(self, "Input Settings", str(error)), context="write",
+        )
 
     def _make_channel_editors(self) -> dict[str, QWidget]:
         """Create one complete set of editors for a channel column."""
@@ -2858,8 +3008,7 @@ class _LoopControlGroup(QGroupBox):
             if self._heater_range_combo is not None
             else self._heater_range_spin.value()
         )
-        self._engine.set_all_loop_settings(
-            self._loop,
+        settings = dict(
             setpoint=self._sp_spin.value(),
             mode=mode,
             input_channel=channel,
@@ -2870,14 +3019,47 @@ class _LoopControlGroup(QGroupBox):
             pid_d=self._pid_d_spin.value(),
             heater_range=heater_range,
         )
-        if mode == ControlMode.OPEN_LOOP:
-            # The spin box range constraint (0–100 %) guarantees a valid value.
-            self._engine.set_manual_heater_output(self._loop, self._manual_output_spin.value())
+        engine, loop = self._engine, self._loop
+        manual = self._manual_output_spin.value()
+        self._settings_body.setEnabled(False)
+        self._apply_button.setEnabled(False)
+
+        def write():
+            engine.set_all_loop_settings(loop, **settings)
+            if mode == ControlMode.OPEN_LOOP:
+                engine.set_manual_heater_output(loop, manual)
+
+        def done(_result):
+            self._settings_body.setEnabled(True)
+            self._apply_button.setEnabled(True)
+
+        tasks_for(engine).submit(self, "loop", engine, write, done,
+                                 lambda error: QMessageBox.warning(self, "Loop settings", str(error)),
+                                 context=("write", loop))
 
     @pyqtSlot()
     def _on_read(self) -> None:
         """Query the hardware for all loop settings and update the UI."""
-        self.read_from_hardware()
+        self.request_read(show_warning=True)
+
+    def request_read(self, *, show_warning=False):
+        """Schedule a loop-settings read with GUI-only completion."""
+        engine, loop = self._engine, self._loop
+        self._settings_body.setEnabled(False)
+        self._apply_button.setEnabled(False)
+
+        def done(settings):
+            if settings is not None:
+                self._apply_loop_settings(settings)
+            elif show_warning:
+                QMessageBox.warning(self, "Loop settings", "Could not read the loop's Kelvin settings.")
+
+        def failed(error):
+            if show_warning:
+                QMessageBox.warning(self, "Loop settings", str(error))
+
+        tasks_for(engine).submit(self, "loop", engine, lambda: engine.get_loop_settings(loop),
+                                 done, failed, context=loop)
 
     def read_from_hardware(self) -> bool:
         """Query the hardware for all loop settings and update the UI."""
@@ -2887,6 +3069,11 @@ class _LoopControlGroup(QGroupBox):
         settings = self._engine.get_loop_settings(self._loop)
         if settings is None:
             return False
+        self._apply_loop_settings(settings)
+        return True
+
+    def _apply_loop_settings(self, settings):
+        """Populate the editor from a completed settings read on the GUI thread."""
         # Setpoint
         self._sp_spin.blockSignals(True)
         self._sp_spin.setValue(settings.setpoint)

@@ -230,7 +230,9 @@ def test_engine_selects_native_protocol(qapp):
         service.shutdown()
 
 
-def test_primary_apply_configures_native_ramp_before_target(mercury, monkeypatch, managed_qt_widget):
+def test_primary_apply_configures_native_ramp_before_target(
+    mercury, monkeypatch, managed_qt_widget, wait_temperature_tasks
+):
     from qtpy.QtWidgets import QPushButton
 
     from stoner_measurement.temperature_control import engine as engine_module
@@ -259,6 +261,7 @@ def test_primary_apply_configures_native_ramp_before_target(mercury, monkeypatch
         assert group._heater_range_spin.isHidden()
         assert group._channel_combo.count() == 1
         next(button for button in group.findChildren(QPushButton) if button.text() == "Apply").click()
+        wait_temperature_tasks(service)
         assert transport.write_log == [
             b"SET:DEV:MB1.T1:TEMP:LOOP:RSET:5.0\n", b"SET:DEV:MB1.T1:TEMP:LOOP:RENA:ON\n",
             b"SET:DEV:MB1.T1:TEMP:LOOP:PIDT:OFF\n", b"SET:DEV:MB1.T1:TEMP:LOOP:P:20.0\n",

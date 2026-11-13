@@ -116,6 +116,17 @@ def managed_plugin_config_tabs(managed_qt_widget):
 
 
 @pytest.fixture
+def wait_temperature_tasks(qtbot):
+    """Wait for explicit temperature UI operation completion without fixed sleeps."""
+    def wait(session):
+        service = getattr(session, "_service", None) or session
+        qtbot.waitUntil(lambda: getattr(service, "_temperature_tasks", None) is None
+                        or service._temperature_tasks.idle, timeout=10000)
+
+    return wait
+
+
+@pytest.fixture
 def managed_temperature_panel(managed_qt_widget):
     """Keep hidden temperature panels alive and close their charts at teardown."""
     from stoner_measurement.ui.temperature_panel import TemperatureControlPanel

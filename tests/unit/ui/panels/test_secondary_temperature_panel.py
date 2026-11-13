@@ -103,7 +103,7 @@ def test_selector_retains_missing_owner_and_refreshes_on_connection(rig, managed
 
 
 def test_secondary_zone_curves_and_gas_controls_use_own_capabilities(
-    rig, managed_temperature_panel
+    rig, managed_temperature_panel, wait_temperature_tasks
 ):
     from dataclasses import replace
 
@@ -151,6 +151,7 @@ def test_secondary_zone_curves_and_gas_controls_use_own_capabilities(
     assert panel._secondary_input_settings._curve_names == {}
     panel._tabs.setCurrentIndex(panel._input_settings_tab_index)
     panel._input_tabs.setCurrentIndex(1)
+    wait_temperature_tasks(rig)
     assert panel._secondary_input_settings._curve_names == {1: "Secondary curve"}
     assert not panel._input_settings_widget._channels
     assert panel._needle_group.isHidden()
@@ -236,7 +237,7 @@ def test_stability_rows_can_be_reordered(rig, managed_temperature_panel):
 
 @pytest.mark.parametrize("controller_id", ["primary", "secondary"])
 def test_control_edits_survive_poll_until_explicit_read(
-    rig, managed_temperature_panel, controller_id
+    rig, managed_temperature_panel, controller_id, wait_temperature_tasks
 ):
     from dataclasses import replace
 
@@ -263,6 +264,7 @@ def test_control_edits_survive_poll_until_explicit_read(
     panel = managed_temperature_panel()
     driver = CryogenController()
     rig.connect_instrument(driver, controller_id=controller_id)
+    wait_temperature_tasks(rig)
     if controller_id == "primary":
         position = panel._needle_spin
         automatic = panel._gas_auto_check
@@ -281,6 +283,7 @@ def test_control_edits_survive_poll_until_explicit_read(
     assert not automatic.isChecked()
     assert position.isEnabled()
     read()
+    wait_temperature_tasks(rig)
     assert position.value() == 60.0
     assert automatic.isChecked()
     assert not position.isEnabled()
@@ -290,7 +293,9 @@ def test_control_edits_survive_poll_until_explicit_read(
 
 
 @pytest.mark.parametrize("mode_name", ["CLOSED_LOOP", "ZONE", "OPEN_LOOP", "OFF"])
-def test_primary_itc503_apply_reaches_hardware(rig, managed_qt_widget, mode_name, monkeypatch):
+def test_primary_itc503_apply_reaches_hardware(
+    rig, managed_qt_widget, mode_name, monkeypatch, wait_temperature_tasks
+):
     from qtpy.QtWidgets import QPushButton
 
     from stoner_measurement.instruments.oxford import OxfordITC503
@@ -332,6 +337,7 @@ def test_primary_itc503_apply_reaches_hardware(rig, managed_qt_widget, mode_name
     assert group._ramp_widget.isHidden()
     assert group._mode_combo.findData(ControlMode.MONITOR) == -1
     next(button for button in group.findChildren(QPushButton) if button.text() == "Apply").click()
+    wait_temperature_tasks(rig)
     assert transport.write_log == expected
 
 
