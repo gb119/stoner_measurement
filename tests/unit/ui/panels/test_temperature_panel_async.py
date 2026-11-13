@@ -283,19 +283,113 @@ def test_changed_input_columns_discard_outstanding_read(
     assert widget._write_button.isEnabled()
 
 
-def test_temperature_status_bar_actions_use_background_queue(rig, managed_qt_widget, monkeypatch, wait_temperature_tasks):
+@pytest.mark.parametrize("secondary_enabled", [False, True])
+def test_temperature_status_bar_actions_use_background_queue(
+    rig, managed_qt_widget, monkeypatch, wait_temperature_tasks, secondary_enabled
+):
     from stoner_measurement.app import MeasurementApp
 
     owner = managed_qt_widget(QWidget())
+    rig.set_controller_enabled("secondary", secondary_enabled)
     threads = []
-    monkeypatch.setattr(rig, "connect_preferred_driver", lambda: threads.append(threading.get_ident()))
-    monkeypatch.setattr(rig, "disconnect_instrument", lambda: threads.append(threading.get_ident()))
+    calls = []
+    for slot, session in rig.controllers.items():
+        def connect(slot=slot):
+            threads.append(threading.get_ident())
+            calls.append((slot, "connect"))
+
+        def disconnect(slot=slot):
+            threads.append(threading.get_ident())
+            calls.append((slot, "disconnect"))
+
+        monkeypatch.setattr(session, "connect_preferred_driver", connect)
+        monkeypatch.setattr(session, "disconnect_instrument", disconnect)
     MeasurementApp._connect_engine_from_indicator(owner, "Temperature controller", rig)
     wait_temperature_tasks(rig)
     MeasurementApp._disconnect_engine_from_indicator(owner, "Temperature controller", rig)
     wait_temperature_tasks(rig)
-    assert len(threads) == 2
+    expected = [("primary", "connect")]
+    if secondary_enabled:
+        expected.append(("secondary", "connect"))
+    expected.extend([("primary", "disconnect"), ("secondary", "disconnect")])
+    assert calls == expected
     assert all(thread != threading.get_ident() for thread in threads)
+
+
+@pytest.mark.parametrize("failed_action", ["connect", "disconnect"])
+def test_temperature_indicator_failure_does_not_skip_peer(
+    rig, managed_qt_widget, monkeypatch, wait_temperature_tasks, failed_action
+):
+    from stoner_measurement.app import MeasurementApp
+
+    owner = managed_qt_widget(QWidget())
+    rig.set_controller_enabled("secondary", True)
+    warnings = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda _owner, title, text: warnings.append(text))
+
+    def fail():
+        raise ConnectionError("primary unavailable")
+
+    method = "connect_preferred_driver" if failed_action == "connect" else "disconnect_instrument"
+    monkeypatch.setattr(rig, method, fail)
+    secondary = rig.controller("secondary")
+    if failed_action == "connect":
+        monkeypatch.setattr(
+            secondary, "connect_preferred_driver",
+            lambda: secondary.connect_instrument(SimulatedTemperatureController()),
+        )
+        action = MeasurementApp._connect_engine_from_indicator
+    else:
+        secondary.connect_instrument(SimulatedTemperatureController())
+        action = MeasurementApp._disconnect_engine_from_indicator
+    action(owner, "Temperature controller", rig)
+    wait_temperature_tasks(rig)
+    assert (secondary.connected_driver is not None) == (failed_action == "connect")
+    assert warnings == ["Primary controller: primary unavailable"]
+
+
+@pytest.mark.parametrize("connected_slots", [(), ("primary",), ("secondary",), ("primary", "secondary")])
+def test_temperature_indicator_menu_handles_partial_connections(
+    rig, managed_qt_widget, connected_slots, monkeypatch, wait_temperature_tasks
+):
+    from stoner_measurement.app import MeasurementApp
+
+    owner = managed_qt_widget(QWidget())
+    owner._connect_engine_from_indicator = lambda label, engine: MeasurementApp._connect_engine_from_indicator(
+        owner, label, engine
+    )
+    owner._disconnect_engine_from_indicator = lambda label, engine: MeasurementApp._disconnect_engine_from_indicator(
+        owner, label, engine
+    )
+    rig.set_controller_enabled("secondary", True)
+    for slot in connected_slots:
+        rig.connect_instrument(SimulatedTemperatureController(), controller_id=slot)
+    menu = MeasurementApp._build_engine_indicator_menu(
+        owner, "Temperature controller", rig, rig.status.value
+    )
+    assert menu.actions()[0].isEnabled() == (len(connected_slots) < 2)
+    assert menu.actions()[1].isEnabled() == bool(connected_slots)
+    existing = {slot: session.connected_driver for slot, session in rig.controllers.items()}
+    calls = []
+    for slot, session in rig.controllers.items():
+        def connect(slot=slot, session=session):
+            calls.append(slot)
+            session.connect_instrument(SimulatedTemperatureController())
+
+        monkeypatch.setattr(session, "connect_preferred_driver", connect)
+    menu.actions()[0].trigger()
+    wait_temperature_tasks(rig)
+    assert calls == [slot for slot in rig.controllers if slot not in connected_slots]
+    for slot, session in rig.controllers.items():
+        assert session.connected_driver is not None
+        if slot in connected_slots:
+            assert session.connected_driver is existing[slot]
+    menu = MeasurementApp._build_engine_indicator_menu(
+        owner, "Temperature controller", rig, rig.status.value
+    )
+    menu.actions()[1].trigger()
+    wait_temperature_tasks(rig)
+    assert all(session.connected_driver is None for session in rig.controllers.values())
 
 
 if __name__ == "__main__":

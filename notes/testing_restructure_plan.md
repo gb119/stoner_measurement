@@ -1,5 +1,19 @@
 # Testing Restructure Plan
 
+## 2026-11-13: Temperature status-bar connection actions
+
+- Extended the existing asynchronous temperature-panel tests for enabled/disabled
+  secondary connection, both-session disconnect, independent failure reporting,
+  background execution and menu actions with partial connections. Existing
+  connected sessions retain their drivers. No tests moved or removed.
+- The legacy status-bar Connect test now waits for background queue completion
+  before checking its callback, removing a reproduced timing-dependent failure.
+- Conda/offscreen PyQt5 regression selection: 122 passed across
+  `tests/unit/ui/panels/test_temperature_panel_async.py`,
+  `tests/test_new_ui_widgets.py` and
+  `tests/unit/control/test_secondary_temperature_controller.py`.
+  `git diff --check` passed. Ruff is unavailable in this environment.
+
 ## 2026-11-12: Background temperature-panel operations
 
 - Added `tests/unit/ui/panels/test_temperature_panel_async.py` for blocked

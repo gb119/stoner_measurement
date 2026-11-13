@@ -447,16 +447,29 @@ class MeasurementApp(QMainWindow):
         status_text: str,
     ) -> QMenu:
         """Return the context menu used by a status-bar engine indicator."""
+        from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
+
         menu = QMenu(self)
 
+        can_connect = status_text in {"disconnected", "error"}
+        can_disconnect = status_text not in {"disconnected", "stopped"}
+        if isinstance(engine, TemperatureControllerEngine):
+            can_connect = status_text != "stopped" and any(
+                engine.controller_enabled(slot) and session.connected_driver is None
+                for slot, session in engine.controllers.items()
+            )
+            can_disconnect = any(
+                session.connected_driver is not None for session in engine.controllers.values()
+            )
+
         connect_action = menu.addAction("Connect")
-        connect_action.setEnabled(status_text in {"disconnected", "error"})
+        connect_action.setEnabled(can_connect)
         connect_action.triggered.connect(
             lambda: self._connect_engine_from_indicator(engine_label, engine)
         )
 
         disconnect_action = menu.addAction("Disconnect")
-        disconnect_action.setEnabled(status_text not in {"disconnected", "stopped"})
+        disconnect_action.setEnabled(can_disconnect)
         disconnect_action.triggered.connect(
             lambda: self._disconnect_engine_from_indicator(engine_label, engine)
         )
@@ -469,10 +482,16 @@ class MeasurementApp(QMainWindow):
         if isinstance(engine, TemperatureControllerEngine):
             from stoner_measurement.ui.temperature_tasks import tasks_for
 
-            tasks_for(engine).submit(
-                self, "temperature-connection", engine, engine.connect_preferred_driver, lambda _result: None,
-                lambda error: QMessageBox.warning(self, "Temperature Connect", str(error)), lifecycle=True,
-            )
+            for slot, session in engine.controllers.items():
+                if not engine.controller_enabled(slot) or session.connected_driver is not None:
+                    continue
+                tasks_for(engine).submit(
+                    self, ("temperature-connection", slot), session,
+                    session.connect_preferred_driver, lambda _result: None,
+                    lambda error, slot=slot: QMessageBox.warning(
+                        self, "Temperature Connect", f"{slot.capitalize()} controller: {error}"
+                    ), lifecycle=True,
+                )
             return
         try:
             engine.connect_preferred_driver()
@@ -490,10 +509,14 @@ class MeasurementApp(QMainWindow):
         if isinstance(engine, TemperatureControllerEngine):
             from stoner_measurement.ui.temperature_tasks import tasks_for
 
-            tasks_for(engine).submit(
-                self, "temperature-connection", engine, engine.disconnect_instrument, lambda _result: None,
-                lambda error: QMessageBox.warning(self, "Temperature Disconnect", str(error)), lifecycle=True,
-            )
+            for slot, session in engine.controllers.items():
+                tasks_for(engine).submit(
+                    self, ("temperature-connection", slot), session,
+                    session.disconnect_instrument, lambda _result: None,
+                    lambda error, slot=slot: QMessageBox.warning(
+                        self, "Temperature Disconnect", f"{slot.capitalize()} controller: {error}"
+                    ), lifecycle=True,
+                )
             return
         try:
             engine.disconnect_instrument()

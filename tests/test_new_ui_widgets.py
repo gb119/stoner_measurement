@@ -638,7 +638,7 @@ class TestMeasurementApp:
             app._engine.shutdown()
 
     def test_engine_indicator_connect_action_calls_connect_preferred_driver(
-        self, qapp, monkeypatch
+        self, qapp, monkeypatch, wait_temperature_tasks
     ):
         app = MeasurementApp()
         calls: list[str] = []
@@ -655,7 +655,7 @@ class TestMeasurementApp:
             )
 
             menu.actions()[0].trigger()
-
+            wait_temperature_tasks(app._temp_panel._engine)
             assert calls == ["connect"]
         finally:
             app._engine.shutdown()
