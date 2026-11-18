@@ -104,7 +104,7 @@ class Keithley2400SetCommand(_KeithleySetCommand):
     Use this leaf command to apply one bias within an outer loop. **Source
     value (A or V)** accepts a number or expression evaluated on every execution,
     in the units selected by source mode. The nested **Basic** page selects
-    the GPIB resource, current/voltage mode, compliance, integration, source and
+    the SourceMeter model (2400, 2410 or 2450), GPIB resource, current/voltage mode, compliance, integration, source and
     trigger delays, output enable and source/sense ranges. **Advanced** selects
     terminals, two/four-wire wiring, trigger routing and digital/median filters.
     There is no scan generator or child-step loop.
@@ -142,6 +142,7 @@ class Keithley2400SetCommand(_KeithleySetCommand):
         instance name if different; result data reflects completed steps::
 
             k2400_set._value = "bias_current"
+            k2400_set._point_plugin._model = "2410"
             k2400_set._point_plugin._compliance = 5.0
     """
 

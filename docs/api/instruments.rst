@@ -252,7 +252,7 @@ retried, since the setting may already have been applied.
    k6221.Keithley6221
    k651x.Keithley6514
    k651x.Keithley6517
-   k651x.Keithley6845
+   k651x.Keithley6485
 
 .. automodule:: stoner_measurement.instruments.lakeshore
 

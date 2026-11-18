@@ -53,6 +53,8 @@ from stoner_measurement.plugins.command.pressure_set_flow import (
 from stoner_measurement.plugins.command.read_diffractometer import (
     ReadDiffractometerCommand,
 )
+from stoner_measurement.plugins.command.read_electrometer import ReadElectrometerCommand
+from stoner_measurement.plugins.command.read_multimeter import ReadMultimeterCommand
 from stoner_measurement.plugins.command.reconfigure import ReconfigureCommand
 from stoner_measurement.plugins.command.run_again import RunAgainCommand
 from stoner_measurement.plugins.command.save import SaveCommand
@@ -85,6 +87,8 @@ __all__ = [
     "PressureGaugeChannelCommand",
     "PressureSetFlowCommand",
     "ReadDiffractometerCommand",
+    "ReadElectrometerCommand",
+    "ReadMultimeterCommand",
     "ReconfigureCommand",
     "RunAgainCommand",
     "RemovePlotMarkersCommand",

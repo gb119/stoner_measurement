@@ -1,5 +1,60 @@
 # Testing Restructure Plan
 
+## 2026-11-18: Combined plugin pre-push validation
+
+- Full Python 3.14.7/PyQt5 run: 4683 passed, 2 skipped, and 43 sandbox
+  temporary-path failures. All 43 failed cases passed when rerun with
+  `--basetemp=.pytest-runtime/prepush-temp`.
+- Split the new DMM validation and electrometer UI capability helpers to keep
+  their McCabe complexity within the production threshold. The affected 87
+  driver/command/trace tests passed after these behaviour-preserving changes.
+- Targeted Ruff passed; Pylint rated the new helpers/commands and affected
+  Keithley drivers 10/10. Strict Sphinx passed using a fresh generated API tree
+  (the existing untracked tree still contains the obsolete 6845 alias page).
+
+## 2026-11-18: Single-reading 2000/2700 multimeter command
+
+- Added focused command and driver workflow tests in
+  `tests/unit/plugins/command/test_read_multimeter_command.py` and
+  `tests/unit/instruments/drivers/test_keithley_2000_single.py`. No tests moved.
+- Covered both models across all nine measurement functions, exact single-read
+  commands, absence of reset/switching/channel-list commands, function-specific
+  settings and outputs, actual range readbacks, expression timing, inactive
+  controls, persistence, generated execution, reconnect and partial failure.
+- Conda/offscreen Python 3.14.7/PyQt5: 85 passed across these files, the existing
+  2000 driver, Read Electrometer and plugin-manager tests. Targeted Ruff and the
+  focused documentation audit passed; the new UI was visually inspected.
+
+## 2026-11-18: Single-reading electrometer command
+
+- Added `tests/unit/plugins/command/test_read_electrometer_command.py` for the
+  new Read Electrometer command: model/function selection, expression timing,
+  scalar outputs and units, persistence, generated execution, reconnect,
+  partial connection failure and cleanup. No existing tests moved.
+- Extended the focused buffered-electrometer driver module with seven cases
+  for immediate single-reading setup, fresh reads and malformed responses.
+- Conda/offscreen Python 3.14.7/PyQt5: 99 tests passed across the new command,
+  electrometer drivers, secondary-meter trace workflows and plugin manager.
+  Targeted Ruff and the focused plugin documentation audit passed. The new
+  page was visually inspected. Normal editable installation and actual
+  entry-point discovery succeeded after the running application was closed.
+
+## 2026-11-18: SourceMeter trace auxiliary electrometer
+
+- Moved the single `TestConfigUi` layout test from
+  `tests/test_keithley_2400_plugin.py` to
+  `tests/unit/plugins/trace/test_keithley_2400_config.py`, retaining its existing
+  checks and adding the Electrometer page. The moved copy and source monolith
+  passed together before removing the old copy (55 focused tests).
+- The original trace module retains its 22 acquisition/lifecycle tests.
+  Added focused electrometer workflow and buffered-driver tests in
+  `tests/unit/plugins/trace/test_keithley_2400_electrometer.py` and
+  `tests/unit/instruments/drivers/test_keithley_electrometer_buffer.py`.
+- Conda/offscreen Python 3.14.7/PyQt5: 127 passed across the trace, point-scan,
+  auxiliary-meter, model-selection, set-command and electrometer-driver modules.
+  `python -m pytest --collect-only -q` collected 4652 tests successfully.
+  Targeted Ruff and `git diff --check` passed. Hardware was not exercised.
+
 ## 2026-11-13: Current CI and Codacy review
 
 - Latest main CI passed all four Python/Qt jobs and coverage before this change.

@@ -33,6 +33,8 @@ from stoner_measurement.instruments.keithley.k2400 import (
     BufferReading,
     FilterType,
     Keithley2400,
+    Keithley2410,
+    Keithley2450,
     TerminalSelection,
 )
 from stoner_measurement.instruments.source_meter import (
@@ -124,7 +126,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
     The Scan tab defines the point sequence through the normal state-scan
     generator. The Settings tab mirrors the richer buffered trace-plugin
     layout, with nested **Basic** and **Advanced** pages. The **Basic** page
-    contains the GPIB resource, source mode, compliance mode, fixed or
+    contains the model (2400, 2410 or 2450), GPIB resource, source mode, compliance mode, fixed or
     resistance-derived compliance limit, integration time, source and trigger
     delays, output-enable behaviour during each point, and source/measurement
     range options. The **Advanced** page contains terminal selection, 2-wire or
@@ -139,9 +141,11 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
 
     Attributes:
         _smu (Keithley2400 | None):
-            Connected Keithley 2400 driver instance, if any.
+            Connected driver for the selected SourceMeter, if any.
+        _model (str):
+            SourceMeter model: ``"2400"`` (default), ``"2410"`` or ``"2450"``.
         _resource (str):
-            VISA/GPIB resource string identifying the Keithley 2400.
+            VISA/GPIB resource string identifying the selected SourceMeter.
         _source_mode (SweepSourceMode):
             Whether the plugin sources voltage or current.
         _compliance_mode (ComplianceMode):
@@ -225,6 +229,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         instance name if different; result data reflects completed steps::
 
             k2400_point_scan._compliance = 5.0
+            k2400_point_scan._model = "2410"
             k2400_point_scan.collect_data = True
             k2400_point_scan.data.df.head()
     """
@@ -233,6 +238,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         """Initialise the plugin."""
         super().__init__(parent)
         self._resource: str = ""
+        self._model: str = "2400"
         self._smu: Keithley2400 | None = None
 
         self._source_mode: SweepSourceMode = SweepSourceMode.CURRENT
@@ -329,7 +335,8 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         transport: GpibTransport | None = None
         try:
             transport = GpibTransport.from_resource_string(self._resource, timeout=10.0)
-            self._smu = Keithley2400(transport)
+            driver_class = {"2400": Keithley2400, "2410": Keithley2410, "2450": Keithley2450}[self._model]
+            self._smu = driver_class(transport)
             self._smu.connect()
             self._smu.confirm_identity()
         except Exception:
@@ -577,6 +584,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         data.update(
             {
                 "resource": self._resource,
+                "model": self._model,
                 "source_mode": self._source_mode.value,
                 "compliance_mode": self._compliance_mode.value,
                 "compliance": self._compliance,
@@ -616,6 +624,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         """
         super()._restore_from_json(data)
         self._resource = str(data.get("resource", self._resource))
+        self._model = str(data.get("model", "2400"))
         self._source_mode = SweepSourceMode(str(data.get("source_mode", self._source_mode.value)))
         self._compliance_mode = ComplianceMode(str(data.get("compliance_mode", self._compliance_mode.value)))
         self._compliance = data.get("compliance", self._compliance)
@@ -667,10 +676,19 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
 
         conn_group = QGroupBox("Connection")
         conn_form = QFormLayout(conn_group)
+        model_combo = QComboBox()
+        model_combo.setObjectName("sourceMeterModel")
+        for model in ("2400", "2410", "2450"):
+            model_combo.addItem(f"Keithley {model}", model)
+        model_combo.setCurrentIndex(model_combo.findData(self._model))
+        model_combo.currentIndexChanged.connect(
+            lambda index: setattr(self, "_model", model_combo.itemData(index))
+        )
+        conn_form.addRow("Model:", model_combo)
         resource_combo = VisaResourceComboBox(resource_filter=FILTER_GPIB)
         resource_combo.setCurrentText(self._resource)
         resource_combo.currentTextChanged.connect(lambda text: setattr(self, "_resource", text.strip()))
-        conn_form.addRow("2400 GPIB resource:", resource_combo)
+        conn_form.addRow("SMU GPIB resource:", resource_combo)
         basic_layout.addWidget(conn_group)
 
         src_group = QGroupBox("Source / Sense")

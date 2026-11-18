@@ -44,6 +44,50 @@ Use :doc:`keithley_point_commands` for **2400 Point by Point Scan**,
 See :doc:`keithley_triggers` for trigger routing and the distinction between
 buffered handshakes, AC reference signals, native pulses and held DC.
 
+Single electrometer readings
+----------------------------
+
+Choose **Keithleys → Read Electrometer** to take one fresh reading from a
+Keithley 6485 picoammeter or 6514/6517 electrometer. On **General**, choose the
+model, GPIB resource, measurement function, range/autorange, integration,
+averaging, zero check, trigger delay and timeout. The 6485 reads current; the
+6514/6517 can also read voltage, resistance or charge. Numeric expressions
+are evaluated at configuration time.
+
+Each execution publishes one scalar output named **Current**, **Voltage**,
+**Resistance** or **Charge**, with its SI unit. Select that output in an outer
+scan's data collection or use it in Plot Points, Save and later expressions.
+For an instance named ``read_electrometer``, the most recent reading is also
+available as ``read_electrometer.value``. Failed reads clear it to NaN.
+
+Startup opens and configures the command's owned connection; cleanup closes
+it. Every execution takes a new measurement using immediate triggering,
+without external trigger wiring or buffer acquisition. Averaging may combine
+several conversions into that one result. See the
+:class:`~stoner_measurement.plugins.command.read_electrometer.ReadElectrometerCommand`
+API documentation for script attributes and console examples.
+
+Single multimeter readings
+--------------------------
+
+For a single 2000/2700 multimeter reading, choose **Keithleys → Read Multimeter**.
+On General, select the model, GPIB resource and function. Controls include
+range/autorange, NPLC, averaging, AC bandwidth, frequency/period gate time,
+trigger delay and timeout, with unavailable settings disabled. AC NPLC applies
+at 300 Hz bandwidth; frequency/period use gate time. Temperature uses kelvin
+and the instrument's existing sensor configuration.
+
+Each execution publishes the reading and applicable numeric setting readbacks
+(including the actual range after autoranging). For an instance named
+``read_multimeter``, inspect ``read_multimeter.value`` and
+``read_multimeter.settings_readback``. Settings can be selected as scalar
+outputs alongside the measurement. Filter Type is 0 for repeating and 1 for
+moving; boolean settings use 0/1. Timeout is the local transport setting.
+
+The 2700 is used as a multimeter on its currently selected input terminals.
+No relay, routing, scan-list, channel-list or reset commands are sent; configure
+it for ordinary DMM operation beforehand. Switching support is deferred.
+
 Common workflow
 ---------------
 

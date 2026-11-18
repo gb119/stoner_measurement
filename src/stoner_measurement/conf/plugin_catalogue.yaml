@@ -17,6 +17,10 @@ items:
     label: Set 2400
   - plugin: k6221_set
     label: Set 6221/2182
+  - plugin: read_electrometer
+    label: Read Electrometer
+  - plugin: read_multimeter
+    label: Read Multimeter
 - group: Plot
   items:
   - plugin: plot_clear

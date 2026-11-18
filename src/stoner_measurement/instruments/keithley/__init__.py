@@ -13,7 +13,7 @@ nanovoltmeters
 (:class:`~stoner_measurement.instruments.keithley.k2182.Keithley2182A`,
 :class:`~stoner_measurement.instruments.keithley.k182.Keithley182`), and
 electrometers/picoammeters
-(:class:`~stoner_measurement.instruments.keithley.k651x.Keithley6845`,
+(:class:`~stoner_measurement.instruments.keithley.k651x.Keithley6485`,
 :class:`~stoner_measurement.instruments.keithley.k651x.Keithley6514`,
 :class:`~stoner_measurement.instruments.keithley.k651x.Keithley6517`).
 """
@@ -21,6 +21,7 @@ electrometers/picoammeters
 from stoner_measurement.instruments.keithley._scpi_data_format import KeithleyDataFormat
 from stoner_measurement.instruments.keithley.k182 import Keithley182
 from stoner_measurement.instruments.keithley.k651x import (
+    Keithley6485,
     Keithley6514,
     Keithley6517,
     Keithley6845,
@@ -45,6 +46,7 @@ __all__ = [
     "Keithley2450",
     "Keithley2700",
     "Keithley6221",
+    "Keithley6485",
     "Keithley6514",
     "Keithley6517",
     "Keithley6845",

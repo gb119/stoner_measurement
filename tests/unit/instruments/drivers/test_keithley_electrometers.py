@@ -11,7 +11,7 @@ from stoner_measurement.instruments.electrometer import (
     ElectrometerTriggerConfiguration,
     ElectrometerTriggerSource,
 )
-from stoner_measurement.instruments.keithley import Keithley6514, Keithley6517, Keithley6845
+from stoner_measurement.instruments.keithley import Keithley6485, Keithley6514, Keithley6517
 from stoner_measurement.instruments.protocol import ScpiProtocol
 from stoner_measurement.instruments.transport import NullTransport
 
@@ -24,11 +24,20 @@ def _null(responses=None):
 
 
 class TestKeithleyElectrometers:
+    def test_picoammeter_legacy_import_uses_corrected_class(self):
+        from stoner_measurement.instruments.keithley import Keithley6845
+        from stoner_measurement.instruments.keithley.k651x import (
+            Keithley6845 as legacy_driver,
+        )
+
+        assert Keithley6845 is legacy_driver is Keithley6485
+        assert Keithley6485.__name__ == "Keithley6485"
+
     def test_default_protocol_is_scpi(self):
         k = Keithley6514(transport=NullTransport())
         assert isinstance(k.protocol, ScpiProtocol)
 
-    @pytest.mark.parametrize("driver_cls", [Keithley6845, Keithley6514, Keithley6517])
+    @pytest.mark.parametrize("driver_cls", [Keithley6485, Keithley6514, Keithley6517])
     def test_measurement_functions(self, driver_cls):
         t = _null(responses=[b"'CURR','VOLT'\n"])
         k = driver_cls(transport=t)
@@ -39,7 +48,7 @@ class TestKeithleyElectrometers:
             b":SENS:FUNC 'CURR','RES'\n",
         ]
 
-    @pytest.mark.parametrize("driver_cls", [Keithley6845, Keithley6514, Keithley6517])
+    @pytest.mark.parametrize("driver_cls", [Keithley6485, Keithley6514, Keithley6517])
     def test_range_and_autorange(self, driver_cls):
         t = _null(responses=[b"1.0E-6\n", b"1\n"])
         k = driver_cls(transport=t)
@@ -54,7 +63,7 @@ class TestKeithleyElectrometers:
             b":SENS:CURR:RANG:AUTO 0\n",
         ]
 
-    @pytest.mark.parametrize("driver_cls", [Keithley6845, Keithley6514, Keithley6517])
+    @pytest.mark.parametrize("driver_cls", [Keithley6485, Keithley6514, Keithley6517])
     def test_filter_settings(self, driver_cls):
         t = _null(responses=[b"1\n", b"10\n"])
         k = driver_cls(transport=t)
@@ -69,7 +78,7 @@ class TestKeithleyElectrometers:
             b":SENS:CURR:AVER:COUN 5\n",
         ]
 
-    @pytest.mark.parametrize("driver_cls", [Keithley6845, Keithley6514, Keithley6517])
+    @pytest.mark.parametrize("driver_cls", [Keithley6485, Keithley6514, Keithley6517])
     def test_trigger_model_buffer_and_data_format(self, driver_cls):
         t = _null(responses=[b"100\n", b"1.0,2.0\n", b"SRE\n"])
         k = driver_cls(transport=t)

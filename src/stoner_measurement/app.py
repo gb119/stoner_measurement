@@ -163,6 +163,7 @@ class MeasurementApp(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Stoner Measurement")
+        self._measurement_details: tuple[str, str, str] | None = None
         self.setMinimumSize(QSize(1200, 700))
 
         # Core objects ---------------------------------------------------------
@@ -245,6 +246,7 @@ class MeasurementApp(QMainWindow):
         self._show_status_message("Ready")
         self._engine.status_changed.connect(self._on_engine_status_changed)
         self._engine.execution_progress.connect(self._on_engine_status_changed)
+        self._engine.measurement_details_changed.connect(self._on_measurement_details_changed)
         self._selection_script_pane = None
         self._engine.script_finished.connect(self._discard_selection_script)
 
@@ -2375,24 +2377,29 @@ class MeasurementApp(QMainWindow):
         """Show the trace Data Manager, bringing it to the front if open."""
         self._data_manager.show_and_raise()
 
+    def _on_measurement_details_changed(self, user: str, project: str, sample: str) -> None:
+        """Show the most recently executed measurement details in the title."""
+        self._measurement_details = (user, project, sample)
+        self._update_window_title()
+
     def _update_window_title(self) -> None:
         """Refresh the window title to reflect the active tab and file."""
+        title = "Stoner Measurement"
         tab_idx = self._main_window.tabs.currentIndex()
         if tab_idx == self._TAB_MEASUREMENT:
             document = self._active_sequence_document
-            if document is None:
-                self.setWindowTitle("Stoner Measurement")
-            else:
+            if document is not None:
                 dirty = self._measurement_digest() != document.clean_digest
                 suffix = " *" if dirty else ""
-                self.setWindowTitle(f"Stoner Measurement — {document.display_name}{suffix}")
-            return
-        pane = self._main_window.script_tab.current_pane()
-        if pane is None or pane.path is None:
-            self.setWindowTitle("Stoner Measurement")
+                title += f" — {document.display_name}{suffix}"
         else:
-            suffix = " *" if pane.dirty else ""
-            self.setWindowTitle(f"Stoner Measurement — {pane.path.name}{suffix}")
+            pane = self._main_window.script_tab.current_pane()
+            if pane is not None and pane.path is not None:
+                suffix = " *" if pane.dirty else ""
+                title += f" — {pane.path.name}{suffix}"
+        if self._measurement_details is not None:
+            title += " — " + " / ".join(self._measurement_details)
+        self.setWindowTitle(title)
 
     # ------------------------------------------------------------------
     # Settings persistence

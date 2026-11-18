@@ -39,6 +39,8 @@ from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, COLUMN_ROLE_Z, Tra
 from stoner_measurement.instruments.keithley.k2400 import (
     FilterType,
     Keithley2400,
+    Keithley2410,
+    Keithley2450,
     TerminalSelection,
 )
 from stoner_measurement.instruments.nanovoltmeter import (
@@ -56,6 +58,11 @@ from stoner_measurement.instruments.transport.gpib_transport import GpibTranspor
 from stoner_measurement.plugins.trace._differential import (
     modulate_current_sweep,
     reduce_differential_readings,
+)
+from stoner_measurement.plugins.trace._electrometer import (
+    ElectrometerAcquisition,
+    ElectrometerSettings,
+    electrometer_config_page,
 )
 from stoner_measurement.plugins.trace._nanovoltmeter_support import (
     NANOVOLTMETER_DRIVER_LABELS,
@@ -145,11 +152,41 @@ class Keithley2400SweepPlugin(TracePlugin):
     The Scan tab defines the source-value sequence and can optionally expose
     channel-average and standard-deviation outputs. The Settings tab contains
     nested **Basic** and **Advanced** pages. The **Basic** page contains the
-    GPIB resource, source mode, compliance mode, fixed or resistance-derived
+    model (2400, 2410 or 2450), GPIB resource, source mode, compliance mode, fixed or resistance-derived
     compliance limit, integration time, source and trigger delays, output
     enable during the sweep, and source/measurement range options. The
     **Advanced** page contains terminal selection, 2-wire or 4-wire wiring,
     trigger routing and trigger I/O options, and digital or median filtering.
+
+    The **Electrometer** page adds an independent optional Keithley 6485,
+    6514 or 6517 alongside the **Secondary nanovoltmeter**. Its setting/value
+    table selects the model, GPIB resource, column prefix and measurement
+    function, autorange or a fixed input range in the selected function's SI
+    unit, NPLC, averaging filter and count, zero check, trigger delay, trigger
+    and arm counts, buffer size, transfer format and completion line. Numeric
+    expressions are evaluated when configuring each sweep. The 6485 measures
+    current; the 6514 and 6517 can instead measure voltage, resistance or
+    charge. Only one function is measured per meter per sweep.
+
+    The electrometer's Trigger Link source and immediate arm source preserve
+    one reading per physical source point. Zero trigger count and buffer size
+    mean the sweep length; explicit trigger count times arm count must equal
+    that length, and the buffer must fit it exactly. At least two points are
+    needed. Transfer formats are ASCII or single precision, with double
+    precision also available for the 6517. A reading-only buffer is configured
+    and retrieved after the sweep, adding a prefixed Current, Voltage,
+    Resistance or Charge channel (A, V, Ω or C) to the IV trace. These raw
+    measurements are retained at the physical points in differential mode.
+
+    Trigger Link cabling must complete the acquisition chain. Without the
+    nanovoltmeter, the SMU source-event line triggers the electrometer. With
+    both meters, the SMU triggers the nanovoltmeter, whose completion pulse
+    triggers the electrometer. The electrometer completion line releases the
+    next SMU source point. Defaults use SMU source events on line 2,
+    nanovoltmeter completion on line 1, and electrometer completion on line 3.
+    These lines must be distinct. The source holds its value across both
+    measurements; the two meters measure in sequence within each point.
+    Both secondary connections are owned and closed by this plugin.
 
     The default setup is aimed at common transport-style measurements: current
     sweep mode, fixed 10 V compliance, front terminals, 4-wire remote sense,
@@ -169,6 +206,17 @@ class Keithley2400SweepPlugin(TracePlugin):
     2400 and adds prefixed voltage, response and power columns to **IV**.
 
     Attributes:
+        _electrometer (ElectrometerAcquisition):
+            Optional buffered-meter helper. Edit its ``settings`` attributes:
+            ``enabled`` (bool), ``driver`` (str: ``keithley_6485``,
+            ``keithley_6514`` or ``keithley_6517``), ``resource`` and ``prefix``
+            (str), ``function`` (str: ``CURR``, ``VOLT``, ``RES`` or ``CHAR``),
+            ``autorange`` and ``filter_enabled`` (bool), ``input_range``,
+            ``nplc`` and ``trigger_delay`` (float or runtime expression str),
+            ``filter_count``, ``trigger_count``, ``arm_count``, ``buffer_size``
+            and ``completion_line`` (int), ``zero_check`` (bool), and
+            ``data_format`` (str: ``ASC``, ``SRE`` or ``DRE``). Runtime
+            ``meter`` and ``readings`` are not saved in sequence files.
         _differential_mode (bool):
             Enable alternating delta-current acquisition; defaults to False.
         _delta_current (float | str):
@@ -183,10 +231,12 @@ class Keithley2400SweepPlugin(TracePlugin):
             Secondary meter VISA/GPIB resource.
         _secondary_prefix (str):
             Prefix applied to secondary result columns.
+        _model (str):
+            SourceMeter model: ``"2400"`` (default), ``"2410"`` or ``"2450"``.
         _resource (str):
-            VISA/GPIB resource string identifying the Keithley 2400.
+            VISA/GPIB resource string identifying the selected SourceMeter.
         _smu (Keithley2400 | None):
-            Connected Keithley 2400 driver instance, if any.
+            Connected driver for the selected SourceMeter, if any.
         _source_mode (SweepSourceMode):
             Whether the sweep sources voltage or current.
         _compliance (float):
@@ -266,7 +316,11 @@ class Keithley2400SweepPlugin(TracePlugin):
         instance name if different; result data reflects completed steps::
 
             k2400_dc_iv._compliance = 5.0
+            k2400_dc_iv._model = "2450"
             k2400_dc_iv._source_delay = 0.01
+            k2400_dc_iv._electrometer.settings.enabled = True
+            k2400_dc_iv._electrometer.settings.driver = "keithley_6514"
+            k2400_dc_iv._electrometer.settings.prefix = "gate"
             k2400_dc_iv.data
     """
 
@@ -274,6 +328,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         """Initialise the plugin."""
         super().__init__(parent)
         self._resource: str = ""
+        self._model: str = "2400"
         self._smu: Keithley2400 | None = None
 
         self._source_mode: SweepSourceMode = SweepSourceMode.CURRENT
@@ -323,6 +378,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         self._secondary_digits: int = 8
         self._secondary_nanovoltmeter: Nanovoltmeter | None = None
         self._secondary_voltages: tuple[float, ...] | None = None
+        self._electrometer = ElectrometerAcquisition()
 
         self._sweep_values: tuple[float, ...] | None = None
         self._nominal_sweep_values: tuple[float, ...] | None = None
@@ -412,6 +468,11 @@ class Keithley2400SweepPlugin(TracePlugin):
                 key = f"IV {column}"
                 values[f"{var}:{key} mean"] = f"{var}.get_channel_statistic({key!r}, 'mean')"
                 values[f"{var}:{key} std"] = f"{var}.get_channel_statistic({key!r}, 'std')"
+        if self._electrometer.settings.enabled:
+            column, _ = self._electrometer.settings.channel
+            key = f"IV {column}"
+            for statistic in ("mean", "std"):
+                values[f"{var}:{key} {statistic}"] = f"{var}.get_channel_statistic({key!r}, {statistic!r})"
         return values
 
     def reported_value_units(self) -> dict[str, str]:
@@ -443,6 +504,9 @@ class Keithley2400SweepPlugin(TracePlugin):
                 }
             )
 
+        if self._electrometer.settings.enabled:
+            column, unit = self._electrometer.settings.channel
+            column_units[column] = unit
         var = self.instance_name
         return {
             f"{var}:IV {column} {statistic}": unit
@@ -462,8 +526,11 @@ class Keithley2400SweepPlugin(TracePlugin):
         transport: GpibTransport | None = None
         secondary_transport: GpibTransport | None = None
         try:
+            if self._electrometer.settings.enabled:
+                self._electrometer.validate_resources(self)
             transport = GpibTransport.from_resource_string(self._resource, timeout=10.0)
-            self._smu = Keithley2400(transport)
+            driver_class = {"2400": Keithley2400, "2410": Keithley2410, "2450": Keithley2450}[self._model]
+            self._smu = driver_class(transport)
             self._smu.connect()
             self._smu.confirm_identity()
             if self._secondary_enabled:
@@ -474,17 +541,25 @@ class Keithley2400SweepPlugin(TracePlugin):
                 self._secondary_nanovoltmeter = driver_class(secondary_transport)  # type: ignore[call-arg]
                 self._secondary_nanovoltmeter.connect()
                 self._secondary_nanovoltmeter.confirm_identity()
-        except Exception:
+            self._electrometer.connect()
+        except Exception as connection_error:
+            cleanup_errors = []
+            try:
+                self._electrometer.disconnect()
+            except Exception as exc:
+                cleanup_errors.append(exc)
             for opened_transport in (secondary_transport, transport):
                 if opened_transport is None:
                     continue
                 try:
                     opened_transport.close()
-                except _CLEANUP_EXCEPTIONS:
-                    pass
+                except Exception as exc:
+                    cleanup_errors.append(exc)
             self._smu = None
             self._secondary_nanovoltmeter = None
             self._set_status(TraceStatus.ERROR)
+            if cleanup_errors:
+                raise ExceptionGroup("Sweep connection and cleanup failed", [connection_error, *cleanup_errors]) from connection_error
             raise
         self._set_status(TraceStatus.IDLE)
 
@@ -501,14 +576,20 @@ class Keithley2400SweepPlugin(TracePlugin):
         smu = self._connected_smu()
         if self._secondary_enabled and self._secondary_nanovoltmeter is None:
             raise RuntimeError("Secondary nanovoltmeter is enabled but not connected.")
+        if self._electrometer.settings.enabled and self._electrometer.meter is None:
+            raise RuntimeError("Secondary electrometer is enabled but not connected.")
 
         self._set_status(TraceStatus.CONFIGURING)
         try:
             values = self._prepare_sweep_values()
+            if self._electrometer.settings.enabled:
+                self._electrometer.validate(self, len(values))
             self._configure_smu_measurement(smu, values)
             if self._secondary_enabled:
                 assert self._secondary_nanovoltmeter is not None
                 self._configure_secondary_nanovoltmeter(self._secondary_nanovoltmeter, len(values))
+            if self._electrometer.settings.enabled:
+                self._electrometer.configure(self, len(values))
             self._configure_smu_triggering(smu, len(values))
             smu.configure_buffer_full_srq()
             smu.check_error_queue()
@@ -600,12 +681,12 @@ class Keithley2400SweepPlugin(TracePlugin):
         """Configure the trigger model, arm routing, and optional trigger output."""
         trigger_source = (
             TriggerSource.TLIN
-            if self._secondary_enabled or self._trigger_routing is TriggerRouting.TRIGGER_LINK
+            if self._secondary_enabled or self._electrometer.settings.enabled or self._trigger_routing is TriggerRouting.TRIGGER_LINK
             else TriggerSource.IMM
         )
         trigger_count = (
             point_count
-            if self._secondary_enabled or self._trigger_count_override <= 0
+            if self._secondary_enabled or self._electrometer.settings.enabled or self._trigger_count_override <= 0
             else self._trigger_count_override
         )
         smu.configure_trigger_model(
@@ -614,19 +695,20 @@ class Keithley2400SweepPlugin(TracePlugin):
                 trigger_count=trigger_count,
                 trigger_delay=self.eval_float(self._trigger_delay),
                 arm_source=TriggerSource.IMM,
-                arm_count=1 if self._secondary_enabled else self._arm_count,
+                arm_count=1 if self._secondary_enabled or self._electrometer.settings.enabled else self._arm_count,
             )
         )
         self._configure_arm_routing(smu)
-        if not self._secondary_enabled:
+        if not self._secondary_enabled and not self._electrometer.settings.enabled:
             self._configure_trigger_output(smu)
 
     def _configure_arm_routing(self, smu: Keithley2400) -> None:
         """Apply the selected arm source or secondary-meter handshake."""
-        if self._secondary_enabled:
+        if self._secondary_enabled or self._electrometer.settings.enabled:
             smu.write(":ARM:SOUR IMM")
             smu.configure_trigger_link_source_handshake(
-                input_line=self._trigger_in_line,
+                input_line=(self._electrometer.settings.completion_line
+                            if self._electrometer.settings.enabled else self._trigger_in_line),
                 output_line=self._trigger_out_line,
             )
         elif self._trigger_routing in {TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK}:
@@ -725,6 +807,10 @@ class Keithley2400SweepPlugin(TracePlugin):
         )
         if self._secondary_enabled:
             point_time += self._secondary_measurement_time()
+        if self._electrometer.settings.enabled:
+            if self._electrometer.meter is None:
+                raise RuntimeError("Secondary electrometer is enabled but not connected.")
+            point_time += self._electrometer.measurement_time(self)
         timeout = max(_TIMEOUT_MIN, n_points * point_time * _TIMEOUT_FACTOR)
 
         try:
@@ -732,13 +818,17 @@ class Keithley2400SweepPlugin(TracePlugin):
             self._smu.clear_buffer()
             self._smu.set_trace_feed_continuous_next()
             self._secondary_voltages = None
+            if self._electrometer.settings.enabled:
+                self._electrometer.start()
             if self._secondary_enabled:
                 assert self._secondary_nanovoltmeter is not None
                 self._secondary_nanovoltmeter.set_buffer_feed_continuous_next()
                 self._secondary_nanovoltmeter.initiate()
             self._smu.initiate()
 
-            if self._trigger_routing is TriggerRouting.BUS:
+            if self._trigger_routing is TriggerRouting.BUS and not (
+                self._secondary_enabled or self._electrometer.settings.enabled
+            ):
                 self._smu.transport.send_group_execute_trigger()
             if not self._smu.wait_for_buffer_full_srq(timeout):
                 raise RuntimeError(
@@ -758,16 +848,24 @@ class Keithley2400SweepPlugin(TracePlugin):
                     n_points,
                     post_sweep_delay=post_sweep_delay,
                 )
+            if self._electrometer.settings.enabled:
+                # The SMU's final point need not wait for the last completion
+                # pulse. Wait for the electrometer to return to idle itself.
+                self._electrometer.read(n_points, timeout)
             self._smu.set_trace_feed_continuous_never()
             self._smu.check_error_queue()
         except Exception:
-            try:
-                self._smu.abort()
-                if self._secondary_nanovoltmeter is not None:
-                    self._secondary_nanovoltmeter.abort()
-                self._smu.safe_output_off()
-            except _CLEANUP_EXCEPTIONS:
-                pass
+            self._electrometer.readings = None
+            self._secondary_voltages = None
+            actions = [self._smu.abort, self._smu.safe_output_off]
+            for meter in (self._secondary_nanovoltmeter, self._electrometer.meter):
+                if meter is not None:
+                    actions.append(meter.abort)
+            for action in actions:
+                try:
+                    action()
+                except _CLEANUP_EXCEPTIONS:
+                    pass
             raise
         if records is None:
             raise RuntimeError("Sweep completed without buffered readings.")
@@ -898,6 +996,19 @@ class Keithley2400SweepPlugin(TracePlugin):
                 column_roles[column] = role
                 names[column] = column
                 units[column] = unit
+        if self._electrometer.settings.enabled:
+            readings = self._electrometer.readings
+            if readings is None or len(readings) != len(x_arr):
+                raise RuntimeError("Secondary electrometer returned an unexpected number of readings.")
+            column, unit = self._electrometer.settings.channel
+            if column in columns:
+                raise ValueError(f"Electrometer column {column!r} conflicts with an existing trace column.")
+            # These are measured values at each physical source point. Retain
+            # them unmodified even when the SMU voltage uses delta reduction.
+            columns[column] = np.asarray(readings, dtype=float)
+            column_roles[column] = COLUMN_ROLE_Y
+            names[column] = column
+            units[column] = unit
         df = pd.DataFrame(columns)
         return {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
 
@@ -954,30 +1065,27 @@ class Keithley2400SweepPlugin(TracePlugin):
     def disconnect(self) -> None:
         """Disable output and close the SMU connection."""
         self._set_status(TraceStatus.DISCONNECTING)
+        errors = []
+        actions = [self._electrometer.disconnect]
         if self._smu is not None:
-            try:
-                self._smu.safe_output_off()
-            except _CLEANUP_EXCEPTIONS:
-                pass
-            try:
-                self._smu.disconnect()
-            except _CLEANUP_EXCEPTIONS:
-                pass
+            actions.extend((self._smu.safe_output_off, self._smu.disconnect))
         if self._secondary_nanovoltmeter is not None:
+            actions.extend((self._secondary_nanovoltmeter.abort, self._secondary_nanovoltmeter.disconnect))
+        for action in actions:
             try:
-                self._secondary_nanovoltmeter.abort()
-            except _CLEANUP_EXCEPTIONS:
-                pass
-            try:
-                self._secondary_nanovoltmeter.disconnect()
-            except _CLEANUP_EXCEPTIONS:
-                pass
+                action()
+            except Exception as exc:
+                errors.append(exc)
         self._smu = None
         self._secondary_nanovoltmeter = None
         self._secondary_voltages = None
         self._sweep_values = None
         self._nominal_sweep_values = None
-        self._set_status(TraceStatus.IDLE)
+        self._set_status(TraceStatus.ERROR if errors else TraceStatus.IDLE)
+        if len(errors) == 1:
+            raise errors[0]
+        if errors:
+            raise ExceptionGroup("Sweep cleanup failed", errors)
 
     def to_json(self) -> dict[str, Any]:
         """Serialise plugin state."""
@@ -985,6 +1093,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         data.update(
             {
                 "resource": self._resource,
+                "model": self._model,
                 "source_mode": self._source_mode.value,
                 "compliance_mode": self._compliance_mode.value,
                 "compliance": self._compliance,
@@ -1037,12 +1146,14 @@ class Keithley2400SweepPlugin(TracePlugin):
                 }
             )
         data["secondary_nanovoltmeter"] = secondary
+        data["secondary_electrometer"] = self._electrometer.settings.to_json()
         return data
 
     def _restore_from_json(self, data: dict) -> None:
         """Restore plugin state from serialised data."""
         super()._restore_from_json(data)
         self._resource = str(data.get("resource", self._resource))
+        self._model = str(data.get("model", "2400"))
         self._source_mode = SweepSourceMode(str(data.get("source_mode", self._source_mode.value)))
         self._compliance_mode = ComplianceMode(
             str(data.get("compliance_mode", self._compliance_mode.value))
@@ -1092,6 +1203,10 @@ class Keithley2400SweepPlugin(TracePlugin):
                 data.get("differential_conductance", self._differential_conductance)
             )
             self._delta_current = data.get("delta_current", self._delta_current)
+        electrometer = data.get("secondary_electrometer", {})
+        self._electrometer.settings = ElectrometerSettings.from_json(
+            electrometer if isinstance(electrometer, dict) else {}
+        )
         secondary = data.get("secondary_nanovoltmeter", {})
         if not isinstance(secondary, dict):
             return
@@ -1149,12 +1264,21 @@ class Keithley2400SweepPlugin(TracePlugin):
         basic_layout.setContentsMargins(0, 0, 0, 0)
         conn_group = QGroupBox("Connection")
         conn_form = QFormLayout(conn_group)
+        model_combo = QComboBox()
+        model_combo.setObjectName("sourceMeterModel")
+        for model in ("2400", "2410", "2450"):
+            model_combo.addItem(f"Keithley {model}", model)
+        model_combo.setCurrentIndex(model_combo.findData(self._model))
+        model_combo.currentIndexChanged.connect(
+            lambda index: setattr(self, "_model", model_combo.itemData(index))
+        )
+        conn_form.addRow("Model:", model_combo)
         resource_combo = VisaResourceComboBox(resource_filter=FILTER_GPIB)
         resource_combo.setCurrentText(self._resource)
         resource_combo.currentTextChanged.connect(
             lambda text: setattr(self, "_resource", text.strip())
         )
-        conn_form.addRow("2400 GPIB resource:", resource_combo)
+        conn_form.addRow("SMU GPIB resource:", resource_combo)
         basic_layout.addWidget(conn_group)
 
         src_group = QGroupBox("Source / Sense")
@@ -1508,6 +1632,40 @@ class Keithley2400SweepPlugin(TracePlugin):
             ),
             "Secondary nanovoltmeter",
         )
+        def update_auxiliary_triggers() -> None:
+            auxiliary = self._secondary_enabled or self._electrometer.settings.enabled
+            trig_combo.setEnabled(not auxiliary)
+            trig_out_chk.setEnabled(not auxiliary)
+            trigger_count_sb.setEnabled(not auxiliary)
+            arm_count_sb.setEnabled(not auxiliary)
+            timer_sb.setEnabled(not auxiliary and self._trigger_routing is TriggerRouting.TIMER)
+            trig_in_sb.setEnabled(auxiliary or self._trigger_routing in (
+                TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK
+            ))
+            trig_out_sb.setEnabled(auxiliary or self._enable_trigger_out)
+            trigger_note = root.findChild(QLabel, "secondary_trigger_note")
+            if self._electrometer.settings.enabled:
+                trigger_note.setText(
+                    f"SMU source events on line {self._trigger_out_line} trigger the "
+                    f"nanovoltmeter. Its completion on line {self._trigger_in_line} "
+                    "triggers the electrometer, whose completion on line "
+                    f"{self._electrometer.settings.completion_line} releases the SMU."
+                )
+            else:
+                trigger_note.setText(
+                    f"The SMU emits each source event on line {self._trigger_out_line} "
+                    f"and waits for measurement-complete on line {self._trigger_in_line}. "
+                    "Lines are set on the Advanced page."
+                )
+
+        tab_widget.addTab(
+            electrometer_config_page(self, update_auxiliary_triggers), "Electrometer"
+        )
+        secondary_enabled = root.findChild(QCheckBox, "secondary_enabled")
+        secondary_enabled.toggled.connect(lambda _: update_auxiliary_triggers())
+        trig_in_sb.valueChanged.connect(lambda _: update_auxiliary_triggers())
+        trig_out_sb.valueChanged.connect(lambda _: update_auxiliary_triggers())
+        update_auxiliary_triggers()
         return root
 
     def _secondary_config_page(
@@ -1636,6 +1794,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             f"emits each source event on line {self._trigger_out_line}. Lines are set "
             "on the Advanced page."
         )
+        trigger_note.setObjectName("secondary_trigger_note")
         trigger_note.setWordWrap(True)
         form.addRow("Trigger handshake:", trigger_note)
         layout.addWidget(controls)
@@ -1795,6 +1954,19 @@ class Keithley2400SweepPlugin(TracePlugin):
             "Link output line 2 by default, and waits for measurement-complete on input "
             "line 1 before advancing. Its voltage readings add prefixed V, R, and P "
             "columns to the trace.</p>"
+            "<p>The Electrometer page adds a separate 6485, 6514 or 6517. Its "
+            "table controls function, range, integration, filtering, zero check, "
+            "delay, counts, buffer size and transfer format. One selected reading "
+            "channel is added with a user-defined prefix and SI units. The 6485 "
+            "measures current; the 6514/6517 also offer voltage, resistance and charge. "
+            "Raw electrometer readings are retained in differential mode.</p>"
+            "<p>Wire SMU source events (default line 2) to the nanovoltmeter, its "
+            "completion (line 1) to the electrometer, and electrometer completion "
+            "(line 3) back to the SMU. Without a nanovoltmeter, connect source events "
+            "directly to the electrometer. The SMU holds each point until both "
+            "measurements finish. Trigger/arm sources are fixed for this alignment; "
+            "counts and buffer size must match the sweep. At least two points are "
+            "required. No secondary readings are silently truncated or padded.</p>"
             "<p>Compliance can be specified as a fixed current/voltage limit or "
             "derived from a resistance threshold.</p>"
         )

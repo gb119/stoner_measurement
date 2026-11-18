@@ -195,6 +195,8 @@ Command plugins
    stoner_measurement.plugins.command.pressure_gauge_channel.PressureGaugeChannelCommand
    stoner_measurement.plugins.command.pressure_set_flow.PressureSetFlowCommand
    stoner_measurement.plugins.command.read_diffractometer.ReadDiffractometerCommand
+   stoner_measurement.plugins.command.read_electrometer.ReadElectrometerCommand
+   stoner_measurement.plugins.command.read_multimeter.ReadMultimeterCommand
    stoner_measurement.plugins.command.reconfigure.ReconfigureCommand
    stoner_measurement.plugins.command.reconfigure.rebuild_delayed_configuration
    stoner_measurement.plugins.command.run_again.RunAgainCommand

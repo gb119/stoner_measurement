@@ -725,6 +725,8 @@ class SequenceEngine(QObject):
         change.
     namespace_updated():
         Emitted after a general mutation of the shared execution namespace.
+    measurement_details_changed(str, str, str):
+        Validated user, project and sample from an executed Details command.
     script_finished():
         Emitted when a script runs to completion without raising an exception.
 
@@ -748,6 +750,7 @@ class SequenceEngine(QObject):
     traces_catalog_changed = pyqtSignal(dict)
     values_catalog_changed = pyqtSignal(dict)
     namespace_updated = pyqtSignal()
+    measurement_details_changed = pyqtSignal(str, str, str)
     script_finished = pyqtSignal()
 
     def __init__(self, parent: QObject | None = None) -> None:

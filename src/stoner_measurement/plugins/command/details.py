@@ -84,6 +84,10 @@ class DetailsCommand(CommandPlugin):
     intended to be filled in from the configuration panel and then reused by
     later steps such as saving or labelling data.
 
+    When this command executes in the application, the window title also shows
+    the user, project and sample alongside the sequence filename. The most
+    recently executed Details command supplies these values.
+
     In normal use, fill in **User**, **Sample**, and **Project** before
     running. These are treated as required fields. The **Project** field is
     pre-populated from top-level folders in the configured default data
@@ -234,6 +238,11 @@ class DetailsCommand(CommandPlugin):
             message = f"The following Details fields must be filled in before continuing: {field_text}."
             self.show_validation_error.emit(message)
             raise ValueError(message)
+
+        if self.sequence_engine is not None:
+            self.sequence_engine.measurement_details_changed.emit(
+                self.user, self.project, self.sample
+            )
 
     def execute(self) -> None:
         """Validate the stored metadata when the command is invoked directly."""

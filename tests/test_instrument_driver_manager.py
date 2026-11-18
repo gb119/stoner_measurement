@@ -50,7 +50,8 @@ class TestInstrumentDriverManager:
         assert "Keithley2182A" in discovered
         assert "Keithley182" in discovered
         assert "Keithley6221" in discovered
-        assert "Keithley6845" in discovered
+        assert "Keithley6485" in discovered
+        assert "Keithley6845" not in discovered
         assert "Keithley6514" in discovered
         assert "Keithley6517" in discovered
         assert "Lakeshore335" in discovered
@@ -99,7 +100,7 @@ class TestInstrumentDriverManager:
         manager = InstrumentDriverManager()
         manager.discover()
         electrometers = manager.drivers_by_type(Electrometer)
-        assert "Keithley6845" in electrometers
+        assert "Keithley6485" in electrometers
         assert "Keithley6514" in electrometers
         assert "Keithley6517" in electrometers
         assert "Keithley2400" not in electrometers

@@ -136,6 +136,8 @@ set_field = "stoner_measurement.plugins.command.set_field:SetFieldCommand"
 set_position = "stoner_measurement.plugins.command.set_position:SetPositionCommand"
 set_diffractometer = "stoner_measurement.plugins.command.set_diffractometer:SetDiffractometerCommand"
 read_diffractometer = "stoner_measurement.plugins.command.read_diffractometer:ReadDiffractometerCommand"
+read_electrometer = "stoner_measurement.plugins.command.read_electrometer:ReadElectrometerCommand"
+read_multimeter = "stoner_measurement.plugins.command.read_multimeter:ReadMultimeterCommand"
 
 [project.entry-points."stoner_measurement.plot_displays"]
 cartesian = "stoner_measurement.ui.plotting.cartesian:CartesianDisplayFactory"
