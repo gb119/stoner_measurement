@@ -1,5 +1,17 @@
 # Testing Restructure Plan
 
+## 2026-11-18: Hosted plugin complexity follow-up
+
+- Codacy analysis of `1b9eece` reported two new complexity findings in the
+  extended 2400 trace and one nested-definition spacing finding.
+- Extracted auxiliary-buffer collection, failure cleanup, model selection and
+  trigger-control refresh into focused helpers. Acquisition complexity is now
+  14 and settings-page complexity 15 (production threshold 15); nested function
+  spacing is no longer applicable at the reported location. No exclusions or
+  remote ignore flags changed.
+- All 76 trace, secondary-meter, UI and SourceMeter-model tests passed locally
+  after the refactor on Python 3.14.7/PyQt5. No tests moved or removed.
+
 ## 2026-11-18: Combined plugin pre-push validation
 
 - Full Python 3.14.7/PyQt5 run: 4683 passed, 2 skipped, and 43 sandbox

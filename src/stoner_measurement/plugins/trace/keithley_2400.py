@@ -18,6 +18,7 @@ import enum
 import math
 import time
 from collections.abc import Callable, Iterable
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -559,7 +560,9 @@ class Keithley2400SweepPlugin(TracePlugin):
             self._secondary_nanovoltmeter = None
             self._set_status(TraceStatus.ERROR)
             if cleanup_errors:
-                raise ExceptionGroup("Sweep connection and cleanup failed", [connection_error, *cleanup_errors]) from connection_error
+                raise ExceptionGroup(
+                    "Sweep connection and cleanup failed", [connection_error, *cleanup_errors]
+                ) from connection_error
             raise
         self._set_status(TraceStatus.IDLE)
 
@@ -681,7 +684,10 @@ class Keithley2400SweepPlugin(TracePlugin):
         """Configure the trigger model, arm routing, and optional trigger output."""
         trigger_source = (
             TriggerSource.TLIN
-            if self._secondary_enabled or self._electrometer.settings.enabled or self._trigger_routing is TriggerRouting.TRIGGER_LINK
+            if (
+                self._secondary_enabled or self._electrometer.settings.enabled
+                or self._trigger_routing is TriggerRouting.TRIGGER_LINK
+            )
             else TriggerSource.IMM
         )
         trigger_count = (
@@ -836,40 +842,45 @@ class Keithley2400SweepPlugin(TracePlugin):
                 )
 
             records = self._smu.read_buffer_records(_BUFFER_ELEMENTS, count=n_points)
-            if self._secondary_enabled:
-                assert self._secondary_nanovoltmeter is not None
-                post_sweep_delay = max(
-                    _SECONDARY_POST_SWEEP_DELAY_MIN,
-                    self._secondary_measurement_time(),
-                )
-                time.sleep(post_sweep_delay)
-                self._secondary_voltages = self._read_secondary_buffer(
-                    self._secondary_nanovoltmeter,
-                    n_points,
-                    post_sweep_delay=post_sweep_delay,
-                )
-            if self._electrometer.settings.enabled:
-                # The SMU's final point need not wait for the last completion
-                # pulse. Wait for the electrometer to return to idle itself.
-                self._electrometer.read(n_points, timeout)
+            self._read_auxiliary_buffers(n_points, timeout)
             self._smu.set_trace_feed_continuous_never()
             self._smu.check_error_queue()
         except Exception:
-            self._electrometer.readings = None
-            self._secondary_voltages = None
-            actions = [self._smu.abort, self._smu.safe_output_off]
-            for meter in (self._secondary_nanovoltmeter, self._electrometer.meter):
-                if meter is not None:
-                    actions.append(meter.abort)
-            for action in actions:
-                try:
-                    action()
-                except _CLEANUP_EXCEPTIONS:
-                    pass
+            self._abort_failed_sweep()
             raise
         if records is None:
             raise RuntimeError("Sweep completed without buffered readings.")
         return records
+
+    def _read_auxiliary_buffers(self, count: int, timeout: float) -> None:
+        """Collect complete auxiliary buffers after the SMU finishes its sweep."""
+        if self._secondary_enabled:
+            assert self._secondary_nanovoltmeter is not None
+            post_sweep_delay = max(
+                _SECONDARY_POST_SWEEP_DELAY_MIN, self._secondary_measurement_time()
+            )
+            time.sleep(post_sweep_delay)
+            self._secondary_voltages = self._read_secondary_buffer(
+                self._secondary_nanovoltmeter, count, post_sweep_delay=post_sweep_delay
+            )
+        if self._electrometer.settings.enabled:
+            # The SMU's final point need not wait for the last completion
+            # pulse. Wait for the electrometer to return to idle itself.
+            self._electrometer.read(count, timeout)
+
+    def _abort_failed_sweep(self) -> None:
+        """Clear partial readings and attempt every owned instrument's abort."""
+        self._electrometer.readings = None
+        self._secondary_voltages = None
+        actions = [self._smu.abort, self._smu.safe_output_off]
+        for meter in (self._secondary_nanovoltmeter, self._electrometer.meter):
+            if meter is not None:
+                actions.append(meter.abort)
+        for action in actions:
+            try:
+                action()
+            except _CLEANUP_EXCEPTIONS:
+                pass
 
     @staticmethod
     def _read_secondary_buffer(
@@ -1264,15 +1275,7 @@ class Keithley2400SweepPlugin(TracePlugin):
         basic_layout.setContentsMargins(0, 0, 0, 0)
         conn_group = QGroupBox("Connection")
         conn_form = QFormLayout(conn_group)
-        model_combo = QComboBox()
-        model_combo.setObjectName("sourceMeterModel")
-        for model in ("2400", "2410", "2450"):
-            model_combo.addItem(f"Keithley {model}", model)
-        model_combo.setCurrentIndex(model_combo.findData(self._model))
-        model_combo.currentIndexChanged.connect(
-            lambda index: setattr(self, "_model", model_combo.itemData(index))
-        )
-        conn_form.addRow("Model:", model_combo)
+        conn_form.addRow("Model:", self._model_selector())
         resource_combo = VisaResourceComboBox(resource_filter=FILTER_GPIB)
         resource_combo.setCurrentText(self._resource)
         resource_combo.currentTextChanged.connect(
@@ -1632,32 +1635,12 @@ class Keithley2400SweepPlugin(TracePlugin):
             ),
             "Secondary nanovoltmeter",
         )
-        def update_auxiliary_triggers() -> None:
-            auxiliary = self._secondary_enabled or self._electrometer.settings.enabled
-            trig_combo.setEnabled(not auxiliary)
-            trig_out_chk.setEnabled(not auxiliary)
-            trigger_count_sb.setEnabled(not auxiliary)
-            arm_count_sb.setEnabled(not auxiliary)
-            timer_sb.setEnabled(not auxiliary and self._trigger_routing is TriggerRouting.TIMER)
-            trig_in_sb.setEnabled(auxiliary or self._trigger_routing in (
-                TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK
-            ))
-            trig_out_sb.setEnabled(auxiliary or self._enable_trigger_out)
-            trigger_note = root.findChild(QLabel, "secondary_trigger_note")
-            if self._electrometer.settings.enabled:
-                trigger_note.setText(
-                    f"SMU source events on line {self._trigger_out_line} trigger the "
-                    f"nanovoltmeter. Its completion on line {self._trigger_in_line} "
-                    "triggers the electrometer, whose completion on line "
-                    f"{self._electrometer.settings.completion_line} releases the SMU."
-                )
-            else:
-                trigger_note.setText(
-                    f"The SMU emits each source event on line {self._trigger_out_line} "
-                    f"and waits for measurement-complete on line {self._trigger_in_line}. "
-                    "Lines are set on the Advanced page."
-                )
-
+        update_auxiliary_triggers = partial(
+            self._update_auxiliary_trigger_controls, root,
+            routing=trig_combo, output_enabled=trig_out_chk, count=trigger_count_sb,
+            arm_count=arm_count_sb, timer=timer_sb, input_line=trig_in_sb,
+            output_line=trig_out_sb,
+        )
         tab_widget.addTab(
             electrometer_config_page(self, update_auxiliary_triggers), "Electrometer"
         )
@@ -1667,6 +1650,43 @@ class Keithley2400SweepPlugin(TracePlugin):
         trig_out_sb.valueChanged.connect(lambda _: update_auxiliary_triggers())
         update_auxiliary_triggers()
         return root
+
+    def _model_selector(self) -> QComboBox:
+        """Build the SourceMeter model selector shared by both acquisition modes."""
+        combo = QComboBox()
+        combo.setObjectName("sourceMeterModel")
+        for model in ("2400", "2410", "2450"):
+            combo.addItem(f"Keithley {model}", model)
+        combo.setCurrentIndex(combo.findData(self._model))
+        combo.currentIndexChanged.connect(lambda index: setattr(self, "_model", combo.itemData(index)))
+        return combo
+
+    def _update_auxiliary_trigger_controls(
+        self, root, *, routing, output_enabled, count, arm_count, timer, input_line, output_line
+    ) -> None:
+        """Show derived trigger routing and wiring when auxiliary meters are enabled."""
+        auxiliary = self._secondary_enabled or self._electrometer.settings.enabled
+        for control in (routing, output_enabled, count, arm_count):
+            control.setEnabled(not auxiliary)
+        timer.setEnabled(not auxiliary and self._trigger_routing is TriggerRouting.TIMER)
+        input_line.setEnabled(auxiliary or self._trigger_routing in (
+            TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK
+        ))
+        output_line.setEnabled(auxiliary or self._enable_trigger_out)
+        note = root.findChild(QLabel, "secondary_trigger_note")
+        if self._electrometer.settings.enabled:
+            note.setText(
+                f"SMU source events on line {self._trigger_out_line} trigger the "
+                f"nanovoltmeter. Its completion on line {self._trigger_in_line} "
+                "triggers the electrometer, whose completion on line "
+                f"{self._electrometer.settings.completion_line} releases the SMU."
+            )
+        else:
+            note.setText(
+                f"The SMU emits each source event on line {self._trigger_out_line} "
+                f"and waits for measurement-complete on line {self._trigger_in_line}. "
+                "Lines are set on the Advanced page."
+            )
 
     def _secondary_config_page(
         self,
