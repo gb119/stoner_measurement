@@ -27,6 +27,28 @@ Or from Python:
     from stoner_measurement.main import main
     main()
 
+Windows Start menu shortcut from a repository checkout
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+With the application installed in the ``stoner_measurement`` conda environment,
+run this command in PowerShell from the repository root:
+
+.. code-block:: powershell
+
+    .\scripts\install_windows_start_menu.ps1
+
+The ``CONDA_EXE`` environment variable must contain the full path to your conda
+executable. The script creates or updates **Stoner Measurement** in your own
+Start menu; administrator rights are not needed. The shortcut runs the
+application through ``conda run`` in the ``stoner_measurement`` environment,
+using the repository as its working directory and the application's icon.
+The diagnostic console starts minimized.
+
+The shortcut stores absolute paths, so it works without an activated environment.
+Rerun the script if you move the repository or conda installation. To remove the
+entry, delete the shortcut from your Start menu Programs folder. You can preview
+creation with ``.\scripts\install_windows_start_menu.ps1 -WhatIf``.
+
 Capturing diagnostic telemetry
 ------------------------------
 
