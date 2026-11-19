@@ -3,13 +3,14 @@
 from copy import deepcopy
 
 from qtpy.QtCore import Qt, Signal
-from qtpy.QtWidgets import QCheckBox, QComboBox, QLabel, QPushButton
+from qtpy.QtWidgets import QCheckBox, QComboBox, QLabel, QMessageBox, QPushButton
 
 from stoner_measurement.instruments.temperature_scales import (
     list_daqmx_scales,
     load_daqmx_temperature_scale,
 )
 from stoner_measurement.ui.temperature_panel import _InputSettingsTableWidget
+from stoner_measurement.ui.temperature_tasks import tasks_for
 
 _LEGACY = "__legacy_yaml__"
 
@@ -100,11 +101,29 @@ class ITC503InputSettingsTable(_InputSettingsTableWidget):
         self._table.setEnabled(False)
         self._write_button.setEnabled(False)
         try:
-            self._snapshots = self._engine.get_itc503_temperature_scales()
+            result = self._read_settings()
         except RuntimeError as exc:
             self._status.setText(str(exc))
             return False
-        self._refresh_scales()
+        return self._populate_settings(result)
+
+    def _read_settings(self):
+        """Fetch software settings and NI scale names without accessing widgets."""
+        snapshots = self._engine.get_itc503_temperature_scales()
+        try:
+            names = list_daqmx_scales()
+            status = "NI scale list refreshed. Saved tables remain available offline."
+        except RuntimeError as exc:
+            names = ()
+            status = str(exc) + " Saved tables and None remain available."
+        return snapshots, names, status
+
+    def _populate_settings(self, result):
+        """Display software selections and enable the populated table."""
+        self._snapshots, self._scale_names, status = result
+        self._status.setText(status)
+        for editors in self._editors.values():
+            self._populate_scales(editors["scale"])
         for channel, editors in self._editors.items():
             snapshot = self._snapshots.get(channel)
             selected = (
@@ -121,6 +140,27 @@ class ITC503InputSettingsTable(_InputSettingsTableWidget):
         self._write_button.setEnabled(ready)
         return ready
 
+    def request_read(self, *, show_warning=True, completed=None):
+        """Load software scales through the panel's background request path."""
+        self._table.setEnabled(False)
+        self._write_button.setEnabled(False)
+
+        def done(result):
+            ready = self._populate_settings(result)
+            if completed is not None:
+                completed(ready)
+
+        def failed(error):
+            self._status.setText(str(error))
+            if show_warning:
+                QMessageBox.warning(self, "Input Settings", str(error))
+            if completed is not None:
+                completed(False)
+
+        tasks_for(self._engine).submit(
+            self, "inputs", self._engine, self._read_settings, done, failed, context=self._channels
+        )
+
     def write_all(self):
         """Validate every selection before applying and saving all sensor scales.
 
@@ -131,23 +171,70 @@ class ITC503InputSettingsTable(_InputSettingsTableWidget):
         """
         if not self._write_button.isEnabled():
             raise RuntimeError("Read input settings before applying software temperature scales.")
+        scales = self._load_selected_scales(*self._selected_scales())
+        self._engine.set_itc503_temperature_scales(scales)
+        self._applied(scales)
+
+    def _selected_scales(self):
+        """Capture pending GUI choices before background validation and import."""
+        selections = {
+            channel: (editors["scale"].currentData(), editors["direction"].currentData())
+            for channel, editors in self._editors.items()
+        }
+        return selections, deepcopy(self._snapshots), self._reload_tables.isChecked()
+
+    @staticmethod
+    def _load_selected_scales(selections, snapshots, reload_tables):
+        """Validate all scale choices before applying any controller changes."""
         scales = {}
-        for channel, editors in self._editors.items():
-            name = editors["scale"].currentData()
+        for channel, (name, direction) in selections.items():
             if name == _LEGACY:
                 continue
             if name is None:
                 scales[channel] = None
                 continue
-            previous = self._snapshots.get(channel)
+            previous = snapshots.get(channel)
             reuse_saved = (
-                previous and previous["scale_name"] == name and not self._reload_tables.isChecked()
+                previous and previous["scale_name"] == name and not reload_tables
             )
             snapshot = deepcopy(previous) if reuse_saved else load_daqmx_temperature_scale(name)
-            snapshot["direction"] = editors["direction"].currentData()
+            snapshot["direction"] = direction
             scales[channel] = snapshot
-        self._engine.set_itc503_temperature_scales(scales)
+        return scales
+
+    def _applied(self, scales):
+        """Reflect a successful software calibration update on the GUI thread."""
         self._snapshots = deepcopy(scales)
         self._reload_tables.setChecked(False)
         self._status.setText("Software temperature scales applied and saved to YAML.")
         self.calibration_changed.emit()
+
+    def _on_write(self):
+        """Apply the software scale choices rather than generic hardware settings."""
+        if not self._write_button.isEnabled():
+            return
+        selection = self._selected_scales()
+        self._table.setEnabled(False)
+        self._write_button.setEnabled(False)
+
+        def write():
+            scales = self._load_selected_scales(*selection)
+            self._engine.set_itc503_temperature_scales(scales)
+            return scales
+
+        def restore():
+            self._table.setEnabled(bool(self._channels))
+            self._write_button.setEnabled(bool(self._channels))
+
+        def done(scales):
+            restore()
+            self._applied(scales)
+
+        def failed(error):
+            restore()
+            self._status.setText(str(error))
+            QMessageBox.warning(self, "Input Settings", str(error))
+
+        tasks_for(self._engine).submit(
+            self, "inputs", self._engine, write, done, failed, context="write"
+        )

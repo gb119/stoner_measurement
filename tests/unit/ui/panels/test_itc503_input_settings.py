@@ -4,6 +4,7 @@ from copy import deepcopy
 
 import pytest
 import yaml
+from qtpy.QtWidgets import QPushButton
 
 from stoner_measurement.instruments.lakeshore import Lakeshore335
 from stoner_measurement.instruments.oxford import OxfordITC503
@@ -76,6 +77,88 @@ def test_select_scale_direction_and_none_persist_per_channel(editor):
     assert saved["controllers"]["primary"]["itc503_calibration"] == expected
     assert saved["controllers"]["secondary"]["itc503_calibration"] == {}
     assert not engine.connected_driver.transport.write_log
+
+
+@pytest.mark.parametrize("slot", ["primary", "secondary"])
+def test_opening_input_page_loads_software_scales(
+    rig, slot, managed_temperature_panel, monkeypatch, wait_temperature_tasks
+):
+    engine, _path = rig
+    monkeypatch.setattr(editor_module, "list_daqmx_scales", lambda: ("sensor calibration",))
+    session = engine.controller(slot)
+    session.set_itc503_temperature_scales({"A": SCALE, "B": None})
+    panel = managed_temperature_panel()
+    panel._sync_existing_connection_state()
+    panel._input_tabs.setCurrentIndex(0 if slot == "primary" else 1)
+    panel._tabs.setCurrentIndex(panel._input_settings_tab_index)
+    wait_temperature_tasks(engine)
+    widget = panel._input_settings_widget if slot == "primary" else panel._secondary_input_settings
+    assert widget._table.isEnabled()
+    assert widget._write_button.isEnabled()
+    assert widget._editors["A"]["scale"].currentData() == "sensor calibration"
+    assert widget._editors["B"]["scale"].currentData() is None
+    assert slot in panel._input_settings_loaded
+
+
+def test_read_and_apply_buttons_use_software_scale_settings(editor, wait_temperature_tasks):
+    widget, engine, path = editor
+    read_button = next(button for button in widget.findChildren(QPushButton) if button.text() == "Read All")
+    read_button.click()
+    wait_temperature_tasks(engine)
+    assert widget._table.isEnabled()
+    select(widget._editors["A"]["scale"], "sensor calibration")
+    select(widget._editors["A"]["direction"], "corrected_to_nominal")
+    select(widget._editors["B"]["scale"], None)
+    applied = []
+    widget.calibration_changed.connect(lambda: applied.append(True))
+    widget._write_button.click()
+    wait_temperature_tasks(engine)
+    expected = {"A": dict(SCALE, direction="corrected_to_nominal"), "B": None}
+    assert engine.get_itc503_temperature_scales() == expected
+    assert yaml.safe_load(path.read_text())["controllers"]["primary"]["itc503_calibration"] == expected
+    assert widget._table.isEnabled()
+    assert widget._write_button.isEnabled()
+    assert applied == [True]
+    assert not engine.connected_driver.transport.write_log
+
+
+def test_background_read_allows_saved_scale_without_daqmx(editor, monkeypatch, wait_temperature_tasks):
+    widget, engine, _path = editor
+    engine.set_itc503_temperature_scales({"A": SCALE})
+
+    def unavailable():
+        raise RuntimeError("NI driver missing")
+
+    monkeypatch.setattr(editor_module, "list_daqmx_scales", unavailable)
+    completed = []
+    widget.request_read(completed=completed.append)
+    wait_temperature_tasks(engine)
+    assert completed == [True]
+    assert widget._table.isEnabled()
+    assert widget._editors["A"]["scale"].currentData() == "sensor calibration"
+    assert "NI driver missing" in widget._status.text()
+
+
+def test_apply_import_failure_preserves_selection_for_retry(editor, monkeypatch, wait_temperature_tasks):
+    widget, engine, path = editor
+    widget.request_read()
+    wait_temperature_tasks(engine)
+    select(widget._editors["A"]["scale"], "bad scale")
+
+    def invalid(name):
+        raise ValueError("not a table")
+
+    warnings = []
+    monkeypatch.setattr(editor_module, "load_daqmx_temperature_scale", invalid)
+    monkeypatch.setattr(editor_module.QMessageBox, "warning", lambda *args: warnings.append(args[-1]))
+    widget._write_button.click()
+    wait_temperature_tasks(engine)
+    assert warnings == ["not a table"]
+    assert engine.get_itc503_temperature_scales() == {}
+    assert not path.exists()
+    assert widget._table.isEnabled()
+    assert widget._write_button.isEnabled()
+    assert widget._editors["A"]["scale"].currentData() == "bad scale"
 
 
 def test_offline_saved_scale_survives_direction_changes_and_restart(editor, monkeypatch):

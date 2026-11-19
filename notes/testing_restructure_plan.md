@@ -1,5 +1,19 @@
 # Testing Restructure Plan
 
+## 2026-11-19: ITC503 input-scale UI actions
+
+- Extended `tests/unit/ui/panels/test_itc503_input_settings.py` to exercise
+  lazy page loading for both controller slots, Read All and Apply button
+  actions, offline saved-scale selection and import-failure recovery.
+  Existing tests were retained; no tests moved.
+- The ITC503 editor now overrides the asynchronous generic input-table paths
+  with software-scale reads and writes. Earlier coverage called the synchronous
+  helpers directly and missed the inherited hardware-settings handlers.
+- Conda/offscreen Python 3.14.7/PyQt5: 56 tests passed across the ITC503 editor,
+  asynchronous temperature panel, Lake Shore 340 editor and secondary panel.
+  NI scale discovery/import was faked; actual NI-DAQmx access and rig operation
+  still require a hardware check.
+
 ## 2026-11-18: Hosted plugin complexity follow-up
 
 - Codacy analysis of `1b9eece` reported two new complexity findings in the
