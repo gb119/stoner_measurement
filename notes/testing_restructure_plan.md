@@ -1,5 +1,13 @@
 # Testing Restructure Plan
 
+## 2026-11-20: Mercury IPS status mask regression
+
+- Extended the existing focused Mercury IPS driver tests; no tests moved.
+- Covered every defined alarm, mixed defined/undefined flags and ignored
+  undefined flags, including the observed firmware status `40000000`.
+- Conda/offscreen: all 64 tests passed with
+  `python -m pytest tests/unit/instruments/drivers/test_oxford_mercury_ips.py -q --tb=short`.
+
 ## 2026-11-19: ITC503 input-scale UI actions
 
 - Extended `tests/unit/ui/panels/test_itc503_input_settings.py` to exercise

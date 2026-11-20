@@ -27,8 +27,8 @@ discovery and a vector-axis selector are outside this change. The driver does
 not reconfigure hardware group membership, magnet calibration or remote access.
 
 Field ramp rates use RFST, not the nonexistent RSET. Alarms use group STAT
-hexadecimal flags, not SIG:STAF text. Nonzero flags report a general FAULT;
-the manual does not give a supported quench-bit mapping. Numeric readbacks
+hexadecimal flags, not SIG:STAF text. Defined alarm flags report a general FAULT;
+undocumented bits are ignored (see the follow-up below). Numeric readbacks
 validate units and apply documented SI prefixes instead of discarding them.
 Multi-command ramps and status snapshots hold the shared instrument lock.
 
@@ -51,3 +51,16 @@ read-only field/current/voltage, RFST, STAT and heater readback with its front
 panel. Verify the configured group is GRPZ. Only then test an operator-chosen
 small target/rate and Hold under the laboratory's normal operating procedure.
 No hardware commands were executed during this audit.
+
+## 2026-11-20: Ignore undefined status bits
+
+Firmware 2.2.6.20 returned group STAT `40000000` while reporting HOLD, heater
+ON and readings near the zero target. The previous any-nonzero check incorrectly
+classified this undefined bit as a fault.
+
+The [ISIS Mercury IPS status reference](https://isiscomputinggroup.github.io/ibex_developers_manual/specific_iocs/cryogenics/Oxford-Instruments-Mercury-IPS.html)
+explicitly requires ignoring undefined bits. Its defined alarms occupy bits
+0–9 and 12–17, giving mask `0x0003F3FF`. Apply that mask before deciding whether
+to report FAULT. Bit 30's meaning remains unknown; it is not assigned a meaning
+by this change. Defined alarms still report a general fault, including when
+combined with undefined bits. No hardware commands were executed.

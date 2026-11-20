@@ -45,6 +45,11 @@ _ACTION_STATE_MAP: dict[str, MagnetState] = {
 _NUMBER_RE = re.compile(r"([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)(.*)")
 _SI_SCALES = {"n": 1e-9, "u": 1e-6, "m": 1e-3, "": 1.0, "k": 1e3, "M": 1e6}
 
+# Defined group PSU:STAT alarms in the ISIS Mercury IPS status reference:
+# https://isiscomputinggroup.github.io/ibex_developers_manual/specific_iocs/cryogenics/Oxford-Instruments-Mercury-IPS.html
+# Bits 10, 11 and 18–31 are undefined and must not imply a fault.
+_FAULT_STATUS_MASK = 0x0003F3FF
+
 
 class OxfordMercuryIPS(MagnetController, MagnetSupply):
     """Driver for an Oxford Instruments Mercury iPS magnet power supply.
@@ -655,12 +660,13 @@ class OxfordMercuryIPS(MagnetController, MagnetSupply):
         return raw.rsplit(":", maxsplit=1)[-1].upper()
 
     def _fault_detected(self) -> bool:
-        """Report nonzero native hexadecimal alarm flags as a general fault.
+        """Report only defined native hexadecimal alarm flags as a fault.
 
-        The manual documents STAT as hexadecimal but does not assign quench
-        bits. Do not infer a specific quench from undocumented bit positions.
+        Ignore undocumented status bits, including bit 30 observed on firmware
+        2.2.6.20. Keep defined alarms as general faults rather than inferring
+        additional state from undocumented flags.
         """
-        return bool(int(self._read(f"DEV:{self._uid}:PSU:STAT"), 16))
+        return bool(int(self._read(f"DEV:{self._uid}:PSU:STAT"), 16) & _FAULT_STATUS_MASK)
 
     def _wait_for_ramp_complete(self, *, timeout: float = 600.0, poll_period: float = 0.25) -> None:
         """Wait for the ramp to reach a terminal state, timing out if unsuccessful.

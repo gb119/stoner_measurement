@@ -86,9 +86,16 @@ class TestOxfordMercuryIPS:
         with pytest.raises(ValueError, match="FLD"):
             _ = driver.field
 
-    def test_native_alarm_flags_are_reported_as_fault(self):
+    @pytest.mark.parametrize("alarm", [
+        "00000001", "00000002", "00000004", "00000008",
+        "00000010", "00000020", "00000040", "00000080",
+        "00000100", "00000200", "00001000", "00002000",
+        "00004000", "00008000", "00010000", "00020000",
+        "40000100", "FFFFFFFF",
+    ])
+    def test_native_alarm_flags_are_reported_as_fault(self, alarm):
         transport = _null([
-            b"STAT:DEV:GRPZ:PSU:ACTN:HOLD\n", b"STAT:DEV:GRPZ:PSU:STAT:0001\n",
+            b"STAT:DEV:GRPZ:PSU:ACTN:HOLD\n", f"STAT:DEV:GRPZ:PSU:STAT:{alarm}\n".encode(),
             b"STAT:DEV:GRPZ:PSU:SIG:FLD:1T\n", b"STAT:DEV:GRPZ:PSU:SIG:CURR:1A\n",
             b"STAT:DEV:GRPZ:PSU:SIG:VOLT:0V\n", b"STAT:DEV:GRPZ:PSU:SIG:FSET:1T\n",
             b"STAT:DEV:GRPZ:PSU:SIG:SWHT:ON\n", b"STAT:DEV:GRPZ:PSU:SIG:RFST:0.1T/m\n",
@@ -310,11 +317,12 @@ class TestOxfordMercuryIPS:
         assert status.heater_state.value == "on"
         assert status.persistent is False
 
-    def test_status_at_target_when_hold_and_field_matches(self):
+    @pytest.mark.parametrize("flags", ["00000000", "40000000", "00000C00", "FFFC0C00"])
+    def test_status_at_target_when_hold_and_field_matches(self, flags):
         t = _null(
             responses=[
                 b"STAT:DEV:GRPZ:PSU:ACTN:HOLD\n",
-                b"STAT:DEV:GRPZ:PSU:STAT:0000\n",
+                f"STAT:DEV:GRPZ:PSU:STAT:{flags}\n".encode(),
                 b"STAT:DEV:GRPZ:PSU:SIG:FLD:+1.00000T\n",
                 b"STAT:DEV:GRPZ:PSU:SIG:CURR:+2.00000A\n",
                 b"STAT:DEV:GRPZ:PSU:SIG:VOLT:+0.00001V\n",
