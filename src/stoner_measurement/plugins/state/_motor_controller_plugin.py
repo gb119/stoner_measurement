@@ -15,6 +15,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.instruments.motor_controller import MotorMoveDirection
 from stoner_measurement.motor_control.engine import MotorControllerEngine
 from stoner_measurement.ui.widgets import SISpinBox
@@ -41,7 +42,9 @@ def _normalise_outputs(values: Iterable[str] | None) -> list[str] | None:
 def _normalise_direction(value: object) -> MotorMoveDirection:
     """Return the canonical persisted direction mode."""
     try:
-        direction = value if isinstance(value, MotorMoveDirection) else MotorMoveDirection(str(value))
+        direction = (
+            value if isinstance(value, MotorMoveDirection) else MotorMoveDirection(str(value))
+        )
     except ValueError:
         return MotorMoveDirection.SHORTEST
     if direction is MotorMoveDirection.TOWARDS_ZERO:
@@ -170,31 +173,19 @@ class MotorControllerPluginMixin:
             return math.nan
         return float(state.reading.angular_rate)
 
-    def reported_values(self) -> dict[str, str]:
-        """Return value-catalogue expressions exposed by this plugin."""
-        values = super().reported_values()
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
+        outputs = super().declared_outputs()
         selected = _OUTPUT_OPTIONS if self.report_outputs is None else tuple(self.report_outputs)
         var = self.instance_name
-        if "angle" in selected:
-            values[f"{var}:Angle"] = f"{var}.angle"
-        if "target_angle" in selected:
-            values[f"{var}:Target Angle"] = f"{var}.target_angle"
-        if "angular_rate" in selected:
-            values[f"{var}:Angular Rate"] = f"{var}.angular_rate"
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return angular units for the motor's reported values."""
-        units = super().reported_value_units()
-        var = self.instance_name
-        units.update(
-            {
-                f"{var}:Angle": "°",
-                f"{var}:Target Angle": "°",
-                f"{var}:Angular Rate": "°/s",
-            }
-        )
-        return units
+        for option, label, attribute, unit in [
+            ("angle", "Angle", "angle", "°"),
+            ("target_angle", "Target Angle", "target_angle", "°"),
+            ("angular_rate", "Angular Rate", "angular_rate", "°/s"),
+        ]:
+            if option in selected:
+                outputs.values[f"{var}:{label}"] = ScalarOutput(f"{var}.{attribute}", unit)
+        return outputs
 
     def _motor_settings_to_json(self) -> dict[str, object]:
         return {
@@ -242,7 +233,9 @@ class _MotorControllerSettingsWidget(QWidget):
             form.addRow("Velocity:", self._velocity_spin)
 
         self._acceleration_spin = SISpinBox(allow_expressions=True)
-        self._acceleration_spin.setOpts(bounds=(0.001, 10000.0), decimals=3, suffix="°/s²", step=1.0)
+        self._acceleration_spin.setOpts(
+            bounds=(0.001, 10000.0), decimals=3, suffix="°/s²", step=1.0
+        )
         self._acceleration_spin.setValue(self._plugin.acceleration)
         self._acceleration_spin.sigValueChanged.connect(
             lambda sb: setattr(self._plugin, "acceleration", sb.value())
@@ -266,7 +259,9 @@ class _MotorControllerSettingsWidget(QWidget):
         form.addRow("Direction:", self._direction_combo)
 
         outputs_row = QHBoxLayout()
-        selected = set(_OUTPUT_OPTIONS if self._plugin.report_outputs is None else self._plugin.report_outputs)
+        selected = set(
+            _OUTPUT_OPTIONS if self._plugin.report_outputs is None else self._plugin.report_outputs
+        )
         for name in _OUTPUT_OPTIONS:
             check = QCheckBox(name.replace("_", " ").title(), self)
             check.setChecked(name in selected)

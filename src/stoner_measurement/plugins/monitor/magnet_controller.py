@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.magnet_control.engine import MagnetControllerEngine
 from stoner_measurement.plugins.monitor.base import MonitorPlugin
 
@@ -314,7 +315,9 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
         result: dict[str, float] = {}
 
         if self.report_field:
-            result["field"] = math.nan if reading is None or reading.field is None else float(reading.field)
+            result["field"] = (
+                math.nan if reading is None or reading.field is None else float(reading.field)
+            )
         if self.report_target_field:
             result["target_field"] = (
                 math.nan if state.target_field is None else float(state.target_field)
@@ -342,7 +345,6 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
         if self.report_stability:
             result["stable"] = 1.0 if state.stable else 0.0
 
-        self._last_reading = result
         return result
 
     def field(self) -> float:
@@ -450,53 +452,32 @@ class MagneticFieldMonitorPlugin(MonitorPlugin):
         self._raise_if_quenched(state)
         return 1.0 if state.stable else 0.0
 
-    def reported_values(self) -> dict[str, str]:
-        """Return a mapping of output names to accessor expressions.
-
-        Each selected parameter is reported as both
-        ``"{instance_name}:{label}"`` → ``"{instance_name}.method()"`` so
-        that the sequence engine can add them to the data namespace and
-        display them in the output catalogue.
-
-        Returns:
-            (dict[str, str]):
-                Mapping of ``"{instance_name}:{label}"`` to Python expression.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.monitor.magnet_controller import MagneticFieldMonitorPlugin
-            >>> m = MagneticFieldMonitorPlugin()
-            >>> vals = m.reported_values()
-            >>> var = m.instance_name
-            >>> f"{var}:Field" in vals
-            True
-            >>> f"{var}:Current" in vals
-            True
-        """
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
         var = self.instance_name
-        values: dict[str, str] = {}
-
-        if self.report_field:
-            values[f"{var}:Field"] = f"{var}.field()"
-        if self.report_target_field:
-            values[f"{var}:Target Field"] = f"{var}.target_field()"
-        if self.report_current:
-            values[f"{var}:Current"] = f"{var}.current()"
-        if self.report_voltage:
-            values[f"{var}:Voltage"] = f"{var}.voltage()"
-        if self.report_field_rate:
-            values[f"{var}:Field Rate"] = f"{var}.field_rate()"
-        if self.report_target_field_rate:
-            values[f"{var}:Target Field Rate"] = f"{var}.target_field_rate()"
-        if self.report_heater:
-            values[f"{var}:Heater"] = f"{var}.heater()"
-        if self.report_at_target:
-            values[f"{var}:At Target"] = f"{var}.at_target()"
-        if self.report_stability:
-            values[f"{var}:Stable"] = f"{var}.stable()"
-
-        return values
+        units = self.units
+        return PluginOutputs(
+            values={
+                f"{var}:{label}": ScalarOutput(f"{var}.{method}()", units.get(quantity, ""))
+                for flag, label, method, quantity in [
+                    ("field", "Field", "field", "field"),
+                    ("target_field", "Target Field", "target_field", "target_field"),
+                    ("current", "Current", "current", "current"),
+                    ("voltage", "Voltage", "voltage", "voltage"),
+                    ("field_rate", "Field Rate", "field_rate", "field_rate"),
+                    (
+                        "target_field_rate",
+                        "Target Field Rate",
+                        "target_field_rate",
+                        "target_field_rate",
+                    ),
+                    ("heater", "Heater", "heater", "heater"),
+                    ("at_target", "At Target", "at_target", "at_target"),
+                    ("stability", "Stable", "stable", "stable"),
+                ]
+                if getattr(self, "report_" + flag)
+            }
+        )
 
     def to_json(self) -> dict[str, object]:
         """Serialise plugin configuration to a JSON-compatible dict.

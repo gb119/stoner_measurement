@@ -13,6 +13,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 from stoner_measurement.temperature_control.references import (
     ChannelRef,
@@ -32,13 +33,18 @@ from stoner_measurement.ui.widgets import SISpinBox
 if TYPE_CHECKING:
     from stoner_measurement.temperature_control.types import TemperatureEngineState
 
+
 def _normalise_channels(values: Iterable[str] | None) -> list[str] | None:
     if values is None:
         return None
     channels: list[str] = []
     seen: set[str] = set()
     for value in values:
-        channel = compact_reference(channel_ref(value)) if isinstance(value, (dict, ChannelRef)) else str(value).strip()
+        channel = (
+            compact_reference(channel_ref(value))
+            if isinstance(value, (dict, ChannelRef))
+            else str(value).strip()
+        )
         if channel and channel not in seen:
             channels.append(channel)
             seen.add(channel)
@@ -184,34 +190,32 @@ class TemperatureControllerPluginMixin:
         reading = local.readings.get(ref.channel)
         return math.nan if reading is None else float(reading.value)
 
-    def reported_values(self) -> dict[str, str]:
-        values = super().reported_values()
-        selected = self._available_sensor_channels() if self.sensor_channels is None else list(self.sensor_channels)
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
+        outputs = super().declared_outputs()
+        selected = (
+            self._available_sensor_channels()
+            if self.sensor_channels is None
+            else list(self.sensor_channels)
+        )
         var = self.instance_name
-        values[f"{var}:Loop Setpoint"] = f"{var}.control_setpoint"
+        outputs.values[f"{var}:Loop Setpoint"] = ScalarOutput(f"{var}.control_setpoint", self.units)
         if hasattr(self, "settle_timeout_minutes"):
-            values[f"{var}:Timed Out"] = f"{var}.timed_out"
+            outputs.values[f"{var}:Timed Out"] = ScalarOutput(f"{var}.timed_out")
         for channel in selected:
-            values[f"{var}:Sensor {channel}"] = f"{var}.sensor_value({reference_json(channel)!r})"
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return temperature units for the loop setpoint and sensor readings."""
-        units = super().reported_value_units()
-        selected = self._available_sensor_channels() if self.sensor_channels is None else list(self.sensor_channels)
-        var = self.instance_name
-        units[f"{var}:Loop Setpoint"] = self.units
-        if hasattr(self, "settle_timeout_minutes"):
-            units[f"{var}:Timed Out"] = ""
-        units.update({f"{var}:Sensor {channel}": self.units for channel in selected})
-        return units
+            outputs.values[f"{var}:Sensor {channel}"] = ScalarOutput(
+                f"{var}.sensor_value({reference_json(channel)!r})", self.units
+            )
+        return outputs
 
     def _temperature_settings_to_json(self) -> dict[str, object]:
         return {
             "controller_id": self.controller_id,
             "control_loop": self.control_loop,
             "ramp_rate": self.ramp_rate,
-            "sensor_channels": None if self.sensor_channels is None else [reference_json(ch) for ch in self.sensor_channels],
+            "sensor_channels": None
+            if self.sensor_channels is None
+            else [reference_json(ch) for ch in self.sensor_channels],
         }
 
     def _restore_temperature_settings(self, data: dict[str, object]) -> None:
@@ -231,7 +235,9 @@ class TemperatureControllerPluginMixin:
 class _TemperatureControllerSettingsWidget(QWidget):
     """Configuration widget shared by temperature controller scan/sweep plugins."""
 
-    def __init__(self, plugin: TemperatureControllerPluginMixin, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, plugin: TemperatureControllerPluginMixin, parent: QWidget | None = None
+    ) -> None:
         super().__init__(parent)
         self._plugin = plugin
         self._build_ui()
@@ -257,16 +263,19 @@ class _TemperatureControllerSettingsWidget(QWidget):
                 "at each temperature point."
             )
             self._settle_timeout_spin.sigValueChanged.connect(
-                lambda spin: setattr(
-                    self._plugin, "settle_timeout_minutes", spin.value()
-                )
+                lambda spin: setattr(self._plugin, "settle_timeout_minutes", spin.value())
             )
             form.addRow("Stability timeout:", self._settle_timeout_spin)
 
         self._sensor_edit = QLineEdit(
-            "" if self._plugin.sensor_channels is None else ", ".join(selection_text(ch) for ch in self._plugin.sensor_channels), self
+            ""
+            if self._plugin.sensor_channels is None
+            else ", ".join(selection_text(ch) for ch in self._plugin.sensor_channels),
+            self,
         )
-        self._sensor_edit.setPlaceholderText("Comma-separated sensor channels; blank = all available")
+        self._sensor_edit.setPlaceholderText(
+            "Comma-separated sensor channels; blank = all available"
+        )
         self._sensor_edit.editingFinished.connect(self._on_sensors_changed)
         form.addRow("Reported sensors:", self._sensor_edit)
         add_catalogue_picker(form, self._sensor_edit)

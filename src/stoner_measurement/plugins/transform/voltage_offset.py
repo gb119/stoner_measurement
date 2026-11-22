@@ -7,6 +7,10 @@ from typing import Any
 import numpy as np
 from qtpy.QtWidgets import QComboBox, QFormLayout, QWidget
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    transform_outputs,
+)
 from stoner_measurement.core.trace_data import COLUMN_ROLE_X, COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.transform._trace_selection import (
     TraceChannelSelectionMixin,
@@ -111,20 +115,11 @@ class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
         """Data is obtained through the configured trace selection."""
         return []
 
-    @property
-    def output_names(self) -> list[str]:
-        """Return the corrected trace and calculated offset outputs."""
-        return [_OUTPUT_TRACE_KEY, _OFFSET_VALUE_KEY]
-
-    @property
-    def output_trace_names(self) -> list[str]:
-        """Return the corrected trace output name."""
-        return [_OUTPUT_TRACE_KEY]
-
-    @property
-    def output_value_names(self) -> list[str]:
-        """Return the calculated scalar offset output name."""
-        return [_OFFSET_VALUE_KEY]
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare typed transform results without repeating output names."""
+        outputs = transform_outputs(self, [_OUTPUT_TRACE_KEY], [_OFFSET_VALUE_KEY])
+        outputs.result_order = (*outputs.result_keys("trace"), *outputs.result_keys("value"))
+        return outputs
 
     def _calculate_offset(self, x_arr: np.ndarray, y_arr: np.ndarray) -> float:
         """Calculate ``dx`` using the configured method."""
@@ -217,9 +212,7 @@ class XOffsetRemovalPlugin(TraceChannelSelectionMixin, TransformPlugin):
         """Build trace/channel selection controls."""
         widget = QWidget(parent)
         layout = QFormLayout(widget)
-        ws = self._create_data_source_widgets(
-            widget, self.engine_namespace.get("_traces", {})
-        )
+        ws = self._create_data_source_widgets(widget, self.engine_namespace.get("_traces", {}))
         self._add_data_selection_rows(layout, ws)
         self._wire_data_source_widgets(ws)
         return widget

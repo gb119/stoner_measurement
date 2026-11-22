@@ -14,6 +14,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.instruments.keithley.k2182 import Keithley2182A
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
 from stoner_measurement.instruments.transport.gpib_transport import (
@@ -258,12 +259,14 @@ class Keithley6221PointScanPlugin(StateScanPlugin):
     def is_at_target(self):
         return True
 
-    def reported_values(self):
-        prefix = self.instance_name
-        values = {f"{prefix}.source_value": f"{prefix}.get_state()"}
-        for name in self._measurement_units():
-            values[f"{prefix}.{name}"] = f"{prefix}._readings.get({name!r})"
-        return values
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
+        outputs = super().declared_outputs()
+        var = self.instance_name
+        outputs.values = {f"{var}.source_value": ScalarOutput(f"{var}.get_state()", "A")}
+        for name, unit in self._measurement_units().items():
+            outputs.values[f"{var}.{name}"] = ScalarOutput(f"{var}._readings.get({name!r})", unit)
+        return outputs
 
     def _measurement_units(self):
         units = {}
@@ -271,12 +274,6 @@ class Keithley6221PointScanPlugin(StateScanPlugin):
             if getattr(self, f"_{role}_enabled"):
                 prefix = "" if role == "primary" else "secondary_"
                 units.update({prefix + "voltage": "V", prefix + "resistance": "Ω"})
-        return units
-
-    def reported_value_units(self):
-        prefix = self.instance_name
-        units = {f"{prefix}.source_value": "A"}
-        units.update({f"{prefix}.{key}": unit for key, unit in self._measurement_units().items()})
         return units
 
     def to_json(self):

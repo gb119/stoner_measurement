@@ -65,6 +65,10 @@ test:
     - stoner_measurement.instruments.thorlabs
   commands:
     - stoner-measurement --help || true
+    - >-
+      python -c "from importlib.resources import files;
+      p = files('stoner_measurement').joinpath('help', 'stoner_measurement.chm');
+      assert p.read_bytes()[:4] == b'ITSF', 'Missing or invalid packaged CHM'"
 
 about:
   home: https://github.com/gb119/stoner_measurement

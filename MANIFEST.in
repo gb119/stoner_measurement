@@ -1,4 +1,4 @@
 include scripts/build_chm.py
 include scripts/build_windows_release.ps1
 include scripts/install_windows_start_menu.ps1
-recursive-include src/stoner_measurement/help *.chm
+include src/stoner_measurement/help/stoner_measurement.chm

@@ -574,17 +574,18 @@ class StateScanPlugin(StatePlugin):
             >>> visited
             [0.0, 1.0, 2.0]
         """
-        self.ix = 0
-        self.value = 0.0
-        self.meas_flag = False
-        self.stage = 0
+        self._reset_iteration_state()
         self.connect()
         self.configure()
         try:
+            if self.clear_on_start:
+                self.clear_data()
             for self.ix, self.value, self.meas_flag, self.stage in self.scan_points():
                 self.ramp_to(float(self.value))
                 for sub_step in sub_steps:
                     sub_step()
+                if self.collect_data:
+                    self.collect()
         finally:
             self.disconnect()
 
@@ -767,7 +768,7 @@ class StateScanPlugin(StatePlugin):
         prefix = "    " * indent
         loop_prefix = "    " * (indent + 1)
         var_name = self.instance_name
-        lines: list[str] = []
+        lines: list[str] = [f"{prefix}{var_name}._reset_iteration_state()"]
         if self.clear_on_start:
             lines.append(f"{prefix}{var_name}.clear_data()")
         lines += [

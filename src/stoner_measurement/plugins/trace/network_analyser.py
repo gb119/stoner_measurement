@@ -19,6 +19,9 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.core import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+)
 from stoner_measurement.instruments import (
     NetworkAnalyser,
     SweepConfiguration,
@@ -141,9 +144,9 @@ class NetworkAnalyserTracePlugin(TracePlugin):
     def name(self) -> str:
         return "NetworkAnalyser"
 
-    @property
-    def trace_names(self) -> list[str]:
-        return ["S parameters"]
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare the shared S-parameter trace."""
+        return self._declare_trace_outputs(["S parameters"])
 
     @property
     def x_label(self) -> str:
@@ -155,11 +158,7 @@ class NetworkAnalyserTracePlugin(TracePlugin):
 
     @property
     def x_units(self) -> str:
-        return (
-            "Hz"
-            if self._sweep_variable is NetworkAnalyserSweepVariable.FREQUENCY
-            else "dBm"
-        )
+        return "Hz" if self._sweep_variable is NetworkAnalyserSweepVariable.FREQUENCY else "dBm"
 
     @property
     def y_label(self) -> str:
@@ -218,9 +217,7 @@ class NetworkAnalyserTracePlugin(TracePlugin):
                 response_port = int(parameter[1])
                 source_port = int(parameter[2])
                 if max(response_port, source_port) > capabilities.port_count:
-                    raise ValueError(
-                        f"{parameter} requires a port absent from this analyser."
-                    )
+                    raise ValueError(f"{parameter} requires a port absent from this analyser.")
 
             if_bandwidth = self.eval_float(self._if_bandwidth_hz)
             if self._sweep_variable is NetworkAnalyserSweepVariable.FREQUENCY:
@@ -286,11 +283,12 @@ class NetworkAnalyserTracePlugin(TracePlugin):
         roles: dict[str, str] = {}
         for index, trace in enumerate(sweep.traces):
             parameter = self._selected_parameters[index]
-            columns[parameter] = format_s_parameter_values(
-                trace.values, self._output_format
-            )
+            columns[parameter] = format_s_parameter_values(trace.values, self._output_format)
             roles[parameter] = COLUMN_ROLE_Y if index == 0 else COLUMN_ROLE_Z
-        names = {"x": self.x_label, **{parameter: parameter for parameter in self._selected_parameters}}
+        names = {
+            "x": self.x_label,
+            **{parameter: parameter for parameter in self._selected_parameters},
+        }
         units = {
             "x": self.x_units,
             **{parameter: self.y_units for parameter in self._selected_parameters},
@@ -338,13 +336,9 @@ class NetworkAnalyserTracePlugin(TracePlugin):
             data.get("sweep_variable", self._sweep_variable.value)
         )
         self._fixed_power_dbm = data.get("fixed_power_dbm", self._fixed_power_dbm)
-        self._fixed_frequency_hz = data.get(
-            "fixed_frequency_hz", self._fixed_frequency_hz
-        )
+        self._fixed_frequency_hz = data.get("fixed_frequency_hz", self._fixed_frequency_hz)
         self._if_bandwidth_hz = data.get("if_bandwidth_hz", self._if_bandwidth_hz)
-        self._averaging_enabled = bool(
-            data.get("averaging_enabled", self._averaging_enabled)
-        )
+        self._averaging_enabled = bool(data.get("averaging_enabled", self._averaging_enabled))
         self._averaging_count = max(1, int(data.get("averaging_count", self._averaging_count)))
         self._corrected = bool(data.get("corrected", self._corrected))
         output_format = TraceFormat(data.get("output_format", self._output_format.value))
@@ -393,9 +387,7 @@ class NetworkAnalyserTracePlugin(TracePlugin):
         variable.addItem("Source power", NetworkAnalyserSweepVariable.POWER)
         variable.setCurrentIndex(variable.findData(self._sweep_variable))
         fixed_power_label = QLabel("Fixed source power:")
-        fixed_power = SISpinBox(
-            allow_expressions=True, suffix="dBm", value=self._fixed_power_dbm
-        )
+        fixed_power = SISpinBox(allow_expressions=True, suffix="dBm", value=self._fixed_power_dbm)
         fixed_power.setObjectName("network_analyser_fixed_power")
         fixed_power.setMinimum(-200.0)
         fixed_power.setMaximum(100.0)
@@ -406,9 +398,7 @@ class NetworkAnalyserTracePlugin(TracePlugin):
         fixed_frequency.setObjectName("network_analyser_fixed_frequency")
         fixed_frequency.setMinimum(1.0)
         fixed_frequency.setMaximum(1.0e12)
-        if_bandwidth = SISpinBox(
-            allow_expressions=True, suffix="Hz", value=self._if_bandwidth_hz
-        )
+        if_bandwidth = SISpinBox(allow_expressions=True, suffix="Hz", value=self._if_bandwidth_hz)
         if_bandwidth.setObjectName("network_analyser_if_bandwidth")
         if_bandwidth.setMinimum(1.0)
         if_bandwidth.setMaximum(1.0e9)
@@ -480,26 +470,18 @@ class NetworkAnalyserTracePlugin(TracePlugin):
         driver.currentIndexChanged.connect(
             lambda index: setattr(self, "_model", driver.itemData(index))
         )
-        resource.currentTextChanged.connect(
-            lambda text: setattr(self, "_resource", text.strip())
-        )
+        resource.currentTextChanged.connect(lambda text: setattr(self, "_resource", text.strip()))
         channel.valueChanged.connect(lambda value: setattr(self, "_channel", value))
         variable.currentIndexChanged.connect(on_variable_changed)
-        fixed_power.valueChanged.connect(
-            lambda value: setattr(self, "_fixed_power_dbm", value)
-        )
+        fixed_power.valueChanged.connect(lambda value: setattr(self, "_fixed_power_dbm", value))
         fixed_frequency.valueChanged.connect(
             lambda value: setattr(self, "_fixed_frequency_hz", value)
         )
-        if_bandwidth.valueChanged.connect(
-            lambda value: setattr(self, "_if_bandwidth_hz", value)
-        )
+        if_bandwidth.valueChanged.connect(lambda value: setattr(self, "_if_bandwidth_hz", value))
         for check in trace_checks.values():
             check.toggled.connect(on_parameter_toggled)
         averaging.toggled.connect(on_averaging_toggled)
-        averaging_count.valueChanged.connect(
-            lambda value: setattr(self, "_averaging_count", value)
-        )
+        averaging_count.valueChanged.connect(lambda value: setattr(self, "_averaging_count", value))
         corrected.toggled.connect(lambda enabled: setattr(self, "_corrected", enabled))
         output_format.currentIndexChanged.connect(
             lambda index: setattr(self, "_output_format", output_format.itemData(index))

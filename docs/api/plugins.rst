@@ -7,6 +7,10 @@ configuration, outputs, attributes and methods. For the operational guides,
 start with :doc:`../rig_controls`, :doc:`../keithley_meters` or
 :doc:`../data_workflows`.
 
+The implementation contracts are in :doc:`../third_party_plugins` and
+:doc:`../plugin_outputs`. The latter covers unified declarations, configured
+schemas, compatibility views and migration from the old publication hooks.
+
 Plugin base classes
 -------------------
 

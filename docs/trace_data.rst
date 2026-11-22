@@ -92,6 +92,21 @@ resolve the catalogue entry rather than reconstructing it from the label.
 The catalogues reflect instances in the current sequence. Their presence
 describes available outputs, not proof that a measurement has already run.
 
+Plugins describe these identities through ``PluginOutputs`` returned by
+``declared_outputs()``. ``TraceOutput`` combines an access expression with
+an optional local result key and configured schema. ``ScalarOutput`` combines
+an expression with its units and optional local result key. Legacy publication
+methods remain dictionary views; see :doc:`plugin_outputs` for the full
+contract and migration examples.
+
+The engine also publishes ``_trace_schemas``: empty configured tables used by
+channel selectors before acquisition. They describe expected columns, roles,
+names and units, including enabled auxiliary channels. These tables are not
+measurement results and must not be saved as though data had been acquired.
+Consumers still evaluate expressions from ``_traces`` to read actual results.
+Configured schemas take precedence over metadata from an earlier measurement;
+undeclared schemas retain the acquired-data and configured x/y fallbacks.
+
 Use ``plugin.eval(selected_expression)`` inside a plugin, or inspect an actual
 instance in the application console. Catalogue snapshots are for selectors;
 evaluate against live state when consuming results. Publication hooks and

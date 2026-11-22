@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 from qtpy.QtWidgets import QWidget
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.plugins.state_scan.base import StateScanPlugin
 from stoner_measurement.plugins.trace.daqmx import (
     DaqmxTraceSettingsWidget,
@@ -359,25 +360,19 @@ class DaqmxPointScanPlugin(StateScanPlugin):
             return definition.global_channels
         return ()
 
-    def reported_values(self) -> dict[str, str]:
-        """Report a mean and standard deviation for every input channel."""
-        values = super().reported_values()
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
+        outputs = super().declared_outputs()
         var = self.instance_name
         for channel in self._reported_channel_names():
-            values[f"{var}:{channel} Mean"] = f"{var}.get_mean({channel!r})"
-            values[f"{var}:{channel} Standard Deviation"] = (
-                f"{var}.get_standard_deviation({channel!r})"
-            )
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Report input statistics without guessing DAQmx scale units."""
-        units = super().reported_value_units()
-        var = self.instance_name
-        for channel in self._reported_channel_names():
-            units[f"{var}:{channel} Mean"] = ""
-            units[f"{var}:{channel} Standard Deviation"] = ""
-        return units
+            for label, method in (
+                ("Mean", "get_mean"),
+                ("Standard Deviation", "get_standard_deviation"),
+            ):
+                outputs.values[f"{var}:{channel} {label}"] = ScalarOutput(
+                    f"{var}.{method}({channel!r})"
+                )
+        return outputs
 
     def disconnect(self) -> None:
         """Stop and close every task owned by this plugin."""

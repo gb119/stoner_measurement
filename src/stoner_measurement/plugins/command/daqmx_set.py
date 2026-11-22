@@ -7,6 +7,7 @@ from typing import Any
 
 from qtpy.QtWidgets import QFormLayout, QGroupBox, QWidget
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.state_scan.daqmx import (
     DaqmxPointScanPlugin,
@@ -174,25 +175,23 @@ class DaqmxSetCommand(CommandPlugin):
         """Return the most recent population standard deviation for *channel*."""
         return self._point_plugin.get_standard_deviation(channel)
 
-    def reported_values(self) -> dict[str, str]:
-        """Publish the evaluated output value and every input statistic."""
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
         var = self.instance_name
-        values = {f"{var}:Output value": f"{var}._last_value"}
+        outputs = PluginOutputs(
+            values={
+                f"{var}:Output value": ScalarOutput(f"{var}._last_value", self._point_plugin.units)
+            }
+        )
         for channel in self._reported_channel_names():
-            values[f"{var}:{channel} Mean"] = f"{var}.get_mean({channel!r})"
-            values[f"{var}:{channel} Standard Deviation"] = (
-                f"{var}.get_standard_deviation({channel!r})"
-            )
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Report the output unit without guessing DAQmx input scale units."""
-        var = self.instance_name
-        units = {f"{var}:Output value": self._point_plugin.units}
-        for channel in self._reported_channel_names():
-            units[f"{var}:{channel} Mean"] = ""
-            units[f"{var}:{channel} Standard Deviation"] = ""
-        return units
+            for label, method in (
+                ("Mean", "get_mean"),
+                ("Standard Deviation", "get_standard_deviation"),
+            ):
+                outputs.values[f"{var}:{channel} {label}"] = ScalarOutput(
+                    f"{var}.{method}({channel!r})"
+                )
+        return outputs
 
     def _reported_channel_names(self) -> tuple[str, ...]:
         """Return discovered names, falling back to configured channel names."""

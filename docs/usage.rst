@@ -28,7 +28,7 @@ Or from Python:
     main()
 
 Windows Start menu shortcut from a repository checkout
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 With the application installed in the ``stoner_measurement`` conda environment,
 run this command in PowerShell from the repository root:

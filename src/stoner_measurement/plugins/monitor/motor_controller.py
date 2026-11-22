@@ -12,6 +12,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.motor_control.engine import MotorControllerEngine
 from stoner_measurement.plugins.monitor.base import MonitorPlugin
 
@@ -194,7 +195,6 @@ class MotorAngleMonitorPlugin(MonitorPlugin):
         if self.report_stability:
             result["stable"] = 1.0 if state.stable else 0.0
 
-        self._last_reading = result
         return result
 
     def angle(self) -> float:
@@ -230,23 +230,24 @@ class MotorAngleMonitorPlugin(MonitorPlugin):
         state = self._current_state()
         return 1.0 if state.stable else 0.0
 
-    def reported_values(self) -> dict[str, str]:
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
         var = self.instance_name
-        values: dict[str, str] = {}
-
-        if self.report_angle:
-            values[f"{var}:Angle"] = f"{var}.angle()"
-        if self.report_target_angle:
-            values[f"{var}:Target Angle"] = f"{var}.target_angle()"
-        if self.report_moving:
-            values[f"{var}:Moving"] = f"{var}.moving()"
-        if self.report_angular_rate:
-            values[f"{var}:Angular Rate"] = f"{var}.angular_rate()"
-        if self.report_at_target:
-            values[f"{var}:At Target"] = f"{var}.at_target()"
-        if self.report_stability:
-            values[f"{var}:Stable"] = f"{var}.stable()"
-        return values
+        units = self.units
+        return PluginOutputs(
+            values={
+                f"{var}:{label}": ScalarOutput(f"{var}.{method}()", units.get(quantity, ""))
+                for flag, label, method, quantity in [
+                    ("angle", "Angle", "angle", "angle"),
+                    ("target_angle", "Target Angle", "target_angle", "target_angle"),
+                    ("moving", "Moving", "moving", "moving"),
+                    ("angular_rate", "Angular Rate", "angular_rate", "angular_rate"),
+                    ("at_target", "At Target", "at_target", "at_target"),
+                    ("stability", "Stable", "stable", "stable"),
+                ]
+                if getattr(self, "report_" + flag)
+            }
+        )
 
     def to_json(self) -> dict[str, object]:
         data = super().to_json()

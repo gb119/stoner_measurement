@@ -281,6 +281,10 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
     is no direct-GPIB meter or auxiliary-meter mode. The dedicated native
     handshake does not provide the existing plugin's auxiliary timing contract.
 
+    Channel selectors offer the configured IV columns before acquisition.
+    ``configured_trace_data()`` returns the empty schema by trace identifier,
+    including the configured differential resistance or conductance choice.
+
     Configure arms the source; measure starts one complete sweep and aborts
     it afterwards, returning the output to zero/off. Repeated measurements
     re-arm the same configuration. Disconnect aborts and closes owned resources.
@@ -574,6 +578,8 @@ class Keithley6221PulseDeltaPlugin(Keithley6221_2182APlugin):
             lambda enabled: self._set_differential_mode(enabled, conductance, delta)
         )
         conductance.toggled.connect(lambda enabled: setattr(self, "_differential_conductance", enabled))
+        differential.toggled.connect(self._refresh_trace_catalog)
+        conductance.toggled.connect(self._refresh_trace_catalog)
         delta.sigValueChanged.connect(lambda widget: setattr(self, "_delta_current", widget.value()))
         form.addRow("Differential mode:", differential)
         form.addRow("Delta current:", delta)

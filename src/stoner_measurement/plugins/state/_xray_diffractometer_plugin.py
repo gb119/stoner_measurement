@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from qtpy.QtWidgets import QComboBox, QFormLayout, QVBoxLayout, QWidget
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.xray_control import (
     XrayControllerEngine,
     XrayMotionMode,
@@ -37,9 +38,7 @@ def add_xray_motion_mode_row(
     for label, mode in XRAY_MOTION_OPTIONS:
         combo.addItem(label, mode)
     combo.setCurrentIndex(combo.findData(owner.axes))
-    combo.currentIndexChanged.connect(
-        lambda index: setattr(owner, "axes", combo.itemData(index))
-    )
+    combo.currentIndexChanged.connect(lambda index: setattr(owner, "axes", combo.itemData(index)))
     layout.addRow("Axes:", combo)
     return combo
 
@@ -141,35 +140,23 @@ class XrayDiffractometerPluginMixin:
         snapshot = self._engine().get_engine_state().snapshot
         return float("nan") if snapshot is None else float(snapshot.counts)
 
-    def reported_values(self) -> dict[str, str]:
-        """Add measured positions and counts to the standard scan outputs."""
-        values = super().reported_values()
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
+        outputs = super().declared_outputs()
         var = self.instance_name
-        values.update(
-            {
-                f"{var}:Theta": f"{var}.theta",
-                f"{var}:2-Theta": f"{var}.two_theta",
-                f"{var}:Counts": f"{var}.counts",
-            }
-        )
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return angular and detector-count units for measured outputs."""
-        units = super().reported_value_units()
-        var = self.instance_name
-        units.update(
-            {f"{var}:Theta": "°", f"{var}:2-Theta": "°", f"{var}:Counts": "counts"}
-        )
-        return units
+        for label, attribute, unit in (
+            ("Theta", "theta", "°"),
+            ("2-Theta", "two_theta", "°"),
+            ("Counts", "counts", "counts"),
+        ):
+            outputs.values[f"{var}:{label}"] = ScalarOutput(f"{var}.{attribute}", unit)
+        return outputs
 
     def _xray_settings_to_json(self) -> dict[str, object]:
         return {"axes": self.axes.value}
 
     def _restore_xray_settings(self, data: dict[str, object]) -> None:
-        self.axes = normalise_xray_motion_mode(
-            data.get("axes", XrayMotionMode.COUPLED.value)
-        )
+        self.axes = normalise_xray_motion_mode(data.get("axes", XrayMotionMode.COUPLED.value))
 
     def _plugin_config_tabs(self) -> QWidget:
         widget = QWidget()

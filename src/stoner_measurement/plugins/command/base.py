@@ -28,6 +28,7 @@ from qtpy.QtCore import QObject
 from qtpy.QtWidgets import QFrame, QVBoxLayout, QWidget
 
 from stoner_measurement.core.plotting.service import submit_from_plugin
+from stoner_measurement.core.plugin_outputs import PluginOutputs
 from stoner_measurement.core.sequence_engine import _DEFAULT_PLOT_READY_TIMEOUT_SECONDS
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.qt_compat import pyqtSignal
@@ -363,42 +364,6 @@ class CommandPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         prefix = "    " * indent
         return [f"{prefix}{self.instance_name}()", ""]
 
-    def reported_traces(self) -> dict[str, str]:
-        """Command plugins produce no trace data.
-
-        Returns:
-            (dict[str, str]):
-                Always an empty dict.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.command import CommandPlugin
-            >>> class _Noop(CommandPlugin):
-            ...     @property
-            ...     def name(self): return "Noop"
-            ...     def execute(self): pass
-            >>> _Noop().reported_traces()
-            {}
-        """
-        return {}
-
-    def reported_values(self) -> dict[str, str]:
-        """Return the default empty scalar-output catalogue.
-
-        Returns:
-            (dict[str, str]):
-                An empty dict. Concrete commands may override this method.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.command import CommandPlugin
-            >>> class _Noop(CommandPlugin):
-            ...     @property
-            ...     def name(self): return "Noop"
-            ...     def execute(self): pass
-            >>> _Noop().reported_values()
-            {}
-        """
-        return {}
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare no outputs unless a concrete command supplies them."""
+        return PluginOutputs()

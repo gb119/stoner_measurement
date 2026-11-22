@@ -13,6 +13,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.plugins._network_analyser_point import (
     acquire_point,
     build_point_settings_widget,
@@ -137,11 +138,7 @@ class NetworkAnalyserPointScanPlugin(StateScanPlugin):
 
     @property
     def units(self) -> str:
-        return (
-            "Hz"
-            if self._scan_variable is NetworkAnalyserSweepVariable.FREQUENCY
-            else "dBm"
-        )
+        return "Hz" if self._scan_variable is NetworkAnalyserSweepVariable.FREQUENCY else "dBm"
 
     @property
     def fixed_state_name(self) -> str:
@@ -214,22 +211,19 @@ class NetworkAnalyserPointScanPlugin(StateScanPlugin):
         """Return the most recently acquired formatted S-parameter value."""
         return self._last_s_parameters.get(parameter.strip().upper())
 
-    def reported_values(self) -> dict[str, str]:
-        values = super().reported_values()
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
+        outputs = super().declared_outputs()
         var = self.instance_name
-        values[f"{var}:{self.fixed_state_name}"] = f"{var}._last_fixed_value"
+        outputs.values[f"{var}:{self.fixed_state_name}"] = ScalarOutput(
+            f"{var}._last_fixed_value", self.fixed_units
+        )
+        unit = s_parameter_units(self._output_format)
         for parameter in self._selected_parameters:
-            values[f"{var}:{parameter}"] = f"{var}.get_s_parameter({parameter!r})"
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        units = super().reported_value_units()
-        var = self.instance_name
-        units[f"{var}:{self.fixed_state_name}"] = self.fixed_units
-        parameter_units = s_parameter_units(self._output_format)
-        for parameter in self._selected_parameters:
-            units[f"{var}:{parameter}"] = parameter_units
-        return units
+            outputs.values[f"{var}:{parameter}"] = ScalarOutput(
+                f"{var}.get_s_parameter({parameter!r})", unit
+            )
+        return outputs
 
     def to_json(self) -> dict[str, Any]:
         data = super().to_json()
@@ -250,9 +244,7 @@ class NetworkAnalyserPointScanPlugin(StateScanPlugin):
             data.get("scan_variable", self._scan_variable.value)
         )
         self._fixed_power_dbm = data.get("fixed_power_dbm", self._fixed_power_dbm)
-        self._fixed_frequency_hz = data.get(
-            "fixed_frequency_hz", self._fixed_frequency_hz
-        )
+        self._fixed_frequency_hz = data.get("fixed_frequency_hz", self._fixed_frequency_hz)
         self._sync_scan_units()
 
     def _plugin_config_tabs(self) -> QWidget:
@@ -292,6 +284,4 @@ class NetworkAnalyserPointScanPlugin(StateScanPlugin):
         variable.currentIndexChanged.connect(sync_variable)
         fixed.valueChanged.connect(fixed_changed)
         sync_variable(variable.currentIndex())
-        return build_point_settings_widget(
-            self, stimulus, object_prefix="network_analyser_state"
-        )
+        return build_point_settings_widget(self, stimulus, object_prefix="network_analyser_state")

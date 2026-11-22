@@ -5,10 +5,11 @@ instrument channels.  Examples include current-voltage characteristics,
 frequency sweeps, and time-series captures.
 
 Each measurement trace is represented by a :class:`TraceData` object that is
-backed by a :class:`pandas.DataFrame`.  The independent variable (*x*) is
-stored as the index; one or more dependent variable columns are stored as
-DataFrame columns, each annotated with a *role* string that describes what the
-column contains (primary y data, z data, error bars, etc.).
+backed by a :class:`pandas.DataFrame`. The DataFrame index is an ordinary row
+index. The independent coordinate and dependent variables are columns, each
+annotated with a role identifying x, primary y data, auxiliary data or errors.
+Unified output declarations publish access expressions and optional empty
+configured schemas independently of the acquired tables.
 
 All TracePlugin subclasses share a standard lifecycle API used by the sequence
 engine:
@@ -51,7 +52,8 @@ from __future__ import annotations
 
 import enum
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, ClassVar
+from collections.abc import Callable
+from typing import Any, ClassVar
 
 import numpy as np
 from qtpy.QtCore import QObject, Qt
@@ -64,6 +66,14 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    ScalarOutput,
+    TraceOutput,
+    output_view,
+    project_outputs,
+    trace_outputs,
+)
 from stoner_measurement.core.trace_data import COLUMN_ROLE_X, COLUMN_ROLE_Y, TraceData
 from stoner_measurement.plugins.base_plugin import (
     BasePlugin,
@@ -80,9 +90,6 @@ from stoner_measurement.scan import (
     RampScanGenerator,
     SteppedScanGenerator,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 class TraceStatus(enum.Enum):
@@ -607,7 +614,21 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             if x_columns and y_columns:
                 trace_data.column_roles[x_columns[0]] = COLUMN_ROLE_Y
                 trace_data.column_roles[y_columns[0]] = COLUMN_ROLE_X
+                trace_data.set_expected_schema(trace_data)
         return data
+
+    def _configured_trace_outputs(self, data: dict[str, TraceData]) -> dict[str, TraceData]:
+        """Apply configured transpose and qualify local trace names for publication.
+
+        Args:
+            data (dict[str, TraceData]): Empty schemas keyed by local trace name.
+
+        Returns:
+            (dict[str, TraceData]): Schemas keyed identically to reported traces.
+        """
+        if self._transpose:
+            data = self._transpose_trace_roles(data)
+        return {f"{self.instance_name}:{name}": trace for name, trace in data.items()}
 
     def disconnect(self) -> None:
         """Release all reserved instrument resources.
@@ -769,24 +790,10 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
 
     @property
+    @output_view
     def trace_names(self) -> list[str]:
-        """Names of the complete trace datasets returned by :meth:`measure`.
-
-        The default implementation returns a single-element list containing
-        :attr:`name`.  Override to expose multiple channels.
-
-        Returns:
-            (list[str]):
-                Ordered list of channel name strings.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.trace import DummyPlugin
-            >>> DummyPlugin().trace_names
-            ['Dummy']
-        """
-        return [self.name]
+        """Return the compatibility view of unified output declarations."""
+        return project_outputs(self, "trace_names")
 
     @property
     def x_label(self) -> str:
@@ -847,87 +854,74 @@ class TracePlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             "",
         ]
 
-    def reported_traces(self) -> dict[str, str]:
-        """Return a mapping of channel names to Python expressions for accessing trace data.
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare trace results and optional statistics from one definition."""
+        return self._declare_trace_outputs([self.name])
 
-        Each entry corresponds to one measurement channel provided by this plugin.
-        The key is ``"{instance_name}:{channel_name}"`` (a human-readable identifier)
-        and the value is the Python expression ``"{instance_name}.data['{channel_name}']"``
-        that retrieves the ``(x_array, y_array)`` tuple for that channel from the most
-        recently acquired :attr:`data` dict.
+    def _declare_trace_outputs(self, names: list[str]) -> PluginOutputs:
+        """Declare named traces and their optional primary-channel statistics."""
+        outputs = trace_outputs(self, names)
+        if self._report_channel_statistics:
+            for item in outputs.traces.values():
+                name = item.result_key
+                unit = self.y_units
+                data = self.data.get(name)
+                if data is not None:
+                    columns = data.get_columns_by_role(COLUMN_ROLE_Y)
+                    if columns:
+                        unit = data.units[columns[0]]
+                self._declare_statistics(outputs, name, unit)
+        return outputs
 
-        Returns:
-            (dict[str, str]):
-                Mapping of ``"{instance_name}:{channel_name}"`` → expression for each
-                dataset in :attr:`trace_names`.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.trace import DummyPlugin
-            >>> plugin = DummyPlugin()
-            >>> traces = plugin.reported_traces()
-            >>> list(traces.keys())
-            ['dummy:Dummy']
-            >>> traces['dummy:Dummy']
-            "dummy.data['Dummy']"
-        """
+    def _declare_statistics(self, outputs: PluginOutputs, channel: str, unit: str) -> None:
+        """Add mean/std expressions and units together for one configured channel."""
         var = self.instance_name
-        return {f"{var}:{name}": f"{var}.data['{name}']" for name in self.trace_names}
-
-    def reported_values(self) -> dict[str, str]:
-        """Return optional channel statistics as scalar value outputs.
-
-        When enabled, each channel contributes ``mean`` and ``std`` values.
-
-        Returns:
-            (dict[str, str]):
-                Mapping of ``"{instance_name}:{value_name}"`` to Python
-                expressions that read from :attr:`channel_statistics`.
-        """
-        if not self._report_channel_statistics:
-            return {}
-
-        var = self.instance_name
-        values: dict[str, str] = {}
-        for trace_name in self.trace_names:
-            values[f"{var}:{trace_name} mean"] = (
-                f"{var}.get_channel_statistic({trace_name!r}, 'mean')"
+        for statistic in ("mean", "std"):
+            outputs.values[f"{var}:{channel} {statistic}"] = ScalarOutput(
+                f"{var}.get_channel_statistic({channel!r}, {statistic!r})", unit
             )
-            values[f"{var}:{trace_name} std"] = (
-                f"{var}.get_channel_statistic({trace_name!r}, 'std')"
+
+    def _declare_column_trace_outputs(
+        self, name: str, builder: Callable[[], TraceData]
+    ) -> PluginOutputs:
+        """Declare a table and derive optional statistic units from its schema."""
+        outputs = trace_outputs(self, [name])
+        key = f"{self.instance_name}:{name}"
+        if key in outputs.traces:
+            outputs.traces[key] = TraceOutput(
+                outputs.traces[key].expression,
+                result_key=name,
+                schema_factory=lambda: self._configured_output_schema(name, builder),
             )
-        return values
+        if self._report_channel_statistics:
+            schema = builder()
+            for column in schema.columns:
+                if column != "x":
+                    self._declare_statistics(outputs, f"{name} {column}", schema.units[column])
+        return outputs
 
-    def reported_value_units(self) -> dict[str, str]:
-        """Return channel units for the optional mean and standard-deviation outputs."""
-        if not self._report_channel_statistics:
-            return {}
-
-        var = self.instance_name
-        units: dict[str, str] = {}
-        for trace_name in self.trace_names:
-            channel_unit = self.y_units
-            trace_data = self.data.get(trace_name)
-            if trace_data is not None:
-                y_columns = trace_data.get_columns_by_role(COLUMN_ROLE_Y)
-                if y_columns:
-                    channel_unit = trace_data.units[y_columns[0]]
-            units[f"{var}:{trace_name} mean"] = channel_unit
-            units[f"{var}:{trace_name} std"] = channel_unit
-        return units
+    def _configured_output_schema(self, name: str, builder: Callable[[], TraceData]) -> TraceData:
+        """Apply configured roles to a freshly built schema."""
+        return self._configured_trace_outputs({name: builder()})[f"{self.instance_name}:{name}"]
 
     def _set_report_channel_statistics(self, enabled: bool) -> None:
         """Enable/disable reporting of per-channel mean/std scalar outputs."""
         self._report_channel_statistics = bool(enabled)
         if not self._report_channel_statistics:
             self.channel_statistics = {}
-            return
-        self._update_channel_statistics()
+        else:
+            self._update_channel_statistics()
+        self._refresh_trace_catalog()
 
     def _set_transpose(self, enabled: bool) -> None:
         """Enable or disable X/primary-Y role transposition."""
         self._transpose = bool(enabled)
+        self._refresh_trace_catalog()
+
+    def _refresh_trace_catalog(self) -> None:
+        """Refresh configured output metadata after a schema-changing edit."""
+        if self.sequence_engine is not None:
+            self.sequence_engine.refresh_data_catalogs()
 
     def _update_channel_statistics(self) -> None:
         """Recalculate per-channel mean and standard deviation from :attr:`data`."""

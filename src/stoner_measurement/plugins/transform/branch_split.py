@@ -16,6 +16,10 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    transform_outputs,
+)
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_X,
     COLUMN_ROLE_Y,
@@ -140,17 +144,9 @@ class BranchSplitPlugin(BranchSplittingMixin, TraceChannelSelectionMixin, Transf
     def required_inputs(self) -> list[str]:
         return []
 
-    @property
-    def output_names(self) -> list[str]:
-        return [self.rising_trace_name, self.falling_trace_name]
-
-    @property
-    def output_trace_names(self) -> list[str]:
-        return self.output_names
-
-    @property
-    def output_value_names(self) -> list[str]:
-        return []
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare typed transform results without repeating output names."""
+        return transform_outputs(self, [self.rising_trace_name, self.falling_trace_name], [])
 
     def transform(self, data: dict[str, Any]) -> dict[str, Any]:
         del data

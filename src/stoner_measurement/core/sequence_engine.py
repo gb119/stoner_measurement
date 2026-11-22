@@ -989,6 +989,7 @@ class SequenceEngine(QObject):
         ns["log"] = logging.getLogger(SEQUENCE_LOGGER_NAME)
         # Master catalogs — populated by _rebuild_data_catalogs() as plugins are registered.
         ns["_traces"] = {}
+        ns["_trace_schemas"] = {}
         ns["_values"] = {}
         return ns
 
@@ -1125,11 +1126,11 @@ class SequenceEngine(QObject):
                 If set True then the sequence steps are not used as we're about to run a script.'
 
         Iterates over the sequence-step plugins registered via
-        :meth:`update_step_plugin_catalog` and merges their
-        :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_traces`
-        and :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.reported_values`
-        dictionaries into two master catalogs, stored in the live namespace as
-        ``_traces`` and ``_values`` respectively.
+        :meth:`update_step_plugin_catalog` and resolves their unified output
+        declarations, adapting legacy publication hooks where necessary.
+        Access expressions populate ``_traces`` and ``_values``. Configured
+        schemas are materialised into ``_trace_schemas`` after scalar outputs
+        are available, before catalogue-change signals are emitted.
 
         Only sequence-step plugins contribute to the catalogs.  Base plugins
         registered via :meth:`add_plugin` (the plugin-manager singletons) are
@@ -1142,25 +1143,44 @@ class SequenceEngine(QObject):
         :meth:`update_step_plugin_catalog` so that the catalogs always reflect
         the current sequence.
         """
+        from stoner_measurement.core.plugin_outputs import resolve_outputs
         from stoner_measurement.core.value_catalog import ValueCatalogEntry
         from stoner_measurement.plugins.base_plugin import BasePlugin
 
         traces: dict[str, str] = {}
         values: dict[str, ValueCatalogEntry] = {}
+        declarations = []
         if not script:
             for plugin in self._extra_catalog_plugins:
                 if isinstance(plugin, BasePlugin):
-                    traces.update(plugin.reported_traces())
-                    plugin_values = plugin.reported_values()
-                    plugin_units = plugin.reported_value_units()
+                    outputs = resolve_outputs(plugin)
+                    declarations.append((plugin, outputs))
+                    traces.update((key, item.expression) for key, item in outputs.traces.items())
                     values.update(
                         {
-                            key: ValueCatalogEntry(expression, plugin_units.get(key, ""))
-                            for key, expression in plugin_values.items()
+                            key: ValueCatalogEntry(item.expression, item.units)
+                            for key, item in outputs.values.items()
                         }
                     )
         self._namespace["_traces"] = traces
         self._namespace["_values"] = values
+        # State collection schemas depend on the completed scalar catalogue.
+        schemas = {}
+        if not script:
+            for plugin, outputs in declarations:
+                try:
+                    schemas.update(
+                        (key, schema)
+                        for key, schema in outputs.configured_traces().items()
+                        if key in traces
+                    )
+                except Exception:  # noqa: BLE001  # incomplete configuration must remain editable
+                    logging.getLogger(__name__).warning(
+                        "Cannot describe configured traces for %s",
+                        plugin.instance_name,
+                        exc_info=True,
+                    )
+        self._namespace["_trace_schemas"] = schemas
         self.traces_catalog_changed.emit(dict(traces))
         self.values_catalog_changed.emit(dict(values))
         self.namespace_updated.emit()
@@ -1216,7 +1236,8 @@ class SequenceEngine(QObject):
 
         Sequence-tree changes call :meth:`update_step_plugin_catalog`. Plugins
         whose configuration changes the result of ``reported_traces()`` or
-        ``reported_values()`` can call this lighter public boundary instead.
+        ``reported_values()``, or their ``configured_trace_data()`` schemas,
+        can call this lighter public boundary instead.
         """
         self._rebuild_data_catalogs()
 

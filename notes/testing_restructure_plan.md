@@ -1,5 +1,94 @@
 # Testing Restructure Plan
 
+## 2026-11-22: Plugin contract documentation
+
+- Added the unified output reference and aligned plugin authoring, trace data,
+  console refresh and API documentation with the current implementation.
+- Validated the downloadable plugin's declarations, direct and generated
+  execution, persistence and documentation snippets. Executable AST comparison
+  confirmed that documentation edits did not change six implementation modules.
+- Strict Sphinx HTML and HTML Help builds passed. The focused contract suite
+  passed 249 tests; output-declaration doctests and targeted Ruff checks passed.
+
+## 2026-11-22: Compiled help packaging
+
+- Added a regression for fresh CHM source generation, including removal of
+  stale generated pages without modifying the checkout's documentation cache.
+  No tests were moved or removed. The help/build/menu suite passed all 11 tests.
+- Compiled the tracked CHM with Microsoft HTML Help Workshop after a strict
+  Sphinx build. Decompilation confirmed the plugin output reference is present.
+- Wheel and source distribution both contain the identical 10,296,288-byte CHM.
+  An isolated pip target installation exposes the same importlib resource.
+- Added an installed-resource header check to the Conda recipe, which installs
+  the same setuptools payload. Package checks use ignored local build outputs.
+- Built a Windows Conda archive from the validated source distribution and
+  confirmed its extracted CHM is byte-identical to the wheel and tracked guide.
+  Used a short temporary path and isolated cache; final archiving needed normal
+  user lock access outside the sandbox. The full Conda runtime test suite was
+  skipped; this check validates package creation and the help payload.
+- Twine accepted both pip distributions; final Ruff and diff whitespace checks
+  passed. The compiled guide is staged in Git; no commit or upload was made.
+
+## 2026-11-22: Unified output declarations
+
+- Added `PluginOutputs`, `TraceOutput`, `ScalarOutput` and a shared compatibility
+  resolver. Migrated all 65 registered built-ins through their family or concrete
+  declarations; legacy publication methods and transform/trace name properties
+  remain supported. Engine schemas are materialised after scalar catalogues.
+- Added `tests/unit/plugins/test_output_declarations.py`; no tests moved or
+  removed. Coverage includes all registered built-ins, legacy-only plugins,
+  direct and inherited compatibility calls, in-place super-result mutations,
+  legacy/unified/legacy inheritance chains, explicit empty versus None,
+  deferred schemas, independent snapshots, ordering and statistics refreshes.
+- Before/after default catalogue snapshots preserved every built-in identifier
+  and expression. Corrected units for magnetic-field, motor-angle and temperature
+  monitors whose old unit-map keys did not match their published display keys.
+- Conda/offscreen Python 3.14.7/PyQt5 full run: 4917 passed, two skipped with
+  `python -m pytest tests -q --tb=short --basetemp=.pytest-runtime/unified-full`.
+  The final affected run passed 1500 tests with one skip across unit plugins
+  and the base-plugin, sequence-engine and curve-fit legacy test modules.
+- Targeted Ruff, Pylint error checks on migrated files and the new resolver's
+  complexity check passed. A broader Pylint invocation also reported four
+  inference findings in unchanged `_point_voltmeter.py`; that file was not
+  rewritten as part of this migration.
+- Strict Sphinx was built from an isolated docs copy with a fresh generated
+  API tree. Corrected an existing one-character heading underline in the usage
+  guide. No real hardware or other Qt binding was exercised; no remote CI claim.
+
+## 2026-11-22: Execution parity, monitor caching and refresh
+
+- Added focused state execution parity and plugin refresh modules. Extended
+  the existing monitor and trace-catalogue tests; no tests moved or removed.
+- Direct scans now honour collection and clearing like generated scans. Both
+  scan and sweep paths reset point metadata before evaluating clear filters.
+  Tests cover collection flags, measurement filters, repeated execution,
+  child failures and restoration of sweep controller polling rates.
+- Monitor regressions cover direct/generated/polled reads, inherited and
+  mixin hooks, keyword arguments, concurrent reads, independent cache copies,
+  exactly-once publication and preservation of the last successful reading.
+- Refresh regressions cover scalar outputs/units, configured trace channels,
+  open selectors, detached instances, member recursion and widget update order.
+- Conda/offscreen Python 3.14.7/PyQt5: the full suite passed 4828 tests with
+  two skips using `python -m pytest tests -q --tb=short` with
+  `--basetemp=.pytest-runtime/contracts-full`. The final focused run passed
+  108 tests, including the final mixin compatibility regression.
+- Targeted Ruff, formatter checks and Pylint error checks passed. No physical
+  instruments were used; other Qt bindings and remote CI were not exercised.
+
+## 2026-11-22: Configuration-time trace schemas
+
+- Added `tests/unit/plugins/test_trace_catalog_ui.py`; no existing tests moved
+  or removed. Its 28 cases cover keyed multi-trace declarations, legacy
+  fallbacks, scan/sweep collection schemas, previous-result precedence,
+  all Keithley trace families, differential metadata, transpose, auxiliary
+  channels and live selector refreshes, including the 2400 electrometer.
+- Conda/offscreen Python 3.14.7/PyQt5: 1670 passed and one skipped across
+  `tests/unit/plugins`, `tests/unit/core`, `tests/integration/sequence` and
+  the existing 6221, 2400, multi-lock-in and curve-fit plugin test modules.
+  The final focused schema module passed all 28 tests after adding the
+  electrometer-control regression. Hardware acquisition was faked.
+- Targeted Ruff and the four Keithley trace docstring structural audits passed.
+
 ## 2026-11-20: Mercury IPS status mask regression
 
 - Extended the existing focused Mercury IPS driver tests; no tests moved.

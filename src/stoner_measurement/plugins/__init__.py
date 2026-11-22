@@ -47,6 +47,7 @@ Legacy aliases:
   (in :mod:`stoner_measurement.plugins.state_control`).
 """
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput, TraceOutput
 from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.command import (
     CommandPlugin,
@@ -91,6 +92,9 @@ from stoner_measurement.plugins.transform import TransformPlugin
 
 __all__ = [
     "BasePlugin",
+    "PluginOutputs",
+    "ScalarOutput",
+    "TraceOutput",
     "CommandPlugin",
     "CounterPlugin",
     "DetailsCommand",

@@ -8,6 +8,10 @@ from typing import Any
 import numpy as np
 from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLineEdit, QWidget
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    transform_outputs,
+)
 from stoner_measurement.plugins.transform._trace_selection import (
     TraceChannelSelectionMixin,
 )
@@ -140,20 +144,9 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
         """No direct runtime inputs are required."""
         return []
 
-    @property
-    def output_names(self) -> list[str]:
-        """Return all plugin output names."""
-        return [_FILTER_TRACE_KEY]
-
-    @property
-    def output_trace_names(self) -> list[str]:
-        """Return the trace outputs produced by this plugin."""
-        return [_FILTER_TRACE_KEY]
-
-    @property
-    def output_value_names(self) -> list[str]:
-        """This plugin does not report scalar outputs."""
-        return []
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare typed transform results without repeating output names."""
+        return transform_outputs(self, [_FILTER_TRACE_KEY], [])
 
     def transform(self, data: dict[str, Any]) -> dict[str, Any]:
         """Return the selected trace with y filtered by window convolution."""
@@ -254,8 +247,7 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
         length_edit = QLineEdit(str(self.window_length), widget)
         params_edit = QLineEdit(self.window_parameters, widget)
         params_edit.setToolTip(
-            "Optional window parameters as a Python literal. "
-            "Examples: 5, (5,), (2.5,), (3.0, 1.2)."
+            "Optional window parameters as a Python literal. Examples: 5, (5,), (2.5,), (3.0, 1.2)."
         )
         symmetric_check = QCheckBox(widget)
         symmetric_check.setChecked(self.symmetric_window)
@@ -279,7 +271,9 @@ class WindowFilterPlugin(TraceChannelSelectionMixin, TransformPlugin):
                 length_edit.setText("1")
 
         length_edit.editingFinished.connect(_apply_length)
-        params_edit.editingFinished.connect(lambda: setattr(self, "window_parameters", params_edit.text().strip()))
+        params_edit.editingFinished.connect(
+            lambda: setattr(self, "window_parameters", params_edit.text().strip())
+        )
         symmetric_check.toggled.connect(lambda checked: setattr(self, "symmetric_window", checked))
         normalise_check.toggled.connect(lambda checked: setattr(self, "normalise_kernel", checked))
 

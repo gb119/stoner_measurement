@@ -7,6 +7,10 @@ from typing import Any
 import numpy as np
 from qtpy.QtWidgets import QComboBox, QFormLayout, QLineEdit, QWidget
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    transform_outputs,
+)
 from stoner_measurement.plugins.transform._trace_selection import (
     TraceChannelSelectionMixin,
 )
@@ -106,20 +110,9 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
         """No direct runtime inputs are required."""
         return []
 
-    @property
-    def output_names(self) -> list[str]:
-        """Return all plugin output names."""
-        return [_OUTPUT_TRACE_KEY]
-
-    @property
-    def output_trace_names(self) -> list[str]:
-        """Return the trace outputs produced by this plugin."""
-        return [_OUTPUT_TRACE_KEY]
-
-    @property
-    def output_value_names(self) -> list[str]:
-        """This plugin does not report scalar outputs."""
-        return []
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare typed transform results without repeating output names."""
+        return transform_outputs(self, [_OUTPUT_TRACE_KEY], [])
 
     def transform(self, data: dict[str, Any]) -> dict[str, Any]:
         """Return the selected trace with Savitzky-Golay-smoothed derivative data."""
@@ -189,9 +182,7 @@ class SavitzkyGolayPlugin(TraceChannelSelectionMixin, TransformPlugin):
         if derivative_order == 0:
             filtered_trace.units[y_col_name] = y_unit
         else:
-            filtered_trace.units[y_col_name] = _derive_unit(
-                y_unit, x_unit, derivative_order
-            )
+            filtered_trace.units[y_col_name] = _derive_unit(y_unit, x_unit, derivative_order)
 
         return {_OUTPUT_TRACE_KEY: filtered_trace}
 

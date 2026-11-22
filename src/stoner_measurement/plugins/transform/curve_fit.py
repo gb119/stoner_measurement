@@ -39,6 +39,11 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    ScalarOutput,
+    transform_outputs,
+)
 from stoner_measurement.core.sequence_engine import SEQUENCE_LOGGER_NAME
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_E,
@@ -53,6 +58,7 @@ from stoner_measurement.plugins.trace_catalog_ui import (
     refresh_trace_source_widgets,
     trace_channel_items,
     trace_channel_roles,
+    trace_selection_data,
 )
 from stoner_measurement.plugins.transform.base import TransformPlugin
 from stoner_measurement.plugins.transform.fit_function_library import (
@@ -197,10 +203,23 @@ _PARAM_TABLE_ROW_LABELS = ["Min", "Initial", "Max", "Units", "Initial used", "Fi
 
 # Mapping from SI tier (power-of-1000 exponent) to SI prefix symbol.
 _SI_PREFIXES: dict[int, str] = {
-    -8: "y", -7: "z", -6: "a", -5: "f", -4: "p",
-    -3: "n", -2: "µ", -1: "m", 0: "",
-    1: "k", 2: "M", 3: "G", 4: "T", 5: "P",
-    6: "E", 7: "Z", 8: "Y",
+    -8: "y",
+    -7: "z",
+    -6: "a",
+    -5: "f",
+    -4: "p",
+    -3: "n",
+    -2: "µ",
+    -1: "m",
+    0: "",
+    1: "k",
+    2: "M",
+    3: "G",
+    4: "T",
+    5: "P",
+    6: "E",
+    7: "Z",
+    8: "Y",
 }
 
 
@@ -273,7 +292,11 @@ def _format_value_with_uncertainty(value: Any, uncertainty: Any) -> str:
         uncertainty_float = float(uncertainty)
     except (TypeError, ValueError):
         return ""
-    if not math.isfinite(value_float) or not math.isfinite(uncertainty_float) or uncertainty_float <= 0.0:
+    if (
+        not math.isfinite(value_float)
+        or not math.isfinite(uncertainty_float)
+        or uncertainty_float <= 0.0
+    ):
         return ""
 
     scale, si_prefix = _si_scale_and_prefix(value_float)
@@ -327,7 +350,9 @@ def _format_scalar_for_table(value: Any) -> str:
     return f"{value_float:.12g}"
 
 
-def _format_value_with_reference(value: Any, reference_value: Any, reference_uncertainty: Any) -> str:
+def _format_value_with_reference(
+    value: Any, reference_value: Any, reference_uncertainty: Any
+) -> str:
     """Format a scalar to match a fitted value's SI prefix and decimal precision.
 
     Args:
@@ -494,7 +519,9 @@ class _ParamTableWidget(QWidget):
                     col,
                     self._used_initial_text_by_param.get(name, ""),
                 )
-                self._set_read_only_cell(_PARAM_TABLE_ROW_FITTED, col, self._fitted_text_by_param.get(name, ""))
+                self._set_read_only_cell(
+                    _PARAM_TABLE_ROW_FITTED, col, self._fitted_text_by_param.get(name, "")
+                )
         finally:
             self._table.blockSignals(blocked)
 
@@ -617,7 +644,9 @@ class _ParamTableWidget(QWidget):
                     col,
                     self._used_initial_text_by_param.get(name, ""),
                 )
-                self._set_read_only_cell(_PARAM_TABLE_ROW_FITTED, col, self._fitted_text_by_param.get(name, ""))
+                self._set_read_only_cell(
+                    _PARAM_TABLE_ROW_FITTED, col, self._fitted_text_by_param.get(name, "")
+                )
         finally:
             self._table.blockSignals(blocked)
 
@@ -643,7 +672,9 @@ class _ParamTableWidget(QWidget):
         blocked = self._table.blockSignals(True)
         try:
             for col, name in enumerate(self._iter_parameter_names()):
-                self._set_read_only_cell(_PARAM_TABLE_ROW_FITTED, col, self._fitted_text_by_param.get(name, ""))
+                self._set_read_only_cell(
+                    _PARAM_TABLE_ROW_FITTED, col, self._fitted_text_by_param.get(name, "")
+                )
         finally:
             self._table.blockSignals(blocked)
 
@@ -899,122 +930,28 @@ class CurveFitPlugin(TransformPlugin):
         """
         return []
 
-    @property
-    def output_names(self) -> list[str]:
-        """Names of all outputs produced by this plugin.
-
-        One value and one uncertainty output are reported for each detected
-        fit parameter.  For a fit function ``fit(x, a, b)`` the base output
-        names are ``["a", "a_err", "b", "b_err"]``.  Optional trace outputs
-        ``"initial_fit"`` and ``"best_fit"`` are appended when
-        :attr:`show_initial_trace` and :attr:`show_best_fit_trace` are enabled.
-
-        Returns:
-            (list[str]):
-                Alternating ``"{param}"`` and ``"{param}_err"`` names, followed
-                by any enabled trace output names.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> p = CurveFitPlugin()
-            >>> p.param_names = ["a", "b"]
-            >>> p.output_names
-            ['a', 'a_err', 'b', 'b_err']
-            >>> p.show_initial_trace = True
-            >>> p.show_best_fit_trace = True
-            >>> p.output_names
-            ['a', 'a_err', 'b', 'b_err', 'initial_fit', 'best_fit']
-        """
-        names: list[str] = []
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare fitted parameters, uncertainties and enabled fit traces."""
+        names = []
+        units = {}
         for pname in self.param_names:
-            names.append(pname)
-            if self.report_initial_values:
-                names.append(f"{pname}_initial")
-            names.append(f"{pname}_err")
-        if self.show_initial_trace:
-            names.append(_INITIAL_TRACE_KEY)
-        if self.show_best_fit_trace:
-            names.append(_BEST_FIT_TRACE_KEY)
-        return names
-
-    @property
-    def output_trace_names(self) -> list[str]:
-        """Subset of :attr:`output_names` that are (x, y) trace arrays.
-
-        Returns the keys for any enabled optional trace outputs.
-
-        Returns:
-            (list[str]):
-                ``["initial_fit"]`` if :attr:`show_initial_trace` is enabled,
-                ``["best_fit"]`` if :attr:`show_best_fit_trace` is enabled,
-                or both, or an empty list if neither is enabled.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> p = CurveFitPlugin()
-            >>> p.output_trace_names
-            []
-            >>> p.show_initial_trace = True
-            >>> p.output_trace_names
-            ['initial_fit']
-            >>> p.show_best_fit_trace = True
-            >>> p.output_trace_names
-            ['initial_fit', 'best_fit']
-        """
-        traces: list[str] = []
+            unit = str(self.param_settings.get(pname, {}).get("units", "") or "").strip()
+            suffixes = ("", "_initial", "_err") if self.report_initial_values else ("", "_err")
+            for suffix in suffixes:
+                name = pname + suffix
+                names.append(name)
+                units[name] = unit
+        traces = []
         if self.show_initial_trace:
             traces.append(_INITIAL_TRACE_KEY)
         if self.show_best_fit_trace:
             traces.append(_BEST_FIT_TRACE_KEY)
-        return traces
-
-    @property
-    def output_value_names(self) -> list[str]:
-        """Subset of :attr:`output_names` that are scalar values.
-
-        Returns the parameter value and uncertainty names, explicitly excluding
-        any trace output names.
-
-        Returns:
-            (list[str]):
-                Alternating ``"{param}"`` and ``"{param}_err"`` names.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> p = CurveFitPlugin()
-            >>> p.param_names = ["a", "b"]
-            >>> p.show_initial_trace = True
-            >>> p.show_best_fit_trace = True
-            >>> p.output_value_names
-            ['a', 'a_err', 'b', 'b_err']
-        """
-        names: list[str] = []
-        for pname in self.param_names:
-            names.append(pname)
-            if self.report_initial_values:
-                names.append(f"{pname}_initial")
-            names.append(f"{pname}_err")
-        return names
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return configured SI units for fitted scalar parameter outputs.
-
-        A parameter's fitted value, uncertainty, and optional reported initial
-        value all describe the same physical quantity and therefore carry the
-        same unit.
-        """
-        var = self.instance_name
-        units: dict[str, str] = {}
-        for pname in self.param_names:
-            unit = str(self.param_settings.get(pname, {}).get("units", "") or "").strip()
-            units[f"{var}:{pname}"] = unit
-            units[f"{var}:{pname}_err"] = unit
-            if self.report_initial_values:
-                units[f"{var}:{pname}_initial"] = unit
-        return units
+        outputs = transform_outputs(self, traces, names)
+        outputs.values = {
+            key: ScalarOutput(item.expression, units.get(item.result_key, ""), item.result_key)
+            for key, item in outputs.values.items()
+        }
+        return outputs
 
     # ------------------------------------------------------------------
     # Transform implementation
@@ -1114,7 +1051,9 @@ class CurveFitPlugin(TransformPlugin):
         # ---- 4. Optionally compute the initial-parameter trace -----------
         if self.show_initial_trace:
             initial_trace = self._compute_initial_trace(
-                fit_func, x_arr, p0,
+                fit_func,
+                x_arr,
+                p0,
                 y_col_name=y_col_name,
                 source_names=source_names,
                 source_units=source_units,
@@ -1134,7 +1073,9 @@ class CurveFitPlugin(TransformPlugin):
         # ---- 7. Optionally compute the best-fit trace --------------------
         if self.show_best_fit_trace:
             best_fit_trace = self._compute_best_fit_trace(
-                fit_func, x_arr, popt,
+                fit_func,
+                x_arr,
+                popt,
                 y_col_name=y_col_name,
                 source_names=source_names,
                 source_units=source_units,
@@ -1260,7 +1201,9 @@ class CurveFitPlugin(TransformPlugin):
             popt, pcov = curve_fit(fit_func, x_arr, y_arr, **kwargs)
             return popt, pcov
         except ImportError:
-            self.log.error("CurveFit: scipy is not installed.  Install scipy to use the curve-fit plugin.")
+            self.log.error(
+                "CurveFit: scipy is not installed.  Install scipy to use the curve-fit plugin."
+            )
             return None
         except Exception as exc:
             self.log.error("CurveFit: curve_fit failed — %s", exc)
@@ -1533,7 +1476,9 @@ class CurveFitPlugin(TransformPlugin):
         """Build scalar outputs for the initial parameter values."""
         result: dict[str, float] = {}
         for i, pname in enumerate(self.param_names):
-            result[f"{pname}_initial"] = float(initial_values[i]) if i < len(initial_values) else _NAN
+            result[f"{pname}_initial"] = (
+                float(initial_values[i]) if i < len(initial_values) else _NAN
+            )
         return result
 
     def _build_bounds(self):
@@ -1575,7 +1520,10 @@ class CurveFitPlugin(TransformPlugin):
         try:
             fit_func, p0_func = self._compile_fit_code()
         except Exception:
-            self.log.debug("CurveFit: failed to compile fit code while reading parameter overrides", exc_info=True)
+            self.log.debug(
+                "CurveFit: failed to compile fit code while reading parameter overrides",
+                exc_info=True,
+            )
             return {}, False
 
         if fit_func is None:
@@ -1586,11 +1534,16 @@ class CurveFitPlugin(TransformPlugin):
             try:
                 x_data, y_data, _, _, _, _ = self._get_data_arrays()
             except Exception:
-                self.log.debug("CurveFit: failed to read data while computing p0 parameter overrides", exc_info=True)
+                self.log.debug(
+                    "CurveFit: failed to read data while computing p0 parameter overrides",
+                    exc_info=True,
+                )
                 return {}, True
             if x_data is None or y_data is None:
                 return {}, True
-            values = self._build_p0(p0_func, np.asarray(x_data, dtype=float), np.asarray(y_data, dtype=float))
+            values = self._build_p0(
+                p0_func, np.asarray(x_data, dtype=float), np.asarray(y_data, dtype=float)
+            )
         else:
             values = self._build_p0(None, np.empty(0, dtype=float), np.empty(0, dtype=float))
 
@@ -1657,7 +1610,9 @@ class CurveFitPlugin(TransformPlugin):
                 Parameter names currently managed by the fit-function table.
         """
         auxiliary_settings = {
-            key: value for key, value in self.param_settings.items() if key not in current_param_names
+            key: value
+            for key, value in self.param_settings.items()
+            if key not in current_param_names
         }
         self.param_settings = {**auxiliary_settings, **table_settings}
         if self.sequence_engine is not None:
@@ -1695,6 +1650,7 @@ class CurveFitPlugin(TransformPlugin):
             >>> 'General' not in [t for t, _ in tabs]
             True
         """
+
         def _build_tabs() -> list[tuple[str, QWidget]]:
             tabs = super(CurveFitPlugin, self).config_tabs(parent)
             fit_tab, param_tab = self._build_fit_and_param_tabs(parent)
@@ -1708,9 +1664,9 @@ class CurveFitPlugin(TransformPlugin):
     def _get_trace_columns(self, trace_key: str) -> list[str]:
         """Return the DataFrame column names for the trace identified by *trace_key*.
 
-        Attempts to evaluate the trace expression in the engine namespace and
+        Uses the configured schema, falling back to the trace expression, to
         return :attr:`~stoner_measurement.core.TraceData.columns` from
-        the result.  Returns an empty list if the trace has not yet been measured
+        the result. Returns an empty list if no schema or acquired data exists
         or if the evaluation fails.
 
         Args:
@@ -1725,12 +1681,14 @@ class CurveFitPlugin(TransformPlugin):
         if not trace_key or trace_key not in traces:
             return []
         try:
-            trace_data = self.eval(traces[trace_key])
+            trace_data = trace_selection_data(self, trace_key, traces[trace_key])
             cols = getattr(trace_data, "columns", None)
             if isinstance(cols, list):
                 return cols
         except Exception:
-            self.log.debug("CurveFit: failed to inspect columns for trace %r.", trace_key, exc_info=True)
+            self.log.debug(
+                "CurveFit: failed to inspect columns for trace %r.", trace_key, exc_info=True
+            )
         return []
 
     def _build_column_combo(self, widget: QWidget) -> QComboBox:
@@ -1975,7 +1933,9 @@ class CurveFitPlugin(TransformPlugin):
         editor = EditorWidget(fit_widget)
         editor.set_text(self.fit_code)
         if self.fit_code_syntax_error_line is not None and self.fit_code_syntax_error_message:
-            editor.set_syntax_error(self.fit_code_syntax_error_line, self.fit_code_syntax_error_message)
+            editor.set_syntax_error(
+                self.fit_code_syntax_error_line, self.fit_code_syntax_error_message
+            )
         fit_layout.addWidget(editor)
 
         library = FitFunctionLibraryWidget(editor, fit_widget)
@@ -2052,7 +2012,9 @@ class CurveFitPlugin(TransformPlugin):
             old_names = list(self.param_names)
             self._update_param_names(code)
             if self.fit_code_syntax_error_line is not None and self.fit_code_syntax_error_message:
-                editor.set_syntax_error(self.fit_code_syntax_error_line, self.fit_code_syntax_error_message)
+                editor.set_syntax_error(
+                    self.fit_code_syntax_error_line, self.fit_code_syntax_error_message
+                )
             else:
                 editor.clear_syntax_error()
             # Flush current table values into param_settings.

@@ -4,9 +4,11 @@ Transform plugins perform pure computation on collected data without accessing
 hardware.  Examples include resistance calculations from (V, I) traces,
 background subtraction, smoothing, FFT analysis, and unit conversion.
 
-A :class:`TransformPlugin` is chained after trace acquisition: the sequence
-engine passes the collected data dict through the transform pipeline and stores
-the resulting outputs alongside the raw traces.
+A :class:`TransformPlugin` can consume existing traces after acquisition.
+Direct callers supply required inputs to ``run(data)``. Generated actions call
+``run({})``; transforms selecting their own source through configured namespace
+expressions normally declare ``required_inputs=[]``. The wrapper stores the
+returned result mapping on the transform instance.
 """
 
 from __future__ import annotations
@@ -18,6 +20,13 @@ from typing import Any
 from qtpy.QtCore import QObject
 from qtpy.QtWidgets import QFrame, QVBoxLayout, QWidget
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    legacy_output_property,
+    output_view,
+    project_outputs,
+    transform_outputs,
+)
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.qt_compat import pyqtSignal
 
@@ -28,8 +37,9 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     A :class:`TransformPlugin` accepts a dictionary of named input
     arrays/scalars, validates that all required keys are present, and returns a
     dictionary of named output arrays/scalars.  Subclasses must implement
-    :attr:`name`, :attr:`required_inputs`, :attr:`output_names`, and
-    :meth:`transform`.
+    :attr:`name`, :attr:`required_inputs`, :meth:`declared_outputs`, and
+    :meth:`transform`. The old output-name properties remain supported for
+    legacy plugins and are derived views for unified declarations.
 
     The class provides:
 
@@ -114,82 +124,22 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
         """
 
     @property
-    @abstractmethod
+    @output_view
     def output_names(self) -> list[str]:
-        """Names of the datasets produced by :meth:`transform`.
-
-        Returns:
-            (list[str]):
-                Ordered list of output key names present in the dict returned
-                by :meth:`transform`.
-        """
+        """Return the compatibility view of unified output declarations."""
+        return project_outputs(self, "output_names")
 
     @property
+    @output_view
     def output_trace_names(self) -> list[str]:
-        """Subset of :attr:`output_names` that are (x, y) trace arrays.
-
-        The default implementation returns an empty list, meaning all outputs are
-        treated as scalar values.  Override this in a subclass to declare which
-        output keys hold ``(x_array, y_array)`` pairs that should appear in the
-        :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.traces_catalog`.
-
-        Returns:
-            (list[str]):
-                Output names that are traces.  Must be a subset of
-                :attr:`output_names`.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.transform import TransformPlugin
-            >>> class _T(TransformPlugin):
-            ...     @property
-            ...     def name(self): return "T"
-            ...     @property
-            ...     def required_inputs(self): return []
-            ...     @property
-            ...     def output_names(self): return ["curve", "rms"]
-            ...     @property
-            ...     def output_trace_names(self): return ["curve"]
-            ...     def transform(self, data): return {}
-            >>> _T().output_trace_names
-            ['curve']
-        """
-        return []
+        """Return the compatibility view of unified output declarations."""
+        return project_outputs(self, "output_trace_names")
 
     @property
+    @output_view
     def output_value_names(self) -> list[str]:
-        """Subset of :attr:`output_names` that are scalar data values.
-
-        The default implementation returns all of :attr:`output_names`, meaning
-        every output is treated as a scalar value.  Override this in a subclass
-        when only a subset of outputs are scalars; in particular, any name listed
-        in :attr:`output_trace_names` that is also a scalar can be included here.
-
-        Returns:
-            (list[str]):
-                Output names that are scalar values.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.transform import TransformPlugin
-            >>> class _T(TransformPlugin):
-            ...     @property
-            ...     def name(self): return "T"
-            ...     @property
-            ...     def required_inputs(self): return []
-            ...     @property
-            ...     def output_names(self): return ["curve", "rms"]
-            ...     @property
-            ...     def output_trace_names(self): return ["curve"]
-            ...     @property
-            ...     def output_value_names(self): return ["rms"]
-            ...     def transform(self, data): return {}
-            >>> _T().output_value_names
-            ['rms']
-        """
-        return list(self.output_names)
+        """Return the compatibility view of unified output declarations."""
+        return project_outputs(self, "output_value_names")
 
     @abstractmethod
     def transform(self, data: dict[str, Any]) -> dict[str, Any]:
@@ -394,83 +344,12 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             "",
         ]
 
-    def reported_traces(self) -> dict[str, str]:
-        """Return a mapping of trace output names to Python expressions.
-
-        Reports each name in :attr:`output_trace_names` as a trace, using
-        ``"{instance_name}.data['{output_name}']"`` as the access expression.
-        The default is an empty dict because :attr:`output_trace_names` defaults
-        to ``[]``.  Override :attr:`output_trace_names` in a subclass to
-        populate this automatically.
-
-        Returns:
-            (dict[str, str]):
-                Mapping of ``"{instance_name}:{output_name}"`` → expression for
-                each name in :attr:`output_trace_names`.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.transform import TransformPlugin
-            >>> class _T(TransformPlugin):
-            ...     @property
-            ...     def name(self): return "Fit"
-            ...     @property
-            ...     def required_inputs(self): return []
-            ...     @property
-            ...     def output_names(self): return ["fitted_curve", "residual"]
-            ...     @property
-            ...     def output_trace_names(self): return ["fitted_curve"]
-            ...     def transform(self, data): return {}
-            >>> t = _T()
-            >>> traces = t.reported_traces()
-            >>> list(traces.keys())
-            ['fit:fitted_curve']
-            >>> traces['fit:fitted_curve']
-            "fit.data['fitted_curve']"
-        """
-        var = self.instance_name
-        return {f"{var}:{name}": f"{var}.data['{name}']" for name in self.output_trace_names}
-
-    def reported_values(self) -> dict[str, str]:
-        """Return a mapping of scalar output names to Python expressions.
-
-        Reports each name in :attr:`output_value_names` as a scalar value, using
-        ``"{instance_name}.data['{output_name}']"`` as the access expression.
-        By default this covers all of :attr:`output_names`.  Override
-        :attr:`output_value_names` in a subclass to restrict which outputs are
-        reported as scalar values.
-
-        Returns:
-            (dict[str, str]):
-                Mapping of ``"{instance_name}:{output_name}"`` → expression for
-                each name in :attr:`output_value_names`.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.transform import TransformPlugin
-            >>> class _T(TransformPlugin):
-            ...     @property
-            ...     def name(self): return "Fit"
-            ...     @property
-            ...     def required_inputs(self): return []
-            ...     @property
-            ...     def output_names(self): return ["fitted_curve", "residual"]
-            ...     @property
-            ...     def output_trace_names(self): return ["fitted_curve"]
-            ...     @property
-            ...     def output_value_names(self): return ["residual"]
-            ...     def transform(self, data): return {}
-            >>> t = _T()
-            >>> vals = t.reported_values()
-            >>> list(vals.keys())
-            ['fit:residual']
-            >>> vals['fit:residual']
-            "fit.data['residual']"
-        """
-        var = self.instance_name
-        return {f"{var}:{name}": f"{var}.data['{name}']" for name in self.output_value_names}
+    def declared_outputs(self) -> PluginOutputs:
+        """Adapt old transform naming properties to typed declarations."""
+        names = legacy_output_property(self, "output_names", [])
+        traces = legacy_output_property(self, "output_trace_names", [])
+        values = legacy_output_property(self, "output_value_names", names)
+        return transform_outputs(self, traces, values)
 
     # ------------------------------------------------------------------
     # Configuration tabs
@@ -555,6 +434,7 @@ class TransformPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> 'General' not in [t for t, _ in tabs]
             True
         """
+
         def _build_tabs() -> list[tuple[str, QWidget]]:
             outer = QWidget(parent)
             outer_layout = QVBoxLayout(outer)

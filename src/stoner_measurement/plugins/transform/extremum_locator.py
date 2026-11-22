@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QLineEdit, QSpinBox, QWidget
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    ScalarOutput,
+)
 from stoner_measurement.plugins.transform._branch_splitting import _valid_savgol_window
 from stoner_measurement.plugins.transform._trace_selection import TraceChannelSelectionMixin
 from stoner_measurement.plugins.transform.base import TransformPlugin
@@ -191,9 +195,17 @@ class ExtremumLocatorPlugin(TraceChannelSelectionMixin, TransformPlugin):
     def required_inputs(self) -> list[str]:
         return []
 
-    @property
-    def output_names(self) -> list[str]:
-        return [_X_OUTPUT, _Y_OUTPUT]
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare extremum coordinates with their measured-axis units."""
+        var = self.instance_name
+        return PluginOutputs(
+            values={
+                f"{var}:{name}": ScalarOutput(
+                    f"{var}.{attribute}", self._result_units[name], result_key=name
+                )
+                for name, attribute in ((_X_OUTPUT, "extremum_x"), (_Y_OUTPUT, "extremum_y"))
+            }
+        )
 
     @property
     def extremum(self) -> tuple[float, float] | None:
@@ -209,22 +221,6 @@ class ExtremumLocatorPlugin(TraceChannelSelectionMixin, TransformPlugin):
     def extremum_y(self) -> float | None:
         """Read-only y coordinate from the latest successful run."""
         return None if self._extremum is None else self._extremum[1]
-
-    def reported_values(self) -> dict[str, str]:
-        """Publish property-based expressions for both result coordinates."""
-        var = self.instance_name
-        return {
-            f"{var}:{_X_OUTPUT}": f"{var}.extremum_x",
-            f"{var}:{_Y_OUTPUT}": f"{var}.extremum_y",
-        }
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return source x/y units for the reported coordinates."""
-        var = self.instance_name
-        return {
-            f"{var}:{_X_OUTPUT}": self._result_units[_X_OUTPUT],
-            f"{var}:{_Y_OUTPUT}": self._result_units[_Y_OUTPUT],
-        }
 
     def transform(self, data: dict[str, Any]) -> dict[str, Any]:
         """Locate and return the configured extremum."""

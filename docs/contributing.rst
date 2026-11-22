@@ -80,3 +80,32 @@ templates; edit the catalogue, template or owning docstring instead of those
 generated files. Inspect the generated HTML, downloads and image links.
 Validate executable examples, including generated actions and persistence,
 rather than only syntax-highlighting their source.
+
+Bundled Windows help
+----------------------
+
+The installed **Help > User Guide** opens the bundled offline manual. Its
+repository copy is ``src/stoner_measurement/help/stoner_measurement.chm``.
+This compiled file is tracked in the repository so pip and Conda builds can
+include it without requiring a Windows documentation compiler on the build or
+installation machine.
+
+After changing the documentation, rebuild the guide on Windows using Microsoft
+HTML Help Workshop's ``hhc.exe`` and the project's Conda environment:
+
+.. code-block:: powershell
+
+   conda run -n stoner_measurement python scripts/build_chm.py
+   conda run -n stoner_measurement python -m build
+
+Pass ``--hhc PATH_TO_HHC.EXE`` or set ``HHC`` when the compiler is not at its
+standard location. The script builds strict Sphinx HTML Help from a clean
+temporary source tree, regenerates API pages, validates the compiled header
+and stages the CHM at the package-data path. Include the rebuilt binary with
+the corresponding documentation changes. HTML build trees remain generated
+artefacts and are not committed.
+
+The setuptools package-data rule includes the CHM in wheels; ``MANIFEST.in``
+includes it in source distributions. The Conda recipe installs that same pip
+payload and checks that the packaged resource has a valid CHM header. A normal
+pip or Conda installation does not rebuild the manual.

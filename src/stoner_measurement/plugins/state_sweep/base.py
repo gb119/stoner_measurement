@@ -22,6 +22,10 @@ from qtpy.QtWidgets import (
 )
 
 from stoner_measurement.core.controller_polling import raise_for_controller_failure
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    ScalarOutput,
+)
 from stoner_measurement.plugins.base_plugin import instance_name_validation_error
 from stoner_measurement.plugins.state.base import StatePlugin
 from stoner_measurement.plugins.state.output_selection import OutputSelectionTable
@@ -37,6 +41,7 @@ _TIMEOUT_FACTOR_DEFAULT = 2.0
 _SPINBOX_MAX_ABS = 1e9
 
 logger = logging.getLogger(__name__)
+
 
 class _StateSweepTabContainer(QWidget):
     """Container for the active sweep generator widget."""
@@ -82,7 +87,9 @@ class _StateSweepPage(QWidget):
         header_form = QFormLayout()
 
         name_edit = QLineEdit(plugin.instance_name)
-        name_edit.setToolTip("Python variable name used to access this plugin in the sequence engine")
+        name_edit.setToolTip(
+            "Python variable name used to access this plugin in the sequence engine"
+        )
         comment_edit = QLineEdit(plugin.comment)
         comment_edit.setToolTip("Optional short note shown alongside this step in the sequence.")
 
@@ -109,9 +116,7 @@ class _StateSweepPage(QWidget):
 
         comment_changed_signal = getattr(plugin, "comment_changed", None)
         if comment_changed_signal is not None:
-            comment_changed_signal.connect(
-                lambda _old, _new: comment_edit.setText(plugin.comment)
-            )
+            comment_changed_signal.connect(lambda _old, _new: comment_edit.setText(plugin.comment))
 
         if len(type(plugin)._sweep_generator_classes) > 1:
             self._add_generator_combo(plugin, header_form)
@@ -236,11 +241,17 @@ class _StateSweepDataPage(QWidget):
         data_form.addRow("Collect all outputs:", select_all_outputs_check)
         data_form.addRow(refresh_outputs_button)
 
-        collect_check.stateChanged.connect(lambda state: setattr(plugin, "collect_data", bool(state)))
-        clear_check.stateChanged.connect(lambda state: setattr(plugin, "clear_on_start", bool(state)))
+        collect_check.stateChanged.connect(
+            lambda state: setattr(plugin, "collect_data", bool(state))
+        )
+        clear_check.stateChanged.connect(
+            lambda state: setattr(plugin, "clear_on_start", bool(state))
+        )
 
         def _apply_collect_filter() -> None:
-            plugin.collect_filter = collect_filter_edit.text().strip() or f"{plugin.instance_name}.meas_flag"
+            plugin.collect_filter = (
+                collect_filter_edit.text().strip() or f"{plugin.instance_name}.meas_flag"
+            )
 
         def _apply_clear_filter() -> None:
             plugin.clear_filter = clear_filter_edit.text().strip() or "True"
@@ -327,7 +338,9 @@ class StateSweepPlugin(StatePlugin):
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
-        self.sweep_generator: BaseSweepGenerator = self._sweep_generator_class(state_sweep=self, parent=self)
+        self.sweep_generator: BaseSweepGenerator = self._sweep_generator_class(
+            state_sweep=self, parent=self
+        )
         self.sweep_timeout_factor: float | str = self.default_sweep_timeout_factor
         self.engine_polling_rate_hz: float | str = 0.0
         self._previous_engine_polling_rate_hz: float | None = None
@@ -412,7 +425,9 @@ class StateSweepPlugin(StatePlugin):
             >>> p.sweep_timeout
             540.3
         """
-        return self.sweep_generator.estimated_duration() * self.eval_float(self.sweep_timeout_factor)
+        return self.sweep_generator.estimated_duration() * self.eval_float(
+            self.sweep_timeout_factor
+        )
 
     # ------------------------------------------------------------------
     # JSON serialisation
@@ -455,7 +470,9 @@ class StateSweepPlugin(StatePlugin):
         """
         super()._restore_from_json(data)
         if "sweep_generator" in data:
-            self.sweep_generator = BaseSweepGenerator.from_json(data["sweep_generator"], state_sweep=self, parent=self)
+            self.sweep_generator = BaseSweepGenerator.from_json(
+                data["sweep_generator"], state_sweep=self, parent=self
+            )
             self.sweep_generator_changed.emit()
         if "sweep_timeout_factor" in data:
             self.sweep_timeout_factor = data["sweep_timeout_factor"]
@@ -521,11 +538,13 @@ class StateSweepPlugin(StatePlugin):
         """Set the current zero-based segment index."""
         self.stage = int(value)
 
-    def reported_values(self) -> dict[str, str]:
-        """Return the sweep output catalogue, including the current segment."""
-        values = super().reported_values()
-        values[f"{self.instance_name}:Segment"] = f"{self.instance_name}.segment"
-        return values
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare state outputs with the current sweep segment."""
+        outputs = super().declared_outputs()
+        outputs.values[f"{self.instance_name}:Segment"] = ScalarOutput(
+            f"{self.instance_name}.segment"
+        )
+        return outputs
 
     # ------------------------------------------------------------------
     # Sweep iteration
@@ -597,7 +616,9 @@ class StateSweepPlugin(StatePlugin):
             controller = engine_factory()  # pylint: disable=not-callable
             if hasattr(controller, "get_engine_state"):
                 raise_for_controller_failure(
-                    controller.get_engine_state(), self.state_name, getattr(self, "controller_id", None)
+                    controller.get_engine_state(),
+                    self.state_name,
+                    getattr(self, "controller_id", None),
                 )
         now = time.monotonic()
         if now > self._sweep_deadline:
@@ -609,7 +630,7 @@ class StateSweepPlugin(StatePlugin):
             logger.error(
                 f"Sweep timeout exceeded after {elapsed:.1f}s "
                 f"(expected ≤{self._sweep_deadline - self._sweep_start_time:.1f}s)"
-                )
+            )
             self.meas_flag = False
             return False
 
@@ -631,7 +652,7 @@ class StateSweepPlugin(StatePlugin):
             logger.error(
                 f"{self.state_name} value {self.value:.4g} {self.units} "
                 f"is outside limits [{lo}, {hi}]"
-                )
+            )
             self.meas_flag = False
             return False
 
@@ -664,10 +685,7 @@ class StateSweepPlugin(StatePlugin):
             sub_steps (list):
                 Ordered list of zero-argument callables to run at each sweep point.
         """
-        self.ix = -1
-        self.value = 0.0
-        self.stage = 0
-        self.meas_flag = False
+        self._reset_iteration_state(-1)
         self.connect()
         self.configure()
         try:
@@ -773,7 +791,7 @@ class StateSweepPlugin(StatePlugin):
         loop_prefix = "    " * (indent + 1)
         body_prefix = "    " * (indent + 2)
         var_name = self.instance_name
-        lines: list[str] = []
+        lines: list[str] = [f"{prefix}{var_name}._reset_iteration_state(-1)"]
         if self.clear_on_start:
             lines.append(f"{prefix}{var_name}.clear_data()")
         lines += [

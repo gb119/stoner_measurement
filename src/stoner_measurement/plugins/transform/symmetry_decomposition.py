@@ -17,6 +17,10 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    transform_outputs,
+)
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_X,
     COLUMN_ROLE_Y,
@@ -190,22 +194,11 @@ class SymmetryDecompositionPlugin(
     def required_inputs(self) -> list[str]:
         return []
 
-    @property
-    def output_names(self) -> list[str]:
-        return [self.symmetric_trace_name, self.antisymmetric_trace_name]
-
-    @property
-    def output_trace_names(self) -> list[str]:
-        return self.output_names
-
-    @property
-    def output_value_names(self) -> list[str]:
-        return []
-
-    def reported_traces(self) -> dict[str, str]:
-        """Report custom output keys using safely quoted data expressions."""
-        var = self.instance_name
-        return {f"{var}:{name}": f"{var}.data[{name!r}]" for name in self.output_trace_names}
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare typed transform results without repeating output names."""
+        return transform_outputs(
+            self, [self.symmetric_trace_name, self.antisymmetric_trace_name], []
+        )
 
     def transform(self, data: dict[str, Any]) -> dict[str, Any]:
         """Return symmetric and antisymmetric copies of the selected trace."""

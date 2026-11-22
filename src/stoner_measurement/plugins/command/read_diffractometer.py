@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.xray_control import XrayControllerEngine
 
@@ -66,9 +67,7 @@ class ReadDiffractometerCommand(CommandPlugin):
             raise RuntimeError("The X-ray diffractometer returned no detector reading.")
         self.value = float(state.snapshot.counts)
 
-    def reported_values(self) -> dict[str, str]:
-        return {f"{self.instance_name}:Counts": f"{self.instance_name}.value"}
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Identify the detector output as a count quantity."""
-        return {f"{self.instance_name}:Counts": "counts"}
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
+        var = self.instance_name
+        return PluginOutputs(values={f"{var}:Counts": ScalarOutput(f"{var}.value", "counts")})

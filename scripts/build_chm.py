@@ -44,6 +44,16 @@ def build_chm(compiler: Path, root: Path = ROOT) -> Path:
     staged.unlink(missing_ok=True)
     with tempfile.TemporaryDirectory(dir=output) as temporary:
         work = Path(temporary)
+        source = work / "source"
+        htmlhelp = work / "htmlhelp"
+        htmlhelp.mkdir()
+        # Regenerate API pages from authored sources without touching a checkout's
+        # existing documentation cache or retaining removed pages in the guide.
+        shutil.copytree(
+            root / "docs",
+            source,
+            ignore=shutil.ignore_patterns("_build", "_generated", "__pycache__"),
+        )
         # Use this interpreter and fixed module/options, with no command shell.
         subprocess.run(  # nosec B603
             [
@@ -54,12 +64,14 @@ def build_chm(compiler: Path, root: Path = ROOT) -> Path:
                 "-a",
                 "-b",
                 "htmlhelp",
+                "-c",
+                str(root / "docs"),
                 "-W",
                 "--keep-going",
                 "-D",
                 f"htmlhelp_basename={BASENAME}",
-                str(root / "docs"),
-                str(work),
+                str(source),
+                str(htmlhelp),
             ],
             check=True,
         )
@@ -68,9 +80,11 @@ def build_chm(compiler: Path, root: Path = ROOT) -> Path:
         # intentional build capability; the project path is a separate argument.
         result = subprocess.run(  # nosec B603
             # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-tainted-env-args.dangerous-subprocess-use-tainted-env-args
-            [str(compiler), str(work / f"{BASENAME}.hhp")], cwd=work, check=False
+            [str(compiler), str(htmlhelp / f"{BASENAME}.hhp")],
+            cwd=htmlhelp,
+            check=False,
         )
-        compiled = work / f"{BASENAME}.chm"
+        compiled = htmlhelp / f"{BASENAME}.chm"
         # HHC conventionally returns 1 on success. Check the fresh artifact too.
         if result.returncode not in (0, 1) or not compiled.is_file():
             raise RuntimeError(f"HTML Help compilation failed (exit {result.returncode}).")

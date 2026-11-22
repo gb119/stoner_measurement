@@ -18,6 +18,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from collections.abc import Callable
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs
 from stoner_measurement.plugins.base_plugin import BasePlugin
 
 
@@ -52,6 +53,10 @@ class SequencePlugin(BasePlugin):
 
     #: Sub-step descriptors set by the engine before calling execute_sequence.
     _sub_steps: list
+
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare no outputs for a transparent sequence container."""
+        return PluginOutputs()
 
     @property
     def sub_steps(self) -> list:
@@ -138,11 +143,12 @@ class SequencePlugin(BasePlugin):
         invoked, runs the corresponding nested step (including its own lifecycle
         and any further sub-steps).
 
-        Concrete implementations should call :meth:`connect` and
-        :meth:`configure` before running sub-steps, and :meth:`disconnect` in a
-        ``finally`` block afterwards.  :class:`StateControlPlugin` subclasses
-        will typically also call :meth:`~stoner_measurement.plugins.state_control.StateControlPlugin.ramp_to`
-        for each setpoint before invoking the sub-step callables.
+        Direct state-scan and state-sweep helpers perform their own setup and
+        cleanup around the callable children. Generated scripts instead own
+        whole-sequence setup and cleanup, then render this container's action
+        through :meth:`generate_action_code`. Overriding this direct helper
+        alone does not change generated control flow. Implementations of both
+        paths must agree on child ordering, point metadata and collection.
 
         Args:
             sub_steps (list):

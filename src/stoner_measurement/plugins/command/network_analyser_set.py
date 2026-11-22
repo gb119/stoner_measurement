@@ -6,6 +6,7 @@ from typing import Any
 
 from qtpy.QtWidgets import QFormLayout, QGroupBox, QWidget
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.plugins._network_analyser_point import (
     acquire_point,
     build_point_settings_widget,
@@ -115,26 +116,21 @@ class NetworkAnalyserSetCommand(CommandPlugin):
         """Return the most recently acquired formatted S-parameter."""
         return self._last_s_parameters.get(parameter.strip().upper())
 
-    def reported_values(self) -> dict[str, str]:
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
         var = self.instance_name
-        values = {
-            f"{var}:Frequency": f"{var}._last_frequency_hz",
-            f"{var}:Source power": f"{var}._last_power_dbm",
-        }
+        outputs = PluginOutputs(
+            values={
+                f"{var}:Frequency": ScalarOutput(f"{var}._last_frequency_hz", "Hz"),
+                f"{var}:Source power": ScalarOutput(f"{var}._last_power_dbm", "dBm"),
+            }
+        )
+        unit = s_parameter_units(self._output_format)
         for parameter in self._selected_parameters:
-            values[f"{var}:{parameter}"] = f"{var}.get_s_parameter({parameter!r})"
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        var = self.instance_name
-        units = {
-            f"{var}:Frequency": "Hz",
-            f"{var}:Source power": "dBm",
-        }
-        parameter_units = s_parameter_units(self._output_format)
-        for parameter in self._selected_parameters:
-            units[f"{var}:{parameter}"] = parameter_units
-        return units
+            outputs.values[f"{var}:{parameter}"] = ScalarOutput(
+                f"{var}.get_s_parameter({parameter!r})", unit
+            )
+        return outputs
 
     def to_json(self) -> dict[str, Any]:
         data = super().to_json()
@@ -156,30 +152,18 @@ class NetworkAnalyserSetCommand(CommandPlugin):
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         stimulus = QGroupBox("Point stimulus", parent)
         form = QFormLayout(stimulus)
-        frequency = SISpinBox(
-            allow_expressions=True, suffix="Hz", value=self._frequency_hz
-        )
+        frequency = SISpinBox(allow_expressions=True, suffix="Hz", value=self._frequency_hz)
         frequency.setObjectName("network_analyser_set_frequency")
         frequency.setMinimum(0.0)
         frequency.setMaximum(1.0e12)
-        frequency.setToolTip(
-            "Frequency or sequence expression evaluated when this command runs."
-        )
-        power = SISpinBox(
-            allow_expressions=True, suffix="dBm", value=self._power_dbm
-        )
+        frequency.setToolTip("Frequency or sequence expression evaluated when this command runs.")
+        power = SISpinBox(allow_expressions=True, suffix="dBm", value=self._power_dbm)
         power.setObjectName("network_analyser_set_power")
         power.setMinimum(-200.0)
         power.setMaximum(100.0)
-        power.setToolTip(
-            "Source power or sequence expression evaluated when this command runs."
-        )
+        power.setToolTip("Source power or sequence expression evaluated when this command runs.")
         form.addRow("Frequency:", frequency)
         form.addRow("Source power:", power)
-        frequency.valueChanged.connect(
-            lambda value: setattr(self, "_frequency_hz", value)
-        )
+        frequency.valueChanged.connect(lambda value: setattr(self, "_frequency_hz", value))
         power.valueChanged.connect(lambda value: setattr(self, "_power_dbm", value))
-        return build_point_settings_widget(
-            self, stimulus, object_prefix="network_analyser_set"
-        )
+        return build_point_settings_widget(self, stimulus, object_prefix="network_analyser_set")

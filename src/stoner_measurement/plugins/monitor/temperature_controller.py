@@ -19,6 +19,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.plugins.monitor.base import MonitorPlugin
 from stoner_measurement.temperature_control.engine import TemperatureControllerEngine
 from stoner_measurement.temperature_control.references import (
@@ -37,6 +38,7 @@ from stoner_measurement.ui.temperature_selectors import (
 
 if TYPE_CHECKING:
     from stoner_measurement.temperature_control.types import TemperatureEngineState
+
 
 def _parse_int_list(text: str, default: list[int]) -> list[int]:
     """Parse a comma-separated string of integers, returning *default* on failure."""
@@ -242,9 +244,12 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         if hasattr(engine, "ensure_controller"):
             slots = {loop_ref(value).controller_id for value in self.control_loops}
             if self.sensor_channels is None:
-                slots.update(slot for slot, session in engine.controllers.items()
-                             if engine.controller_enabled(slot)
-                             and (session.connected_driver is not None or session.preferred_driver_name))
+                slots.update(
+                    slot
+                    for slot, session in engine.controllers.items()
+                    if engine.controller_enabled(slot)
+                    and (session.connected_driver is not None or session.preferred_driver_name)
+                )
             else:
                 slots.update(channel_ref(value).controller_id for value in self.sensor_channels)
             for slot in sorted(slots):
@@ -303,7 +308,9 @@ class TemperatureMonitorPlugin(MonitorPlugin):
             return [compact_reference(channel_ref(value)) for value in self.sensor_channels]
         state = self._current_state()
         if hasattr(self._engine(), "channel_catalogue"):
-            return [compact_reference(item.reference) for item in self._engine().channel_catalogue()]
+            return [
+                compact_reference(item.reference) for item in self._engine().channel_catalogue()
+            ]
         if state.readings:
             return sorted(state.readings)
         driver = self._engine().connected_driver
@@ -468,23 +475,30 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         if self.report_temperatures:
             for ch in channels:
                 reading = sensor_reading(state, ch)
-                result[f"temperature_{ch}"] = float(reading.value) if reading is not None else math.nan
+                result[f"temperature_{ch}"] = (
+                    float(reading.value) if reading is not None else math.nan
+                )
 
         if self.report_heater:
             for lp in loops:
-                result[f"heater_{lp}"] = float(local_loop_value(state, "heater_outputs", lp, math.nan))
+                result[f"heater_{lp}"] = float(
+                    local_loop_value(state, "heater_outputs", lp, math.nan)
+                )
 
         if self.report_rate:
             for ch in channels:
                 reading = sensor_reading(state, ch)
-                result[f"rate_{ch}"] = float(reading.rate_of_change) if reading is not None else math.nan
+                result[f"rate_{ch}"] = (
+                    float(reading.rate_of_change) if reading is not None else math.nan
+                )
 
         if self.report_stability:
             for lp in loops:
                 stable_val = local_loop_value(state, "stable", lp)
-                result[f"stable_{lp}"] = math.nan if stable_val is None else (1.0 if stable_val else 0.0)
+                result[f"stable_{lp}"] = (
+                    math.nan if stable_val is None else (1.0 if stable_val else 0.0)
+                )
 
-        self._last_reading = result
         return result
 
     # ------------------------------------------------------------------
@@ -615,58 +629,23 @@ class TemperatureMonitorPlugin(MonitorPlugin):
     # Sequence namespace integration
     # ------------------------------------------------------------------
 
-    def reported_values(self) -> dict[str, str]:
-        """Return a mapping of output names to accessor expressions.
-
-        Each selected parameter is reported as both
-        ``"{instance_name}:{label}"`` → ``"{instance_name}.method(args)"``
-        so that the sequence engine can add them to the data namespace and
-        display them in the output catalogue.
-
-        Returns:
-            (dict[str, str]):
-                Mapping of ``"{instance_name}:{label}"`` to Python expression.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.monitor.temperature_controller import TemperatureMonitorPlugin
-            >>> m = TemperatureMonitorPlugin()
-            >>> m.sensor_channels = ["A"]
-            >>> m.control_loops = [1]
-            >>> vals = m.reported_values()
-            >>> var = m.instance_name
-            >>> f"{var}:Setpoint loop 1" in vals
-            True
-            >>> f"{var}:Temperature A" in vals
-            True
-        """
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
         var = self.instance_name
-        values: dict[str, str] = {}
-        channels = self._active_channels()
-        loops = self._active_loops()
-
-        if self.report_setpoints:
-            for lp in loops:
-                values[f"{var}:Setpoint loop {lp}"] = f"{var}.setpoint({reference_json(lp)!r})"
-
-        if self.report_temperatures:
-            for ch in channels:
-                values[f"{var}:Temperature {ch}"] = f"{var}.temperature({reference_json(ch)!r})"
-
-        if self.report_heater:
-            for lp in loops:
-                values[f"{var}:Heater loop {lp}"] = f"{var}.heater({reference_json(lp)!r})"
-
-        if self.report_rate:
-            for ch in channels:
-                values[f"{var}:Rate {ch}"] = f"{var}.rate({reference_json(ch)!r})"
-
-        if self.report_stability:
-            for lp in loops:
-                values[f"{var}:Stable loop {lp}"] = f"{var}.stable({reference_json(lp)!r})"
-
-        return values
+        outputs = PluginOutputs()
+        for enabled, items, label, method, unit in (
+            (self.report_setpoints, self._active_loops(), "Setpoint loop", "setpoint", "K"),
+            (self.report_temperatures, self._active_channels(), "Temperature", "temperature", "K"),
+            (self.report_heater, self._active_loops(), "Heater loop", "heater", "%"),
+            (self.report_rate, self._active_channels(), "Rate", "rate", "K/min"),
+            (self.report_stability, self._active_loops(), "Stable loop", "stable", ""),
+        ):
+            if enabled:
+                for reference in items:
+                    outputs.values[f"{var}:{label} {reference}"] = ScalarOutput(
+                        f"{var}.{method}({reference_json(reference)!r})", unit
+                    )
+        return outputs
 
     # ------------------------------------------------------------------
     # JSON serialisation
@@ -694,7 +673,9 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         data.update(
             {
                 "control_loops": [reference_json(value) for value in self.control_loops],
-                "sensor_channels": None if self.sensor_channels is None else [reference_json(value) for value in self.sensor_channels],
+                "sensor_channels": None
+                if self.sensor_channels is None
+                else [reference_json(value) for value in self.sensor_channels],
                 "report_setpoints": self.report_setpoints,
                 "report_temperatures": self.report_temperatures,
                 "report_heater": self.report_heater,
@@ -717,9 +698,17 @@ class TemperatureMonitorPlugin(MonitorPlugin):
         if "sensor_channels" in data:
             raw = data["sensor_channels"]
             self.sensor_channels = (
-                list(dict.fromkeys(compact_reference(channel_ref(value)) if isinstance(value, dict)
-                                   else str(value).strip() for value in raw if value is not None and str(value).strip()))
-                if isinstance(raw, list) else None
+                list(
+                    dict.fromkeys(
+                        compact_reference(channel_ref(value))
+                        if isinstance(value, dict)
+                        else str(value).strip()
+                        for value in raw
+                        if value is not None and str(value).strip()
+                    )
+                )
+                if isinstance(raw, list)
+                else None
             )
         if "report_setpoints" in data:
             self.report_setpoints = bool(data["report_setpoints"])
@@ -783,9 +772,15 @@ class _TemperatureMonitorSettingsWidget(QWidget):
         sel_form.addRow("Control loops:", self._loops_edit)
         add_catalogue_picker(sel_form, self._loops_edit, loops=True)
 
-        channels_text = "" if self._plugin.sensor_channels is None else ", ".join(selection_text(ch) for ch in self._plugin.sensor_channels)
+        channels_text = (
+            ""
+            if self._plugin.sensor_channels is None
+            else ", ".join(selection_text(ch) for ch in self._plugin.sensor_channels)
+        )
         self._channels_edit = QLineEdit(channels_text, sel_group)
-        self._channels_edit.setPlaceholderText("Comma-separated sensor channels; blank = all available")
+        self._channels_edit.setPlaceholderText(
+            "Comma-separated sensor channels; blank = all available"
+        )
         self._channels_edit.editingFinished.connect(self._on_channels_changed)
         sel_form.addRow("Sensor channels:", self._channels_edit)
         add_catalogue_picker(sel_form, self._channels_edit)

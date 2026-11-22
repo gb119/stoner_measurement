@@ -24,6 +24,11 @@ from typing import Any, SupportsInt
 import pandas as pd
 from qtpy.QtCore import QObject
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    ScalarOutput,
+    TraceOutput,
+)
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_D,
     COLUMN_ROLE_E,
@@ -270,6 +275,17 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     # Data collection
     # ------------------------------------------------------------------
 
+    def _reset_iteration_state(self, initial_index: int = 0) -> None:
+        """Reset point metadata consistently for direct and generated loops.
+
+        Args:
+            initial_index (int): Index before the first point; sweeps use -1.
+        """
+        self.ix = initial_index
+        self.value = 0.0
+        self.stage = 0
+        self.meas_flag = False
+
     @property
     def data(self) -> TraceData:
         """Accumulated measurement data collected during the iteration loop.
@@ -298,7 +314,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             True
         """
         if self._data.row_count == 0 and self.sequence_engine is not None:
-            self._data.set_expected_schema(self.configured_trace_data())
+            self._data.set_expected_schema(self._configured_collected_trace())
         return self._data
 
     def _empty_trace_data(self) -> TraceData:
@@ -467,7 +483,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         )
         return TraceData(frame, column_roles=roles, names=names, units=units)
 
-    def configured_trace_data(self) -> TraceData:
+    def _configured_collected_trace(self) -> TraceData:
         """Return the configured collected-data schema before acquisition.
 
         State scan and sweep traces are initially empty, so their live
@@ -492,13 +508,6 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         catalogue values retain the existing behaviour of being primary y data.
         """
         return dict.fromkeys(outputs, COLUMN_ROLE_Y)
-
-    def reported_traces(self) -> dict[str, str]:
-        """Expose collected state data through the shared trace catalogue."""
-        if not self.collect_data:
-            return {}
-        variable = self.instance_name
-        return {f"{variable}.data": f"{variable}.data"}
 
     # ------------------------------------------------------------------
     # JSON serialisation (shared fields)
@@ -624,37 +633,17 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     # Reported values
     # ------------------------------------------------------------------
 
-    def reported_values(self) -> dict[str, str]:
-        """Return a mapping of the state quantity to a Python expression.
-
-        Reports the current iteration set-point as a scalar value, accessible
-        via ``"{instance_name}.value"``, and the current iteration index via
-        ``"{instance_name}.index"``.
-
-        Returns:
-            (dict[str, str]):
-                Two-entry dict with ``"{instance_name}:{state_name}"`` and
-                ``"{instance_name}:Index"`` mappings.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.state_scan import CounterPlugin
-            >>> p = CounterPlugin()
-            >>> vals = p.reported_values()
-            >>> list(vals.keys())
-            ['counter:Value', 'counter:Index']
-            >>> vals['counter:Value']
-            'counter.value'
-            >>> vals['counter:Index']
-            'counter.index'
-        """
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare the state value, index and optional collected-data table."""
         var = self.instance_name
-        return {
-            f"{var}:{self.state_name}": f"{var}.value",
-            f"{var}:Index": f"{var}.index",
-        }
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Report the physical unit of the state value; the index is unitless."""
-        return {f"{self.instance_name}:{self.state_name}": self.units}
+        outputs = PluginOutputs(
+            values={
+                f"{var}:{self.state_name}": ScalarOutput(f"{var}.value", self.units),
+                f"{var}:Index": ScalarOutput(f"{var}.index"),
+            }
+        )
+        if self.collect_data:
+            outputs.traces[f"{var}.data"] = TraceOutput(
+                f"{var}.data", schema_factory=self._configured_collected_trace
+            )
+        return outputs

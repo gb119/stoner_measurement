@@ -39,11 +39,18 @@ import asteval
 from qtpy.QtCore import QObject
 from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QTextBrowser, QWidget
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    legacy_output_hook,
+    output_view,
+    project_outputs,
+)
 from stoner_measurement.plugins.plugin_config import load_plugin_config
 from stoner_measurement.ui.theme import validation_error_lineedit_stylesheet
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
+    from stoner_measurement.core.trace_data import TraceData
 
 
 _STRING_EXPR_RE = re.compile(r'^(?P<leading>\s*)(?P<prefix>[fFrRbBuU]*)(?P<quote>["\'])')
@@ -60,6 +67,7 @@ _APPLICATION_RESERVED_INSTANCE_NAMES = frozenset(
         "__package__",
         "__spec__",
         "_traces",
+        "_trace_schemas",
         "_values",
         "log",
         "np",
@@ -519,6 +527,10 @@ class BasePlugin(ABC):
     override :meth:`config_widget`, :meth:`config_tabs`, and
     :meth:`monitor_widget` to provide richer UI integration.
 
+    Implement :meth:`declared_outputs` to publish trace expressions, configured
+    schemas and scalar units together. Legacy publication hooks remain supported
+    and are compatibility views for migrated plugins.
+
     Rather than subclassing :class:`BasePlugin` directly, prefer one of the
     six specialised sub-types:
 
@@ -581,8 +593,12 @@ class BasePlugin(ABC):
     _lifecycle_connection_attempted: bool = False
 
     def __init_subclass__(cls, **kwargs) -> None:
-        """Track overridden lifecycle operations without changing their public API."""
+        """Preserve lifecycle and legacy-output contracts on subclasses."""
         super().__init_subclass__(**kwargs)
+        for name in ("reported_traces", "reported_values", "reported_value_units", "configured_trace_data"):
+            method = cls.__dict__.get(name)
+            if callable(method) and not getattr(method, "_output_view", False):
+                setattr(cls, name, legacy_output_hook(method, cls))
         for phase in ("connect", "configure", "disconnect"):
             method = getattr(cls, phase, None)
             if (
@@ -1521,38 +1537,56 @@ class BasePlugin(ABC):
             "",
         ]
 
-    def reported_traces(self) -> dict[str, str]:
-        """Return a mapping of trace names to Python expressions for accessing trace data.
+    def declared_outputs(self) -> PluginOutputs | None:
+        """Declare configured trace and scalar outputs in one place.
 
-        Each entry in the returned dict describes one data trace produced by this plugin.
-        The key is a human-readable name of the form ``"{instance_name}:{trace_name}"``
-        and the value is the Python expression that retrieves the corresponding
-        ``(x_array, y_array)`` tuple from the sequence engine namespace.
+        Return ordered, fully qualified catalogue identifiers with typed
+        expressions, units and optional empty schemas. Declarations must not
+        access hardware or evaluate runtime expressions. None selects legacy
+        adaptation; an empty PluginOutputs explicitly declares no outputs.
 
-        The sequence engine merges the dicts from all registered plugins to build a
-        master catalogue of available traces (see
-        :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.traces_catalog`).
-        This catalogue can be used by downstream plugins (e.g. plot plugins) to
-        discover what data is available without hard-coding variable names.
-
-        The default implementation returns an empty dict.  Subclasses that produce
-        trace data (e.g. :class:`~stoner_measurement.plugins.trace.TracePlugin`)
-        override this method to enumerate their channels.
+        For mapping-backed outputs, set each descriptor's ``result_key`` to
+        its local data key, independently of the catalogue identifier. Defer
+        schemas that depend on scalar catalogues with ``schema_factory``.
+        Keep the legacy publication hooks as inherited compatibility views;
+        extend a migrated parent's ``super().declared_outputs()`` instead.
 
         Returns:
-            (dict[str, str]):
-                Mapping of ``"{instance_name}:{trace_name}"`` → Python expression
-                string.  Empty dict for plugins that produce no traces.
-
-        Examples:
-            >>> from stoner_measurement.plugins.base_plugin import BasePlugin
-            >>> class _Minimal(BasePlugin):
-            ...     @property
-            ...     def name(self): return "Minimal"
-            >>> _Minimal().reported_traces()
-            {}
+            (PluginOutputs | None): Unified declarations or legacy adaptation.
         """
-        return {}
+        return None
+
+    @output_view
+    def configured_trace_data(self) -> dict[str, TraceData]:
+        """Return the compatibility view of configured trace schemas.
+
+        Return empty tables with columns, roles, names and units, keyed exactly
+        as in :meth:`reported_traces`. Omit outputs whose schema is unknown.
+        New plugins supply schemas through :meth:`declared_outputs`; existing
+        overrides remain supported. Schema construction must not access
+        hardware, evaluate runtime expressions or modify acquired results.
+        Refresh the engine's catalogues after configuration changes.
+
+        Returns:
+            (dict[str, TraceData]):
+                Independent empty schemas keyed by catalogue identifier.
+                Outputs with unknown schemas are omitted.
+        """
+        return project_outputs(self, "configured_trace_data")
+
+    @output_view
+    def reported_traces(self) -> dict[str, str]:
+        """Return trace access expressions from resolved output declarations.
+
+        Returns:
+            (dict[str, str]): Catalogue identifiers mapped to expressions that
+                retrieve acquired TraceData tables from the live namespace.
+
+        Notes:
+            This is a compatibility view. New publication implementations use
+            :meth:`declared_outputs`; declaration does not acquire data.
+        """
+        return project_outputs(self, "reported_traces")
 
     def remap_trace_reference(
         self,
@@ -1575,55 +1609,26 @@ class BasePlugin(ABC):
             if isinstance(expression, str) and old_expression in expression:
                 setattr(self, attribute, expression.replace(old_expression, new_expression))
 
+    @output_view
     def reported_values(self) -> dict[str, str]:
-        """Return a mapping of value names to Python expressions for accessing scalar data.
-
-        Each entry describes one scalar data value produced by this plugin during a
-        measurement sequence.  The key is a human-readable name of the form
-        ``"{instance_name}:{value_name}"`` and the value is the Python expression that
-        retrieves the current scalar from the sequence engine namespace.
-
-        The sequence engine merges the dicts from all registered plugins to build a
-        master catalogue of available scalar values (see
-        :attr:`~stoner_measurement.core.sequence_engine.SequenceEngine.values_catalog`).
-        This catalogue can be used by downstream plugins (e.g. plot plugins) to
-        discover what scalar data is available.
-
-        The default implementation returns an empty dict.  Subclasses that produce
-        scalar values (e.g.
-        :class:`~stoner_measurement.plugins.monitor.MonitorPlugin`,
-        :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`)
-        override this method to enumerate their quantities.
+        """Return scalar access expressions from resolved output declarations.
 
         Returns:
-            (dict[str, str]):
-                Mapping of ``"{instance_name}:{value_name}"`` → Python expression
-                string.  Empty dict for plugins that produce no scalar values.
-
-        Examples:
-            >>> from stoner_measurement.plugins.base_plugin import BasePlugin
-            >>> class _Minimal(BasePlugin):
-            ...     @property
-            ...     def name(self): return "Minimal"
-            >>> _Minimal().reported_values()
-            {}
+            (dict[str, str]): Scalar catalogue identifiers mapped to runtime
+                expressions. Presence does not imply a result is available.
         """
-        return {}
+        return project_outputs(self, "reported_values")
 
+    @output_view
     def reported_value_units(self) -> dict[str, str]:
-        """Return physical units for scalar outputs exposed by this plugin.
-
-        Keys match those returned by :meth:`reported_values`; values are unit
-        symbols suitable for user-facing labels, for example ``"V"`` or
-        ``"K"``.  The sequence engine combines the two mappings into
-        metadata-bearing ``_values`` catalogue entries.  Plugins may omit
-        dimensionless values or values whose units are not known.
+        """Return scalar units from resolved output declarations.
 
         Returns:
-            (dict[str, str]):
-                Mapping from reported-value keys to physical unit symbols.
+            (dict[str, str]): Physical units keyed by scalar catalogue identity,
+                matching :meth:`reported_values`. Empty units mean unspecified
+                or dimensionless. New plugins set units on ScalarOutput.
         """
-        return {}
+        return project_outputs(self, "reported_value_units")
 
     def member_plugins(self) -> list[BasePlugin]:
         """Return any :class:`BasePlugin` instances owned directly by this plugin.
@@ -1674,16 +1679,20 @@ class BasePlugin(ABC):
         """Refresh this plugin and any cached configuration widgets.
 
         This method is intended for programmatic use (for example from the
-        console) after mutating plugin attributes directly. It refreshes only
-        this plugin's local state, the active scan generator (when present),
-        and any cached configuration widgets that expose a ``refresh()``
-        method.
+        console) after mutating plugin attributes directly. It refreshes
+        this plugin's derived state, the active scan generator (when present),
+        the attached engine's output catalogues, and cached configuration
+        widgets that expose a ``refresh()`` method. It does not connect to or
+        configure instruments.
         """
         scan_generator = getattr(self, "scan_generator", None)
         if scan_generator is not None:
             refresh = getattr(scan_generator, "refresh", None)
             if callable(refresh):
                 refresh()
+
+        if self.sequence_engine is not None:
+            self.sequence_engine.refresh_data_catalogs()
 
         tabs = getattr(self, "_cached_config_tabs", None)
         if tabs:

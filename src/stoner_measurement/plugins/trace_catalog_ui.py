@@ -231,17 +231,35 @@ def _configured_trace_channels(
         return None
 
 
+def trace_selection_data(plugin: Any, trace_key: str, expression: str) -> Any:
+    """Resolve configured metadata first, falling back to acquired trace data.
+
+    Args:
+        plugin (BasePlugin): Consumer attached to the sequence engine.
+        trace_key (str): Reported trace identifier.
+        expression (str): Runtime expression for the trace.
+
+    Returns:
+        (TraceData): Configured schema or available acquired data.
+
+    Raises:
+        Exception: If no schema is declared and the trace cannot be evaluated.
+    """
+    schema = plugin.engine_namespace.get("_trace_schemas", {}).get(trace_key)
+    return schema if schema is not None else plugin.eval(expression)
+
+
 def trace_channel_items(plugin: Any, traces: dict[str, str]) -> dict[str, str]:
     """Return canonical expressions for every available column in each trace.
 
-    Live :class:`TraceData` metadata supplies the human-readable column names
-    and units.  A trace that is not currently evaluable retains the legacy
-    x/y choices until data become available.
+    Configured schemas supply column names, roles and units before acquisition
+    and take precedence over previous results. Undeclared schemas use live
+    metadata, then the legacy configured x/y choices when no data are available.
     """
     items: dict[str, str] = {}
     for trace_key, expression in traces.items():
         try:
-            trace_data = plugin.eval(expression)
+            trace_data = trace_selection_data(plugin, trace_key, expression)
             columns = getattr(trace_data, "expected_columns", list(trace_data.df.columns))
             names = dict(getattr(trace_data, "expected_names", trace_data.names) or {})
             units = dict(getattr(trace_data, "expected_units", trace_data.units) or {})
@@ -265,7 +283,7 @@ def trace_channel_roles(plugin: Any, traces: dict[str, str]) -> dict[str, str]:
     roles: dict[str, str] = {}
     for trace_key, expression in traces.items():
         try:
-            trace_data = plugin.eval(expression)
+            trace_data = trace_selection_data(plugin, trace_key, expression)
             columns = getattr(trace_data, "expected_columns", list(trace_data.df.columns))
             expected_roles = getattr(
                 trace_data, "expected_column_roles", trace_data.column_roles
@@ -299,7 +317,7 @@ def trace_target_column_items(
         return {}
     expression = traces[trace_key]
     try:
-        trace_data = plugin.eval(expression)
+        trace_data = trace_selection_data(plugin, trace_key, expression)
         columns = getattr(trace_data, "expected_columns", list(trace_data.df.columns))
         roles = getattr(trace_data, "expected_column_roles", trace_data.column_roles)
         names = dict(getattr(trace_data, "expected_names", trace_data.names) or {})

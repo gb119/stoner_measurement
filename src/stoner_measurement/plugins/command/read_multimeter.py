@@ -7,6 +7,7 @@ from typing import Any
 
 from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QSpinBox, QVBoxLayout, QWidget
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.core.validation import ValidationError, validate_expression
 from stoner_measurement.instruments.dmm import DmmFunction
 from stoner_measurement.instruments.keithley import Keithley2000, Keithley2700
@@ -293,28 +294,15 @@ class ReadMultimeterCommand(CommandPlugin):
             outputs["ac_bandwidth"] = ("AC Bandwidth", "Hz")
         return outputs
 
-    def reported_values(self) -> dict[str, str]:
-        """Expose the selected reading and applicable numeric settings."""
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
         var = self.instance_name
-        outputs = {f"{var}:{DMM_CHANNELS[DmmFunction(self.function)][0]}": f"{var}.value"}
-        outputs.update(
-            {
-                f"{var}:{label}": f"{var}.settings_readback.get({name!r}, float('nan'))"
-                for name, (label, _) in self._setting_outputs().items()
-            }
-        )
-        return outputs
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return matching units for the reading and setting outputs."""
         label, unit = DMM_CHANNELS[DmmFunction(self.function)]
-        outputs = {f"{self.instance_name}:{label}": unit}
-        outputs.update(
-            {
-                f"{self.instance_name}:{label}": unit
-                for label, unit in self._setting_outputs().values()
-            }
-        )
+        outputs = PluginOutputs(values={f"{var}:{label}": ScalarOutput(f"{var}.value", unit)})
+        for name, (label, unit) in self._setting_outputs().items():
+            outputs.values[f"{var}:{label}"] = ScalarOutput(
+                f"{var}.settings_readback.get({name!r}, float('nan'))", unit
+            )
         return outputs
 
     def to_json(self) -> dict[str, Any]:

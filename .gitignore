@@ -71,6 +71,7 @@ instance/
 # Sphinx documentation
 docs/_build/
 src/stoner_measurement/help/*.chm
+!src/stoner_measurement/help/stoner_measurement.chm
 
 # PyBuilder
 .pybuilder/

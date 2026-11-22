@@ -2,6 +2,7 @@
 
 from qtpy.QtWidgets import QFormLayout, QLineEdit, QVBoxLayout, QWidget
 
+from stoner_measurement.plugins import PluginOutputs, ScalarOutput
 from stoner_measurement.plugins.command import CommandPlugin
 
 
@@ -11,6 +12,11 @@ class RecordValueCommand(CommandPlugin):
     Configure the expression and its units on General. The expression is
     evaluated when the step executes; Value is available to Plot Points and
     scan/sweep collection. This command owns no instrument resources.
+
+    Attributes:
+        value_expr (str): Numeric expression evaluated during execution.
+        value_units (str): Configured unit for the published scalar.
+        value (float): Latest result, or NaN before execution or after failure.
     """
 
     def __init__(self, parent=None):
@@ -26,13 +32,21 @@ class RecordValueCommand(CommandPlugin):
     def execute(self):
         self.value = float("nan")
         self.value = self.eval_float(self.value_expr)
-        self.log.info("%s: %s %s", self.instance_name, self.value, self.value_units)
+        self.log.info(
+            "%s: %s %s", self.instance_name, self.value, self.value_units
+        )
 
-    def reported_values(self):
-        return {f"{self.instance_name}:Value": f"{self.instance_name}.value"}
-
-    def reported_value_units(self):
-        return {f"{self.instance_name}:Value": self.value_units}
+    def declared_outputs(self):
+        """Publish the expression and configured unit in one declaration."""
+        var = self.instance_name
+        return PluginOutputs(
+            values={
+                f"{var}:Value": ScalarOutput(
+                    f"{var}.value",
+                    units=self.value_units,
+                ),
+            }
+        )
 
     def config_widget(self, parent=None):
         widget = QWidget(parent)

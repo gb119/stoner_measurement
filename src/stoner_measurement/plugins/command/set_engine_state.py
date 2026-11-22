@@ -10,6 +10,7 @@ from typing import Any
 from qtpy.QtWidgets import QFormLayout, QLabel, QLineEdit, QWidget
 
 from stoner_measurement.core.controller_polling import raise_for_controller_failure
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.ui.widgets import SISpinBox
 
@@ -136,10 +137,15 @@ class SetEngineStateCommand(CommandPlugin):
         """Return one value from the state snapshot captured by :meth:`execute`."""
         return self._final_values.get(name, math.nan)
 
-    def reported_values(self) -> dict[str, str]:
-        """Expose the final engine-state snapshot through the scalar catalogue."""
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
         var = self.instance_name
-        return {f"{var}:{name}": f"{var}.output_value({name!r})" for name in self.output_names}
+        return PluginOutputs(
+            values={
+                f"{var}:{name}": ScalarOutput(f"{var}.output_value({name!r})")
+                for name in self.output_names
+            }
+        )
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Build the common expression controls plus engine-specific settings."""
@@ -155,13 +161,19 @@ class SetEngineStateCommand(CommandPlugin):
             allow_expressions=True,
         )
         setpoint.setObjectName("setpoint_expression")
-        setpoint.setToolTip("Numeric expression evaluated in the sequence namespace when the command runs.")
-        setpoint.editingFinished.connect(lambda: setattr(self, "setpoint_expr", str(setpoint.value())))
+        setpoint.setToolTip(
+            "Numeric expression evaluated in the sequence namespace when the command runs."
+        )
+        setpoint.editingFinished.connect(
+            lambda: setattr(self, "setpoint_expr", str(setpoint.value()))
+        )
         layout.addRow("Setpoint expression:", setpoint)
 
         wait = QLineEdit(self.wait_expr, widget)
         wait.setObjectName("wait_expression")
-        wait.setToolTip("Boolean expression evaluated once after setting the target. Default: True.")
+        wait.setToolTip(
+            "Boolean expression evaluated once after setting the target. Default: True."
+        )
         wait.editingFinished.connect(
             lambda: setattr(self, "wait_expr", wait.text().strip() or "True")
         )

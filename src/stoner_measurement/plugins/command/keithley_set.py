@@ -2,6 +2,7 @@
 
 from qtpy.QtWidgets import QFormLayout, QVBoxLayout, QWidget
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput, resolve_outputs
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.state_scan.k6221_2182a import Keithley6221PointScanPlugin
 from stoner_measurement.plugins.state_scan.keithley_2400 import Keithley2400PointScanPlugin
@@ -45,24 +46,20 @@ class _KeithleySetCommand(CommandPlugin):
         self._point_plugin.sequence_engine = self.sequence_engine
         self._point_plugin.set_state(self.eval_float(self._value))
 
-    def reported_values(self):
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
         point = self._point_plugin
         prefix = point.instance_name + "."
-        return {
-            self.instance_name + "." + key[len(prefix) :]: expression.replace(
-                prefix, self.instance_name + "._point_plugin.", 1
-            )
-            for key, expression in point.reported_values().items()
-            if key.startswith(prefix)
-        }
-
-    def reported_value_units(self):
-        prefix = self._point_plugin.instance_name + "."
-        return {
-            self.instance_name + "." + key[len(prefix) :]: unit
-            for key, unit in self._point_plugin.reported_value_units().items()
-            if key.startswith(prefix)
-        }
+        return PluginOutputs(
+            values={
+                self.instance_name + "." + key[len(prefix) :]: ScalarOutput(
+                    item.expression.replace(prefix, self.instance_name + "._point_plugin.", 1),
+                    item.units,
+                )
+                for key, item in resolve_outputs(point).values.items()
+                if key.startswith(prefix)
+            }
+        )
 
     def to_json(self):
         data = super().to_json()

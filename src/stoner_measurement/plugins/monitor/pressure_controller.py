@@ -13,6 +13,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.plugins.monitor.base import MonitorPlugin
 from stoner_measurement.pressure_control.engine import PressureControllerEngine
 
@@ -223,23 +224,34 @@ class PressureMonitorPlugin(MonitorPlugin):
                 )
             if self.report_gauge_enabled:
                 enabled = state.gauge_channel_enabled.get(channel)
-                result[f"gauge_enabled_{channel}"] = math.nan if enabled is None else (1.0 if enabled else 0.0)
+                result[f"gauge_enabled_{channel}"] = (
+                    math.nan if enabled is None else (1.0 if enabled else 0.0)
+                )
         for channel in self._active_mfc_channels():
             if self.report_flow_setpoints:
-                result[f"flow_setpoint_{channel}"] = float(state.flow_setpoints.get(channel, math.nan))
+                result[f"flow_setpoint_{channel}"] = float(
+                    state.flow_setpoints.get(channel, math.nan)
+                )
             if self.report_flow_actual:
                 result[f"flow_actual_{channel}"] = float(state.flow_actual.get(channel, math.nan))
             if self.report_target_pressures:
-                result[f"target_pressure_{channel}"] = float(state.target_pressures.get(channel, math.nan))
-        self._last_reading = result
+                result[f"target_pressure_{channel}"] = float(
+                    state.target_pressures.get(channel, math.nan)
+                )
         return result
 
-    def reported_values(self) -> dict[str, str]:
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
         var = self.instance_name
-        return {
-            f"{var}:{quantity.replace('_', ' ').title()}": f"{var}.last_reading['{quantity}']"
-            for quantity in self.quantity_names
-        }
+        units = self.units
+        return PluginOutputs(
+            values={
+                f"{var}:{quantity.replace('_', ' ').title()}": ScalarOutput(
+                    f"{var}.last_reading[{quantity!r}]", units.get(quantity, "")
+                )
+                for quantity in self.quantity_names
+            }
+        )
 
     def to_json(self) -> dict[str, object]:
         data = super().to_json()
@@ -290,8 +302,16 @@ class _PressureMonitorSettingsWidget(QWidget):
 
         select_group = QGroupBox("Channels", self)
         select_form = QFormLayout(select_group)
-        pressure_text = "" if self._plugin.pressure_channels is None else ", ".join(map(str, self._plugin.pressure_channels))
-        mfc_text = "" if self._plugin.mfc_channels is None else ", ".join(map(str, self._plugin.mfc_channels))
+        pressure_text = (
+            ""
+            if self._plugin.pressure_channels is None
+            else ", ".join(map(str, self._plugin.pressure_channels))
+        )
+        mfc_text = (
+            ""
+            if self._plugin.mfc_channels is None
+            else ", ".join(map(str, self._plugin.mfc_channels))
+        )
         self._pressure_channels_edit = QLineEdit(pressure_text, select_group)
         self._pressure_channels_edit.setPlaceholderText("Blank = all pressure channels")
         self._pressure_channels_edit.editingFinished.connect(self._on_pressure_channels_changed)

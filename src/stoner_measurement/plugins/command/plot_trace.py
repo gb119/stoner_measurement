@@ -68,6 +68,7 @@ from stoner_measurement.plugins.trace_catalog_ui import (
     refresh_trace_source_widgets,
     trace_channel_items,
     trace_channel_roles,
+    trace_selection_data,
 )
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.axis_mappings import AxisLabel
@@ -1146,9 +1147,9 @@ class PlotTraceCommand(CommandPlugin):
     def _get_trace_columns(self, trace_key: str) -> list[str]:
         """Return the DataFrame column names for the trace identified by *trace_key*.
 
-        Attempts to evaluate the trace expression in the engine namespace and
+        Uses the configured schema, falling back to the trace expression, to
         return :attr:`~stoner_measurement.core.TraceData.columns` from
-        the result.  Returns an empty list if the trace has not yet been measured
+        the result. Returns an empty list if no schema or acquired data exists
         or if the evaluation fails.
 
         Args:
@@ -1163,7 +1164,7 @@ class PlotTraceCommand(CommandPlugin):
         if not trace_key or trace_key not in traces:
             return []
         try:
-            trace_data = self.eval(traces[trace_key])
+            trace_data = trace_selection_data(self, trace_key, traces[trace_key])
             cols = getattr(trace_data, "columns", None)
             if isinstance(cols, list):
                 return cols

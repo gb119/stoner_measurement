@@ -36,6 +36,9 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+)
 from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
 from stoner_measurement.instruments.keithley.k2400 import (
     FilterType,
@@ -205,6 +208,11 @@ class Keithley2400SweepPlugin(TracePlugin):
     GPIB resource and column prefix, and configures supported integration,
     range and filtering options. It uses a trigger-link handshake with the
     2400 and adds prefixed voltage, response and power columns to **IV**.
+
+    Plot and transform selectors offer all configured IV columns before
+    acquisition, including enabled nanovoltmeter and electrometer quantities.
+    ``configured_trace_data()`` returns the empty schema keyed by trace
+    identifier, with source-mode roles and the selected resistance/conductance.
 
     Attributes:
         _electrometer (ElectrometerAcquisition):
@@ -397,16 +405,6 @@ class Keithley2400SweepPlugin(TracePlugin):
         return "Keithley2400Sweep"
 
     @property
-    def trace_names(self) -> list[str]:
-        """Name of the single multicolumn measurement channel.
-
-        Returns:
-            (list[str]):
-                Single-element list containing ``"IV"``.
-        """
-        return ["IV"]
-
-    @property
     def x_units(self) -> str:
         """Units of the programmed source axis.
 
@@ -446,74 +444,9 @@ class Keithley2400SweepPlugin(TracePlugin):
         """
         return "Current" if self._source_mode is SweepSourceMode.VOLTAGE else "Voltage"
 
-    def reported_values(self) -> dict[str, str]:
-        """Return mean/std outputs for each buffered trace column."""
-        if not self._report_channel_statistics:
-            return {}
-
-        var = self.instance_name
-        values: dict[str, str] = {}
-        response_column = (
-            "Conductance"
-            if self._differential_mode and self._differential_conductance
-            else "Resistance"
-        )
-        for column in ("Current", "Voltage", response_column, "Power", "Timestamp"):
-            key = f"IV {column}"
-            values[f"{var}:{key} mean"] = f"{var}.get_channel_statistic({key!r}, 'mean')"
-            values[f"{var}:{key} std"] = f"{var}.get_channel_statistic({key!r}, 'std')"
-        if self._secondary_enabled:
-            prefix = self._secondary_prefix.strip() or "secondary"
-            response_symbol = "G" if response_column == "Conductance" else "R"
-            for column in (f"{prefix} V", f"{prefix} {response_symbol}", f"{prefix} P"):
-                key = f"IV {column}"
-                values[f"{var}:{key} mean"] = f"{var}.get_channel_statistic({key!r}, 'mean')"
-                values[f"{var}:{key} std"] = f"{var}.get_channel_statistic({key!r}, 'std')"
-        if self._electrometer.settings.enabled:
-            column, _ = self._electrometer.settings.channel
-            key = f"IV {column}"
-            for statistic in ("mean", "std"):
-                values[f"{var}:{key} {statistic}"] = f"{var}.get_channel_statistic({key!r}, {statistic!r})"
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return the source-column units for each IV statistic."""
-        if not self._report_channel_statistics:
-            return {}
-
-        response_name = (
-            "Conductance"
-            if self._differential_mode and self._differential_conductance
-            else "Resistance"
-        )
-        response_unit = "S" if response_name == "Conductance" else "Ω"
-        column_units = {
-            "Current": "A",
-            "Voltage": "V",
-            response_name: response_unit,
-            "Power": "W",
-            "Timestamp": "s",
-        }
-        if self._secondary_enabled:
-            prefix = self._secondary_prefix.strip() or "secondary"
-            response_symbol = "G" if response_name == "Conductance" else "R"
-            column_units.update(
-                {
-                    f"{prefix} V": "V",
-                    f"{prefix} {response_symbol}": response_unit,
-                    f"{prefix} P": "W",
-                }
-            )
-
-        if self._electrometer.settings.enabled:
-            column, unit = self._electrometer.settings.channel
-            column_units[column] = unit
-        var = self.instance_name
-        return {
-            f"{var}:IV {column} {statistic}": unit
-            for column, unit in column_units.items()
-            for statistic in ("mean", "std")
-        }
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare IV channels, schemas and optional column statistics together."""
+        return self._declare_column_trace_outputs("IV", self._build_iv_trace)
 
     def connect(self) -> None:
         """Open the SMU connection and verify its identity.
@@ -530,7 +463,9 @@ class Keithley2400SweepPlugin(TracePlugin):
             if self._electrometer.settings.enabled:
                 self._electrometer.validate_resources(self)
             transport = GpibTransport.from_resource_string(self._resource, timeout=10.0)
-            driver_class = {"2400": Keithley2400, "2410": Keithley2410, "2450": Keithley2450}[self._model]
+            driver_class = {"2400": Keithley2400, "2410": Keithley2410, "2450": Keithley2450}[
+                self._model
+            ]
             self._smu = driver_class(transport)
             self._smu.connect()
             self._smu.confirm_identity()
@@ -685,14 +620,17 @@ class Keithley2400SweepPlugin(TracePlugin):
         trigger_source = (
             TriggerSource.TLIN
             if (
-                self._secondary_enabled or self._electrometer.settings.enabled
+                self._secondary_enabled
+                or self._electrometer.settings.enabled
                 or self._trigger_routing is TriggerRouting.TRIGGER_LINK
             )
             else TriggerSource.IMM
         )
         trigger_count = (
             point_count
-            if self._secondary_enabled or self._electrometer.settings.enabled or self._trigger_count_override <= 0
+            if self._secondary_enabled
+            or self._electrometer.settings.enabled
+            or self._trigger_count_override <= 0
             else self._trigger_count_override
         )
         smu.configure_trigger_model(
@@ -701,7 +639,9 @@ class Keithley2400SweepPlugin(TracePlugin):
                 trigger_count=trigger_count,
                 trigger_delay=self.eval_float(self._trigger_delay),
                 arm_source=TriggerSource.IMM,
-                arm_count=1 if self._secondary_enabled or self._electrometer.settings.enabled else self._arm_count,
+                arm_count=1
+                if self._secondary_enabled or self._electrometer.settings.enabled
+                else self._arm_count,
             )
         )
         self._configure_arm_routing(smu)
@@ -713,8 +653,11 @@ class Keithley2400SweepPlugin(TracePlugin):
         if self._secondary_enabled or self._electrometer.settings.enabled:
             smu.write(":ARM:SOUR IMM")
             smu.configure_trigger_link_source_handshake(
-                input_line=(self._electrometer.settings.completion_line
-                            if self._electrometer.settings.enabled else self._trigger_in_line),
+                input_line=(
+                    self._electrometer.settings.completion_line
+                    if self._electrometer.settings.enabled
+                    else self._trigger_in_line
+                ),
                 output_line=self._trigger_out_line,
             )
         elif self._trigger_routing in {TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK}:
@@ -912,7 +855,6 @@ class Keithley2400SweepPlugin(TracePlugin):
             records, self._sweep_values
         )
         response_name = "Resistance"
-        response_unit = "Ω"
         response_symbol = "R"
         if self._differential_mode:
             if self._nominal_sweep_values is None:
@@ -929,7 +871,6 @@ class Keithley2400SweepPlugin(TracePlugin):
             power = reduced.power
             if self._differential_conductance:
                 response_name = "Conductance"
-                response_unit = "S"
                 response_symbol = "G"
             x_arr = reduced.current
         else:
@@ -943,6 +884,60 @@ class Keithley2400SweepPlugin(TracePlugin):
             "Power": power,
             "Timestamp": timestamp,
         }
+        if self._secondary_enabled:
+            secondary_voltage = np.asarray(self._secondary_voltages or (), dtype=float)
+            if len(secondary_voltage) != len(self._sweep_values):
+                raise RuntimeError(
+                    "Secondary nanovoltmeter returned an unexpected number of readings."
+                )
+            if self._differential_mode:
+                assert self._nominal_sweep_values is not None
+                secondary_reduced = reduce_differential_readings(
+                    np.asarray(self._nominal_sweep_values),
+                    secondary_voltage,
+                    self.eval_float(self._delta_current),
+                    conductance=self._differential_conductance,
+                )
+                secondary_voltage = secondary_reduced.voltage
+                secondary_resistance = secondary_reduced.response
+                secondary_power = secondary_reduced.power
+            else:
+                with np.errstate(invalid="ignore", divide="ignore"):
+                    secondary_resistance = np.where(
+                        np.abs(current) > 1e-30,
+                        secondary_voltage / current,
+                        float("nan"),
+                    )
+                secondary_power = current * secondary_voltage
+            prefix = self._secondary_prefix.strip() or "secondary"
+            for column, values in zip(
+                (f"{prefix} V", f"{prefix} {response_symbol}", f"{prefix} P"),
+                (secondary_voltage, secondary_resistance, secondary_power),
+                strict=True,
+            ):
+                columns[column] = values
+        if self._electrometer.settings.enabled:
+            readings = self._electrometer.readings
+            if readings is None or len(readings) != len(x_arr):
+                raise RuntimeError(
+                    "Secondary electrometer returned an unexpected number of readings."
+                )
+            column, _ = self._electrometer.settings.channel
+            if column in columns:
+                raise ValueError(
+                    f"Electrometer column {column!r} conflicts with an existing trace column."
+                )
+            # These are measured values at each physical source point. Retain
+            # them unmodified even when the SMU voltage uses delta reduction.
+            columns[column] = np.asarray(readings, dtype=float)
+        return {"IV": self._build_iv_trace(columns)}
+
+    def _build_iv_trace(self, columns: dict[str, np.ndarray] | None = None) -> TraceData:
+        """Build acquired or empty IV data using the same configured metadata."""
+        conductance = self._differential_mode and self._differential_conductance
+        response_name = "Conductance" if conductance else "Resistance"
+        response_unit = "S" if conductance else "Ω"
+        response_symbol = "G" if conductance else "R"
         column_roles = {
             "Current": COLUMN_ROLE_Y
             if self._source_mode is SweepSourceMode.VOLTAGE
@@ -971,57 +966,30 @@ class Keithley2400SweepPlugin(TracePlugin):
             "Timestamp": "s",
         }
         if self._secondary_enabled:
-            secondary_voltage = np.asarray(self._secondary_voltages or (), dtype=float)
-            if len(secondary_voltage) != len(self._sweep_values):
-                raise RuntimeError(
-                    "Secondary nanovoltmeter returned an unexpected number of readings."
-                )
-            if self._differential_mode:
-                assert self._nominal_sweep_values is not None
-                secondary_reduced = reduce_differential_readings(
-                    np.asarray(self._nominal_sweep_values),
-                    secondary_voltage,
-                    self.eval_float(self._delta_current),
-                    conductance=self._differential_conductance,
-                )
-                secondary_voltage = secondary_reduced.voltage
-                secondary_resistance = secondary_reduced.response
-                secondary_power = secondary_reduced.power
-            else:
-                with np.errstate(invalid="ignore", divide="ignore"):
-                    secondary_resistance = np.where(
-                        np.abs(current) > 1e-30,
-                        secondary_voltage / current,
-                        float("nan"),
-                    )
-                secondary_power = current * secondary_voltage
             prefix = self._secondary_prefix.strip() or "secondary"
-            for column, values, unit, role in zip(
+            for column, unit, role in zip(
                 (f"{prefix} V", f"{prefix} {response_symbol}", f"{prefix} P"),
-                (secondary_voltage, secondary_resistance, secondary_power),
                 ("V", response_unit, "W"),
                 (COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_Z),
                 strict=True,
             ):
-                columns[column] = values
                 column_roles[column] = role
                 names[column] = column
                 units[column] = unit
         if self._electrometer.settings.enabled:
-            readings = self._electrometer.readings
-            if readings is None or len(readings) != len(x_arr):
-                raise RuntimeError("Secondary electrometer returned an unexpected number of readings.")
             column, unit = self._electrometer.settings.channel
-            if column in columns:
-                raise ValueError(f"Electrometer column {column!r} conflicts with an existing trace column.")
-            # These are measured values at each physical source point. Retain
-            # them unmodified even when the SMU voltage uses delta reduction.
-            columns[column] = np.asarray(readings, dtype=float)
+            if column in names:
+                raise ValueError(
+                    f"Electrometer column {column!r} conflicts with an existing trace column."
+                )
             column_roles[column] = COLUMN_ROLE_Y
             names[column] = column
             units[column] = unit
-        df = pd.DataFrame(columns)
-        return {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
+        if columns is None:
+            columns = {column: np.array([], dtype=float) for column in names}
+        return TraceData(
+            df=pd.DataFrame(columns), column_roles=column_roles, names=names, units=units
+        )
 
     def _records_to_arrays(
         self,
@@ -1081,7 +1049,9 @@ class Keithley2400SweepPlugin(TracePlugin):
         if self._smu is not None:
             actions.extend((self._smu.safe_output_off, self._smu.disconnect))
         if self._secondary_nanovoltmeter is not None:
-            actions.extend((self._secondary_nanovoltmeter.abort, self._secondary_nanovoltmeter.disconnect))
+            actions.extend(
+                (self._secondary_nanovoltmeter.abort, self._secondary_nanovoltmeter.disconnect)
+            )
         for action in actions:
             try:
                 action()
@@ -1355,6 +1325,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             compliance_r_label.setVisible(not is_fixed)
 
         mode_combo.currentIndexChanged.connect(_on_mode_changed)
+        mode_combo.currentIndexChanged.connect(self._refresh_trace_catalog)
         compliance_mode_combo.currentIndexChanged.connect(_on_compliance_mode_changed)
 
         nplc_combo = QComboBox()
@@ -1413,6 +1384,8 @@ class Keithley2400SweepPlugin(TracePlugin):
         differential_conductance.toggled.connect(
             lambda enabled: setattr(self, "_differential_conductance", enabled)
         )
+        differential_enabled.toggled.connect(self._refresh_trace_catalog)
+        differential_conductance.toggled.connect(self._refresh_trace_catalog)
         delta_current.valueChanged.connect(lambda value: setattr(self, "_delta_current", value))
 
         src_form.addRow("Sweep mode:", mode_combo)
@@ -1636,14 +1609,17 @@ class Keithley2400SweepPlugin(TracePlugin):
             "Secondary nanovoltmeter",
         )
         update_auxiliary_triggers = partial(
-            self._update_auxiliary_trigger_controls, root,
-            routing=trig_combo, output_enabled=trig_out_chk, count=trigger_count_sb,
-            arm_count=arm_count_sb, timer=timer_sb, input_line=trig_in_sb,
+            self._update_auxiliary_trigger_controls,
+            root,
+            routing=trig_combo,
+            output_enabled=trig_out_chk,
+            count=trigger_count_sb,
+            arm_count=arm_count_sb,
+            timer=timer_sb,
+            input_line=trig_in_sb,
             output_line=trig_out_sb,
         )
-        tab_widget.addTab(
-            electrometer_config_page(self, update_auxiliary_triggers), "Electrometer"
-        )
+        tab_widget.addTab(electrometer_config_page(self, update_auxiliary_triggers), "Electrometer")
         secondary_enabled = root.findChild(QCheckBox, "secondary_enabled")
         secondary_enabled.toggled.connect(lambda _: update_auxiliary_triggers())
         trig_in_sb.valueChanged.connect(lambda _: update_auxiliary_triggers())
@@ -1658,7 +1634,9 @@ class Keithley2400SweepPlugin(TracePlugin):
         for model in ("2400", "2410", "2450"):
             combo.addItem(f"Keithley {model}", model)
         combo.setCurrentIndex(combo.findData(self._model))
-        combo.currentIndexChanged.connect(lambda index: setattr(self, "_model", combo.itemData(index)))
+        combo.currentIndexChanged.connect(
+            lambda index: setattr(self, "_model", combo.itemData(index))
+        )
         return combo
 
     def _update_auxiliary_trigger_controls(
@@ -1669,9 +1647,10 @@ class Keithley2400SweepPlugin(TracePlugin):
         for control in (routing, output_enabled, count, arm_count):
             control.setEnabled(not auxiliary)
         timer.setEnabled(not auxiliary and self._trigger_routing is TriggerRouting.TIMER)
-        input_line.setEnabled(auxiliary or self._trigger_routing in (
-            TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK
-        ))
+        input_line.setEnabled(
+            auxiliary
+            or self._trigger_routing in (TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK)
+        )
         output_line.setEnabled(auxiliary or self._enable_trigger_out)
         note = root.findChild(QLabel, "secondary_trigger_note")
         if self._electrometer.settings.enabled:
@@ -1892,6 +1871,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             trigger_output.setEnabled(state or self._enable_trigger_out)
 
         enabled.toggled.connect(set_enabled)
+        enabled.toggled.connect(self._refresh_trace_catalog)
         enabled.toggled.connect(controls.setEnabled)
 
         def set_driver(index: int) -> None:
@@ -1910,6 +1890,7 @@ class Keithley2400SweepPlugin(TracePlugin):
             lambda text: setattr(self, "_secondary_resource", text.strip())
         )
         prefix.textChanged.connect(lambda text: setattr(self, "_secondary_prefix", text.strip()))
+        prefix.textChanged.connect(self._refresh_trace_catalog)
         nplc.currentIndexChanged.connect(
             lambda index: setattr(self, "_secondary_nplc", nplc.itemData(index))
         )
@@ -1980,6 +1961,9 @@ class Keithley2400SweepPlugin(TracePlugin):
             "channel is added with a user-defined prefix and SI units. The 6485 "
             "measures current; the 6514/6517 also offer voltage, resistance and charge. "
             "Raw electrometer readings are retained in differential mode.</p>"
+            "<p>Plot and transform channel selectors list the complete configured "
+            "IV schema before acquisition, including enabled auxiliary meters "
+            "and the selected resistance or conductance output.</p>"
             "<p>Wire SMU source events (default line 2) to the nanovoltmeter, its "
             "completion (line 1) to the electrometer, and electrometer completion "
             "(line 3) back to the SMU. Without a nanovoltmeter, connect source events "

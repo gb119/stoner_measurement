@@ -29,6 +29,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.instruments.keithley.k2400 import (
     BufferReading,
     FilterType,
@@ -335,7 +336,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         transport: GpibTransport | None = None
         try:
             transport = GpibTransport.from_resource_string(self._resource, timeout=10.0)
-            driver_class = {"2400": Keithley2400, "2410": Keithley2410, "2450": Keithley2450}[self._model]
+            driver_class = {"2400": Keithley2400, "2410": Keithley2410, "2450": Keithley2450}[
+                self._model
+            ]
             self._smu = driver_class(transport)
             self._smu.connect()
             self._smu.confirm_identity()
@@ -369,12 +372,16 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
 
         self._smu.reset()
         self._smu.check_error_queue(raise_on_error=False)
-        instrument_mode = SourceMode.VOLT if self._source_mode is SweepSourceMode.VOLTAGE else SourceMode.CURR
+        instrument_mode = (
+            SourceMode.VOLT if self._source_mode is SweepSourceMode.VOLTAGE else SourceMode.CURR
+        )
         self._smu.enable_output(False)
         self._smu.set_source_mode(instrument_mode)
         self._smu.set_nplc(self._nplc)
         self._smu.set_terminal_selection(
-            TerminalSelection.FRONT if self._terminal_mode is TerminalMode.FRONT else TerminalSelection.REAR
+            TerminalSelection.FRONT
+            if self._terminal_mode is TerminalMode.FRONT
+            else TerminalSelection.REAR
         )
         self._smu.set_remote_sense(self._connection_mode is ConnectionMode.FOUR_WIRE)
         self._smu.set_source_autorange(self._source_range_mode is RangeMode.AUTO, instrument_mode)
@@ -400,7 +407,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         self._smu.configure_trigger_model(
             TriggerModelConfiguration(
                 trigger_source=trigger_source,
-                trigger_count=self._trigger_count_override if self._trigger_count_override > 0 else 1,
+                trigger_count=self._trigger_count_override
+                if self._trigger_count_override > 0
+                else 1,
                 trigger_delay=trigger_delay,
                 arm_source=TriggerSource.IMM,
                 arm_count=max(1, int(self._arm_count)),
@@ -471,7 +480,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         if self._smu is None:
             raise RuntimeError("Not connected — call connect() before set_state().")
 
-        instrument_mode = SourceMode.VOLT if self._source_mode is SweepSourceMode.VOLTAGE else SourceMode.CURR
+        instrument_mode = (
+            SourceMode.VOLT if self._source_mode is SweepSourceMode.VOLTAGE else SourceMode.CURR
+        )
         target = float(value)
         self._target_value = target
         compliance = self.eval_float(self._compliance)
@@ -480,8 +491,12 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         if self._compliance_mode is ComplianceMode.RESISTANCE:
             if compliance_resistance <= 0.0:
                 raise ValueError("Compliance resistance must be positive.")
-            if self._source_mode is SweepSourceMode.VOLTAGE and math.isclose(target, 0.0, abs_tol=1e-30):
-                raise ValueError("Voltage-source resistance compliance is undefined at zero source voltage.")
+            if self._source_mode is SweepSourceMode.VOLTAGE and math.isclose(
+                target, 0.0, abs_tol=1e-30
+            ):
+                raise ValueError(
+                    "Voltage-source resistance compliance is undefined at zero source voltage."
+                )
             self._smu.set_compliance_from_resistance(
                 compliance_resistance,
                 source_level=target,
@@ -534,43 +549,20 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         """
         return True
 
-    def reported_values(self) -> dict[str, str]:
-        """Expose measured/source values for collection and nested sequence steps.
-
-        Returns:
-            (dict[str, str]):
-                Mapping from reported-value names to expressions exposing the
-                source set-point and most recent measured quantities.
-        """
-        values = super().reported_values()
-        prefix = self.instance_name
-        values.update(
-            {
-                f"{prefix}.source_value": f"{prefix}.get_state()",
-                f"{prefix}.voltage": f"{prefix}._last_voltage",
-                f"{prefix}.current": f"{prefix}._last_current",
-                f"{prefix}.resistance": f"{prefix}._last_resistance",
-                f"{prefix}.power": f"{prefix}._last_power",
-                f"{prefix}.timestamp": f"{prefix}._last_timestamp",
-            }
-        )
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return source and measured electrical units for scalar outputs."""
-        units = super().reported_value_units()
-        prefix = self.instance_name
-        units.update(
-            {
-                f"{prefix}.source_value": self.units,
-                f"{prefix}.voltage": "V",
-                f"{prefix}.current": "A",
-                f"{prefix}.resistance": "Ω",
-                f"{prefix}.power": "W",
-                f"{prefix}.timestamp": "s",
-            }
-        )
-        return units
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
+        outputs = super().declared_outputs()
+        var = self.instance_name
+        outputs.values[f"{var}.source_value"] = ScalarOutput(f"{var}.get_state()", self.units)
+        for name, attribute, unit in (
+            ("voltage", "_last_voltage", "V"),
+            ("current", "_last_current", "A"),
+            ("resistance", "_last_resistance", "Ω"),
+            ("power", "_last_power", "W"),
+            ("timestamp", "_last_timestamp", "s"),
+        ):
+            outputs.values[f"{var}.{name}"] = ScalarOutput(f"{var}.{attribute}", unit)
+        return outputs
 
     def to_json(self) -> dict[str, Any]:
         """Serialise plugin state.
@@ -626,34 +618,48 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         self._resource = str(data.get("resource", self._resource))
         self._model = str(data.get("model", "2400"))
         self._source_mode = SweepSourceMode(str(data.get("source_mode", self._source_mode.value)))
-        self._compliance_mode = ComplianceMode(str(data.get("compliance_mode", self._compliance_mode.value)))
-        self._compliance = data.get("compliance", self._compliance)
-        self._compliance_resistance = data.get(
-            "compliance_resistance", self._compliance_resistance
+        self._compliance_mode = ComplianceMode(
+            str(data.get("compliance_mode", self._compliance_mode.value))
         )
+        self._compliance = data.get("compliance", self._compliance)
+        self._compliance_resistance = data.get("compliance_resistance", self._compliance_resistance)
         self._nplc = float(data.get("nplc", self._nplc))
         self._source_delay = data.get("source_delay", self._source_delay)
         self._trigger_delay = data.get("trigger_delay", self._trigger_delay)
         self._enable_output_during_measurement = bool(
             data.get("enable_output_during_measurement", self._enable_output_during_measurement)
         )
-        self._trigger_routing = TriggerRouting(str(data.get("trigger_routing", self._trigger_routing.value)))
-        self._trigger_count_override = int(data.get("trigger_count_override", self._trigger_count_override))
+        self._trigger_routing = TriggerRouting(
+            str(data.get("trigger_routing", self._trigger_routing.value))
+        )
+        self._trigger_count_override = int(
+            data.get("trigger_count_override", self._trigger_count_override)
+        )
         self._arm_count = int(data.get("arm_count", self._arm_count))
         self._timer_interval = data.get("timer_interval", self._timer_interval)
         self._enable_trigger_out = bool(data.get("enable_trigger_out", self._enable_trigger_out))
         self._trigger_out_line = int(data.get("trigger_out_line", self._trigger_out_line))
         self._trigger_in_line = int(data.get("trigger_in_line", self._trigger_in_line))
-        self._source_range_mode = RangeMode(str(data.get("source_range_mode", self._source_range_mode.value)))
+        self._source_range_mode = RangeMode(
+            str(data.get("source_range_mode", self._source_range_mode.value))
+        )
         self._source_range = data.get("source_range", self._source_range)
-        self._sense_range_mode = RangeMode(str(data.get("sense_range_mode", self._sense_range_mode.value)))
+        self._sense_range_mode = RangeMode(
+            str(data.get("sense_range_mode", self._sense_range_mode.value))
+        )
         self._sense_range = data.get("sense_range", self._sense_range)
-        self._connection_mode = ConnectionMode(str(data.get("connection_mode", self._connection_mode.value)))
-        self._terminal_mode = TerminalMode(str(data.get("terminal_mode", self._terminal_mode.value)))
+        self._connection_mode = ConnectionMode(
+            str(data.get("connection_mode", self._connection_mode.value))
+        )
+        self._terminal_mode = TerminalMode(
+            str(data.get("terminal_mode", self._terminal_mode.value))
+        )
         self._filter_enabled = bool(data.get("filter_enabled", self._filter_enabled))
         self._filter_count = int(data.get("filter_count", self._filter_count))
         self._filter_type = FilterType(str(data.get("filter_type", self._filter_type.value)))
-        self._median_filter_enabled = bool(data.get("median_filter_enabled", self._median_filter_enabled))
+        self._median_filter_enabled = bool(
+            data.get("median_filter_enabled", self._median_filter_enabled)
+        )
 
     def _plugin_config_tabs(self) -> QWidget | None:
         """Return the settings widget for the plugin.
@@ -687,7 +693,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         conn_form.addRow("Model:", model_combo)
         resource_combo = VisaResourceComboBox(resource_filter=FILTER_GPIB)
         resource_combo.setCurrentText(self._resource)
-        resource_combo.currentTextChanged.connect(lambda text: setattr(self, "_resource", text.strip()))
+        resource_combo.currentTextChanged.connect(
+            lambda text: setattr(self, "_resource", text.strip())
+        )
         conn_form.addRow("SMU GPIB resource:", resource_combo)
         basic_layout.addWidget(conn_group)
 
@@ -698,15 +706,21 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         mode_combo.addItem("Voltage sweep", SweepSourceMode.VOLTAGE)
         mode_combo.addItem("Current sweep", SweepSourceMode.CURRENT)
         mode_combo.setCurrentIndex(0 if self._source_mode is SweepSourceMode.VOLTAGE else 1)
-        mode_combo.currentIndexChanged.connect(lambda idx: setattr(self, "_source_mode", mode_combo.itemData(idx)))
+        mode_combo.currentIndexChanged.connect(
+            lambda idx: setattr(self, "_source_mode", mode_combo.itemData(idx))
+        )
 
         compliance_mode_combo = QComboBox()
         compliance_mode_combo.addItem("Fixed limit", ComplianceMode.FIXED)
         compliance_mode_combo.addItem("Resistance-derived", ComplianceMode.RESISTANCE)
-        compliance_mode_combo.setCurrentIndex(0 if self._compliance_mode is ComplianceMode.FIXED else 1)
+        compliance_mode_combo.setCurrentIndex(
+            0 if self._compliance_mode is ComplianceMode.FIXED else 1
+        )
 
         compliance_text = (
-            "Compliance current:" if self._source_mode is SweepSourceMode.VOLTAGE else "Compliance voltage:"
+            "Compliance current:"
+            if self._source_mode is SweepSourceMode.VOLTAGE
+            else "Compliance voltage:"
         )
         compliance_label = QLabel(compliance_text)
         compliance_sb = SISpinBox(
@@ -727,7 +741,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         )
         compliance_r_sb.setMinimum(1e-9)
         compliance_r_sb.setMaximum(1e12)
-        compliance_r_sb.valueChanged.connect(lambda value: setattr(self, "_compliance_resistance", value))
+        compliance_r_sb.valueChanged.connect(
+            lambda value: setattr(self, "_compliance_resistance", value)
+        )
         compliance_r_sb.setVisible(self._compliance_mode is ComplianceMode.RESISTANCE)
         compliance_r_label.setVisible(self._compliance_mode is ComplianceMode.RESISTANCE)
 
@@ -761,29 +777,31 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
             nplc_combo.addItem(f"{option:g} PLC", option)
         nplc_index = 0
         for idx in range(nplc_combo.count()):
-            if math.isclose(float(nplc_combo.itemData(idx)), self._nplc, rel_tol=0.0, abs_tol=1e-12):
+            if math.isclose(
+                float(nplc_combo.itemData(idx)), self._nplc, rel_tol=0.0, abs_tol=1e-12
+            ):
                 nplc_index = idx
                 break
         nplc_combo.setCurrentIndex(nplc_index)
-        nplc_combo.currentIndexChanged.connect(lambda idx: setattr(self, "_nplc", float(nplc_combo.itemData(idx))))
-
-        source_delay_sb = SISpinBox(
-            suffix="s", value=self._source_delay, allow_expressions=True
+        nplc_combo.currentIndexChanged.connect(
+            lambda idx: setattr(self, "_nplc", float(nplc_combo.itemData(idx)))
         )
+
+        source_delay_sb = SISpinBox(suffix="s", value=self._source_delay, allow_expressions=True)
         source_delay_sb.setMinimum(0.0)
         source_delay_sb.setMaximum(9999.0)
         source_delay_sb.valueChanged.connect(lambda value: setattr(self, "_source_delay", value))
 
-        trigger_delay_sb = SISpinBox(
-            suffix="s", value=self._trigger_delay, allow_expressions=True
-        )
+        trigger_delay_sb = SISpinBox(suffix="s", value=self._trigger_delay, allow_expressions=True)
         trigger_delay_sb.setMinimum(0.0)
         trigger_delay_sb.setMaximum(9999.0)
         trigger_delay_sb.valueChanged.connect(lambda value: setattr(self, "_trigger_delay", value))
 
         output_chk = QCheckBox()
         output_chk.setChecked(self._enable_output_during_measurement)
-        output_chk.toggled.connect(lambda state: setattr(self, "_enable_output_during_measurement", state))
+        output_chk.toggled.connect(
+            lambda state: setattr(self, "_enable_output_during_measurement", state)
+        )
 
         src_form.addRow("Sweep mode:", mode_combo)
         src_form.addRow("Compliance mode:", compliance_mode_combo)
@@ -801,7 +819,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         source_range_mode_combo = QComboBox()
         source_range_mode_combo.addItem("Auto", RangeMode.AUTO)
         source_range_mode_combo.addItem("Fixed", RangeMode.FIXED)
-        source_range_mode_combo.setCurrentIndex(0 if self._source_range_mode is RangeMode.AUTO else 1)
+        source_range_mode_combo.setCurrentIndex(
+            0 if self._source_range_mode is RangeMode.AUTO else 1
+        )
         source_range_sb = SISpinBox(
             allow_expressions=True,
             suffix="V" if self._source_mode is SweepSourceMode.VOLTAGE else "A",
@@ -870,9 +890,7 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         arm_count_sb.setMaximum(100000)
         arm_count_sb.setValue(self._arm_count)
 
-        timer_sb = SISpinBox(
-            suffix="s", value=self._timer_interval, allow_expressions=True
-        )
+        timer_sb = SISpinBox(suffix="s", value=self._timer_interval, allow_expressions=True)
         timer_sb.setMinimum(1e-6)
         timer_sb.setMaximum(9999.0)
         timer_sb.setEnabled(self._trigger_routing is TriggerRouting.TIMER)
@@ -881,7 +899,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         trig_in_sb.setMinimum(1)
         trig_in_sb.setMaximum(6)
         trig_in_sb.setValue(self._trigger_in_line)
-        trig_in_sb.setEnabled(self._trigger_routing in (TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK))
+        trig_in_sb.setEnabled(
+            self._trigger_routing in (TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK)
+        )
 
         trig_out_chk = QCheckBox()
         trig_out_chk.setChecked(self._enable_trigger_out)
@@ -895,14 +915,18 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         def _on_trigger_changed(index: int) -> None:
             self._trigger_routing = trig_combo.itemData(index)
             timer_sb.setEnabled(self._trigger_routing is TriggerRouting.TIMER)
-            trig_in_sb.setEnabled(self._trigger_routing in (TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK))
+            trig_in_sb.setEnabled(
+                self._trigger_routing in (TriggerRouting.EXTERNAL, TriggerRouting.TRIGGER_LINK)
+            )
 
         def _on_trigger_out_toggled(state: bool) -> None:
             self._enable_trigger_out = state
             trig_out_sb.setEnabled(state)
 
         trig_combo.currentIndexChanged.connect(_on_trigger_changed)
-        trigger_count_sb.valueChanged.connect(lambda value: setattr(self, "_trigger_count_override", value))
+        trigger_count_sb.valueChanged.connect(
+            lambda value: setattr(self, "_trigger_count_override", value)
+        )
         arm_count_sb.valueChanged.connect(lambda value: setattr(self, "_arm_count", value))
         timer_sb.valueChanged.connect(lambda value: setattr(self, "_timer_interval", value))
         trig_in_sb.valueChanged.connect(lambda value: setattr(self, "_trigger_in_line", value))
@@ -935,7 +959,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
         connection_combo = QComboBox()
         connection_combo.addItem("2-wire", ConnectionMode.TWO_WIRE)
         connection_combo.addItem("4-wire remote sense", ConnectionMode.FOUR_WIRE)
-        connection_combo.setCurrentIndex(0 if self._connection_mode is ConnectionMode.TWO_WIRE else 1)
+        connection_combo.setCurrentIndex(
+            0 if self._connection_mode is ConnectionMode.TWO_WIRE else 1
+        )
         connection_combo.currentIndexChanged.connect(
             lambda idx: setattr(self, "_connection_mode", connection_combo.itemData(idx))
         )
@@ -968,7 +994,9 @@ class Keithley2400PointScanPlugin(StateScanPlugin):
 
         median_filter_chk = QCheckBox()
         median_filter_chk.setChecked(self._median_filter_enabled)
-        median_filter_chk.toggled.connect(lambda state: setattr(self, "_median_filter_enabled", state))
+        median_filter_chk.toggled.connect(
+            lambda state: setattr(self, "_median_filter_enabled", state)
+        )
 
         filter_form.addRow("Enable digital filter:", filter_enabled_chk)
         filter_form.addRow("Digital filter count:", filter_count_sb)

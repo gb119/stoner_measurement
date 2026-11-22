@@ -48,6 +48,7 @@ composition and discovery are introduced in :doc:`api/instruments`.
    :caption: Extending and developing
 
    third_party_plugins
+   plugin_outputs
    plot_display_plugins
    plotting_contracts
    plugin_tab_ordering

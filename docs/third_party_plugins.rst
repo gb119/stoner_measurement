@@ -86,7 +86,7 @@ older generator-based trace API or the compatibility ``state_control`` alias.
      - Return a mapping of quantity names to scalar readings. ``units`` maps
        those names to unit strings. Use the base monitoring machinery.
    * - ``plugins.transform.TransformPlugin``
-     - ``name``, ``required_inputs``, ``output_names`` and ``transform(data)``
+     - ``name``, ``required_inputs``, ``declared_outputs()`` and ``transform(data)``
      - Compute named outputs from existing data. The public ``run(data)``
        wrapper validates required inputs and stores results.
    * - ``plugins.sequence.SequencePlugin``
@@ -98,6 +98,13 @@ older generator-based trace API or the compatibility ``state_control`` alias.
 All imports in the table are relative to ``stoner_measurement``. See the
 corresponding classes in :doc:`api/plugins` for detailed signatures. Use
 ``state_scan`` in new code; ``StateControlPlugin`` remains a compatibility alias.
+
+These execution hooks and output declarations have separate responsibilities.
+``declared_outputs()`` describes identities and metadata; ``execute()``,
+``measure()``, ``run()`` and ``read()`` obtain or compute results. Inherit a
+family's default declarations when they already describe the plugin correctly,
+otherwise override the unified hook. Do not introduce additional publication
+methods for individual channels.
 
 Lifecycle and resource ownership
 ---------------------------------
@@ -168,6 +175,10 @@ runtime state through ``self.engine_namespace``; it is an empty mapping while
 detached. Do not retain a private copy of the engine namespace or inspect
 sequence-tree widgets from execution code.
 
+``engine.namespace`` and ``engine.namespace_snapshot()`` return copies for
+inspection. Assigning a value to either snapshot does not define a runtime
+variable. A plugin uses ``self.engine_namespace`` for live namespace access.
+
 ``self.eval(expression)`` and ``self.eval_float(expression)`` evaluate settings
 against the live namespace. Keep expression text in configuration and evaluate
 at the documented phase, so expressions can use the current loop value or an
@@ -199,22 +210,111 @@ for cross-thread requests. Import Qt through ``qtpy`` and signals through
 Publishing data for other steps
 --------------------------------
 
-``reported_traces()`` and ``reported_values()`` return mappings of display keys
-to expressions, not the current arrays or scalar values. The expressions
-resolve in the engine namespace:
+The detailed reference is :doc:`plugin_outputs`, including all declaration
+fields, schema timing, output ordering, inheritance rules and migration steps.
+
+Implement ``declared_outputs()`` to describe trace identities, runtime access
+expressions, configured channels and scalar units together. Return a fresh
+``PluginOutputs`` containing two ordered mappings. Both mappings use the
+existing fully qualified catalogue identifiers:
 
 .. code-block:: python
 
-   def reported_values(self):
-       return {f"{self.instance_name}:Value": f"{self.instance_name}.value"}
+   from stoner_measurement.plugins import (
+       PluginOutputs, ScalarOutput, TraceOutput,
+   )
 
-   def reported_value_units(self):
-       return {f"{self.instance_name}:Value": "V"}
+   def declared_outputs(self):
+       var = self.instance_name
+       return PluginOutputs(
+           traces={
+               f"{var}:IV": TraceOutput(
+                   f"{var}.data['IV']",
+                   result_key="IV",
+                   schema_factory=self._iv_schema,
+               ),
+           },
+           values={
+               f"{var}:Resistance": ScalarOutput(
+                   f"{var}.resistance", units="Ω",
+               ),
+           },
+       )
+
+This example assumes the plugin produces ``data['IV']`` and a ``resistance``
+attribute. Expressions are evaluated by consumers at runtime, not during
+declaration. ``result_key`` identifies an entry in a plugin's result dictionary;
+omit it for attribute access, monitor readings and calculated projections.
+The trace and scalar mappings may independently use the same catalogue key.
+Trace units belong to individual schema columns; scalar units live on each
+``ScalarOutput``. Empty scalar units mean unspecified or dimensionless.
 
 Common identities are ``instance:channel`` for acquired/transformed traces and
 scalar quantities, and ``instance.data`` for a state scan/sweep's collected
 table. Keep output keys stable for a configuration and ensure their expressions
-resolve after execution. Declare output units with matching keys.
+resolve after execution. Do not infer local result keys by parsing identifiers.
+
+Supply ``schema=empty_trace`` or a zero-argument ``schema_factory`` to advertise
+complete channels before acquisition. Factories are resolved after the scalar
+catalogue has been built, allowing collected scan/sweep tables to describe
+selected scalar outputs. For example::
+
+   def _iv_schema(self):
+       frame = pd.DataFrame({
+           "x": pd.Series(dtype=float),
+           "V": pd.Series(dtype=float),
+           "R": pd.Series(dtype=float),
+       })
+       return TraceData(
+           frame,
+           column_roles={"x": "x", "V": "y", "R": "z"},
+           names={"x": "Current", "V": "Voltage", "R": "Resistance"},
+           units={"x": "A", "V": "V", "R": "Ω"},
+       )
+
+This example assumes ``import pandas as pd`` and
+``from stoner_measurement.core.trace_data import TraceData``. Declarations
+must use configuration state without hardware access, runtime expression
+evaluation or changes to acquired results. Include optional channels only
+when enabled. Keep declarations consistent with acquisition metadata and
+configured transpose. State scan and sweep bases supply the single collected
+table automatically when collection is enabled.
+
+Configuration selectors prefer these schemas to previous results, then fall
+back to acquired metadata and finally configured x/y labels. Omit both schema
+fields when the columns cannot yet be determined. Configured schemas must be
+empty; consumers receive independent metadata snapshots. The
+engine publishes the schemas separately as ``_trace_schemas``; ``_traces``
+continues to contain runtime access expressions. Schemas are derived rather
+than serialised.
+
+Existing plugins remain supported through the legacy methods:
+
+* ``reported_traces()`` returns trace identifiers mapped to access expressions.
+* ``configured_trace_data()`` returns configured empty tables by trace identifier.
+* ``reported_values()`` returns scalar identifiers mapped to access expressions.
+* ``reported_value_units()`` returns scalar units by identifier.
+
+For migrated plugins these methods are derived compatibility views. The trace
+``trace_names`` property and transform ``output_names``, ``output_trace_names``
+and ``output_value_names`` properties derive from declared result keys.
+``PluginOutputs.result_order`` optionally preserves an interleaved result order.
+New transforms need not implement the old naming properties.
+
+``BasePlugin.declared_outputs()`` returns ``None`` to select legacy adaptation.
+An explicitly empty ``PluginOutputs`` declares no outputs. More-specific legacy
+subclass overrides, including calls to ``super().reported_*()``, remain effective.
+When one class defines both a unified declaration and a legacy method, the
+unified declaration takes precedence during catalogue resolution and a warning
+identifies the conflict. Avoid mixing both declaration styles on the same class.
+Old transform classification defaults remain unchanged for legacy plugins.
+
+Extend a migrated parent's ``super().declared_outputs()`` and update its typed
+mappings. Do not build declarations by calling their own compatibility views.
+Catalogue consumers should use ``resolve_outputs(plugin)`` from
+``stoner_measurement.core.plugin_outputs`` to apply the shared compatibility
+rules, rather than combining hooks independently. The engine resolves each
+plugin once per catalogue rebuild, then materialises schemas and emits updates.
 
 The ``_traces`` and ``_values`` catalogues describe steps in the current
 sequence, not all installed plugin templates. ``engine.traces_catalog`` and
@@ -222,7 +322,7 @@ sequence, not all installed plugin templates. ``engine.traces_catalog`` and
 Use snapshots to populate controls and evaluate the selected expression when
 an action needs current data.
 
-If a setting changes reported outputs or units, call
+If a setting changes reported outputs, configured channels or units, call
 ``self.sequence_engine.refresh_data_catalogs()`` when attached. Consumers
 should use ``bind_trace_catalog_updates`` or ``bind_value_catalog_updates``
 from ``stoner_measurement.plugins.trace_catalog_ui`` to scope updates to a
@@ -247,9 +347,10 @@ Preserve column roles, names and units through transforms. See
 :doc:`trace_data` for constructors and the full data contract.
 
 A transform's ``transform(data)`` returns a mapping with its declared output
-names. Declare ``output_trace_names`` and ``output_value_names`` explicitly
-when mixing tables and scalars. The default treats all output names as scalar
-values; returning a table alone does not publish it as a trace. Use the base
+names. Classify each stored output through a ``TraceOutput`` or ``ScalarOutput``
+with its ``result_key``. Returning a table alone does not publish it as a trace.
+Legacy plugins may still declare ``output_trace_names`` and
+``output_value_names``. Use the base
 ``run`` path so input validation, result storage and completion signals remain
 consistent. Trace selection can evaluate catalogue expressions inside a
 transform with ``required_inputs=[]``; inputs declared there must instead be
@@ -260,6 +361,26 @@ child actions and publish their table as ``instance.data``. Reuse those hooks;
 do not build a second collection table or assume a Save child sees the row
 that will be collected after it. The execution-order example is in
 :doc:`data_workflows`.
+
+Direct ``execute_sequence()`` calls and generated state loops reset iteration
+metadata, honour ``clear_on_start`` and ``clear_filter``, and collect after
+successful child actions when collection is enabled. The measurement flag and
+``collect_filter`` both control collection; children still run at every point.
+
+Monitor subclasses continue to implement ``read()``. The base class wraps
+overrides so direct reads, generated actions and timer polls all cache the
+last successful result and emit ``data_available`` once. Implementations
+should acquire and return readings without updating ``_last_reading`` or
+emitting ``data_available`` themselves. Calling ``super().read()`` does not
+publish an intermediate result. Failed reads retain the last successful cache
+and propagate; timer polling also emits ``read_error``. ``last_reading``
+returns a copy and does not query hardware.
+
+After programmatic configuration edits, call ``refresh()`` to update the scan
+generator, output catalogues and cached widgets. ``full_refresh()`` also
+refreshes member plugins recursively. These operations do not perform
+instrument setup or acquisition. Configuration controls that change only
+published metadata can still call ``engine.refresh_data_catalogs()`` directly.
 
 Configuration UI and persistence
 ---------------------------------
@@ -326,7 +447,9 @@ A complete minimal package
 
 The downloadable :download:`record_value_plugin.py
 <examples/record_value_plugin.py>` demonstrates a lifecycle-free command,
-runtime expressions, a scalar output, a configuration page and persistence.
+runtime expressions, a unified scalar/unit declaration, a configuration page
+and persistence. Its inherited ``reported_values()`` and
+``reported_value_units()`` views still work for legacy consumers.
 Copy it to ``src/my_measurement_extras/record_value.py`` in your package:
 
 .. literalinclude:: examples/record_value_plugin.py
@@ -371,6 +494,17 @@ Before distributing a plugin, verify:
   plugin inside loops/branches and as a one-off selected subtree where valid.
 * Published keys, units, data shapes and failed-result behavior match the
   declared contract. Downstream Plot Points/Plot Trace/Save can consume them.
+* Configured schemas work before acquisition and after changing optional
+  channels, units or transpose. Schema builders return empty tables and do not
+  evaluate result expressions. Refresh updates any already open selectors.
+* Migrated declarations retain existing identifiers and expressions. Legacy
+  callers and subclass overrides, including ``super()`` updates, still work.
+* Direct and generated state execution agree on clearing, collection filters,
+  point metadata and child-action order. Generated Break/Continue still act
+  on the intended loop.
+* Direct, generated and timer-driven monitor reads update ``last_reading``
+  and publish one completed result. Failed reads retain the last successful
+  cache; only timer polling converts the error to ``read_error``.
 * Owned-resource cleanup works after partial setup, failed configuration,
   repeated connection and stop. Borrowed controller sessions remain open.
 * Configuration pages survive selection changes, missing catalogues and

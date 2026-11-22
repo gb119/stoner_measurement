@@ -51,7 +51,16 @@ Make configuration edits while execution is idle. A direct attribute edit can
 affect the next execution without immediately rebuilding its cached widgets.
 Use ``plugin.refresh()`` after edits, ``plugin.full_refresh()`` for that
 container and its descendants, or ``sequence.full_refresh()`` for the tree.
-These refreshes synchronise configuration UI; they do not acquire new data.
+These refreshes synchronise configuration UI and the engine's output catalogues,
+including configured trace channels and units. They do not acquire new data
+or connect to or configure instruments.
+
+``refresh()`` updates existing configuration pages only where their widgets
+provide a refresh hook; it does not rebuild pages or synchronise every raw
+editor automatically. The catalogues are rebuilt before those widgets refresh.
+For output identities, units and configured channel schemas, see
+:doc:`plugin_outputs`. Their legacy dictionary views remain available in the
+console, but catalogue entries can refer to data that have not been acquired.
 
 For the Function Scan Generator in the basic I-V example:
 

@@ -43,6 +43,9 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+)
 from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, COLUMN_ROLE_Z, TraceData
 from stoner_measurement.instruments.current_source import CurrentSource
 from stoner_measurement.instruments.keithley import (
@@ -257,6 +260,10 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
     R becomes differential resistance (or G for conductance), and P is delta
     current times the reduced voltage change. Secondary results use the same
     reduction when enabled.
+
+    Plot and transform channel selectors expose the full configured IV schema
+    before acquisition, including enabled secondary channels and the R/G choice.
+    ``configured_trace_data()`` returns these empty schemas by trace identifier.
 
     **Secondary nanovoltmeter** selects its driver, GPIB resource, result
     prefix, parallel/daisy-chain triggering and driver-supported integration,
@@ -529,59 +536,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         """
         return "V"
 
-    @property
-    def trace_names(self) -> list[str]:
-        """Name of the single multicolumn measurement channel.
-
-        Returns:
-            (list[str]):
-                ``["IV"]``.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> Keithley6221_2182APlugin().trace_names
-            ['IV']
-        """
-        return ["IV"]
-
-    def reported_values(self) -> dict[str, str]:
-        """Return mean/std outputs for each derived IV trace column."""
-        if not self._report_channel_statistics:
-            return {}
-
-        var = self.instance_name
-        values: dict[str, str] = {}
-        response_column = "G" if self._differential_mode and self._differential_conductance else "R"
-        columns = ["V", response_column, "P"]
-        if self._secondary_enabled:
-            columns.extend(self._secondary_column_names())
-        for column in columns:
-            key = f"IV {column}"
-            values[f"{var}:{key} mean"] = f"{var}.get_channel_statistic({key!r}, 'mean')"
-            values[f"{var}:{key} std"] = f"{var}.get_channel_statistic({key!r}, 'std')"
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return the source-channel units for each derived IV statistic."""
-        if not self._report_channel_statistics:
-            return {}
-
-        response_column = "G" if self._differential_mode and self._differential_conductance else "R"
-        response_unit = "S" if response_column == "G" else "Ω"
-        column_units = {"V": self.y_units, response_column: response_unit, "P": "W"}
-        if self._secondary_enabled:
-            secondary_columns = self._secondary_column_names(response_name=response_column)
-            column_units.update(
-                dict(zip(secondary_columns, (self.y_units, response_unit, "W"), strict=True))
-            )
-
-        var = self.instance_name
-        return {
-            f"{var}:IV {column} {statistic}": unit
-            for column, unit in column_units.items()
-            for statistic in ("mean", "std")
-        }
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare IV channels, schemas and optional column statistics together."""
+        return self._declare_column_trace_outputs("IV", self._build_iv_trace)
 
     def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
         """Acquire the sweep and return a single multicolumn ``"IV"`` trace.
@@ -627,7 +584,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             v_arr = np.array([], dtype=float)
 
         response_name = "R"
-        response_unit = "Ω"
         if self._differential_mode:
             if self._nominal_sweep_values is None:
                 raise RuntimeError("Differential sweep completed without nominal scan values.")
@@ -643,7 +599,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             p_arr = reduced.power
             if self._differential_conductance:
                 response_name = "G"
-                response_unit = "S"
         else:
             with np.errstate(invalid="ignore", divide="ignore"):
                 r_arr = np.where(
@@ -659,24 +614,6 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             response_name: r_arr,
             "P": p_arr,
         }
-        column_roles = {
-            "V": COLUMN_ROLE_Y,
-            response_name: COLUMN_ROLE_Z,
-            "P": COLUMN_ROLE_Z,
-        }
-        names = {
-            "x": self.x_label,
-            "V": "V",
-            response_name: response_name,
-            "P": "P",
-        }
-        units = {
-            "x": self.x_units,
-            "V": self.y_units,
-            response_name: response_unit,
-            "P": "W",
-        }
-
         if self._secondary_enabled:
             secondary = np.asarray(self._secondary_voltages or (), dtype=float)
             expected_secondary = (
@@ -708,20 +645,51 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
                     )
                 secondary_p = i_arr * secondary
             secondary_names = self._secondary_column_names(response_name=response_name)
-            for column, values, unit, role in zip(
+            for column, values in zip(
                 secondary_names,
                 (secondary, secondary_r, secondary_p),
+                strict=True,
+            ):
+                columns[column] = values
+
+        return {"IV": self._build_iv_trace(columns)}
+
+    def _build_iv_trace(self, columns: dict[str, np.ndarray] | None = None) -> TraceData:
+        """Build acquired or empty IV data using the same configured metadata."""
+        response_name = "G" if self._differential_mode and self._differential_conductance else "R"
+        response_unit = "S" if response_name == "G" else "Ω"
+        column_roles = {
+            "V": COLUMN_ROLE_Y,
+            response_name: COLUMN_ROLE_Z,
+            "P": COLUMN_ROLE_Z,
+        }
+        names = {
+            "x": self.x_label,
+            "V": "V",
+            response_name: response_name,
+            "P": "P",
+        }
+        units = {
+            "x": self.x_units,
+            "V": self.y_units,
+            response_name: response_unit,
+            "P": "W",
+        }
+        if self._secondary_enabled:
+            for column, unit, role in zip(
+                self._secondary_column_names(response_name=response_name),
                 (self.y_units, response_unit, "W"),
                 (COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_Z),
                 strict=True,
             ):
-                columns[column] = values
                 column_roles[column] = role
                 names[column] = column
                 units[column] = unit
-
-        df = pd.DataFrame(columns)
-        return {"IV": TraceData(df=df, column_roles=column_roles, names=names, units=units)}
+        if columns is None:
+            columns = {column: np.array([], dtype=float) for column in names}
+        return TraceData(
+            df=pd.DataFrame(columns), column_roles=column_roles, names=names, units=units
+        )
 
     def _secondary_column_names(self, *, response_name: str | None = None) -> tuple[str, str, str]:
         """Return prefixed voltage, resistance, and power column names."""
@@ -1663,6 +1631,8 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
         differential_conductance.toggled.connect(
             lambda enabled: setattr(self, "_differential_conductance", enabled)
         )
+        differential_enabled.toggled.connect(self._refresh_trace_catalog)
+        differential_conductance.toggled.connect(self._refresh_trace_catalog)
         delta_current.valueChanged.connect(lambda value: setattr(self, "_delta_current", value))
 
         src_form.addRow(compliance_group)
@@ -2203,11 +2173,13 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             relative_value.setEnabled(state)
 
         enabled.toggled.connect(toggle_secondary)
+        enabled.toggled.connect(self._refresh_trace_catalog)
         driver_combo.currentIndexChanged.connect(set_driver)
         resource.currentTextChanged.connect(
             lambda text: setattr(self, "_secondary_resource", text.strip())
         )
         prefix.textChanged.connect(lambda text: setattr(self, "_secondary_prefix", text.strip()))
+        prefix.textChanged.connect(self._refresh_trace_catalog)
         trigger_mode.currentIndexChanged.connect(
             lambda index: setattr(self, "_secondary_trigger_mode", trigger_mode.itemData(index))
         )
@@ -2316,6 +2288,9 @@ class Keithley6221_2182APlugin(TracePlugin):  # pylint: disable=invalid-name
             "&rarr; secondary meter &rarr; 6221. Daisy-chain timing includes both "
             "conversions; parallel configuration warns when the secondary conversion "
             "may overrun the next trigger.</p>"
+            "<p>Plot and transform channel selectors offer the full configured "
+            "IV schema before acquisition, including enabled secondary channels "
+            "and differential resistance or conductance.</p>"
             "<h4>Connection modes</h4>"
             "<dl>"
             "<dt><code>Via 6221 serial port</code></dt>"

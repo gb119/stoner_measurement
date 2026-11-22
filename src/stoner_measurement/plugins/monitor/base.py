@@ -10,12 +10,39 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Callable
+from functools import wraps
+from threading import local
 
 from qtpy.QtCore import QObject, QTimer
 from qtpy.QtWidgets import QWidget
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    ScalarOutput,
+)
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta
 from stoner_measurement.qt_compat import pyqtSignal
+
+
+def _cached_monitor_read(method: Callable) -> Callable:
+    """Cache and publish the outermost successful call to a monitor read hook."""
+
+    @wraps(method)
+    def read(self, *args, **kwargs):
+        context = self._monitor_read_context
+        depth = getattr(context, "depth", 0)
+        context.depth = depth + 1
+        try:
+            reading = method(self, *args, **kwargs)
+        finally:
+            context.depth = depth
+        if depth == 0:
+            self._last_reading = dict(reading)
+            self.data_available.emit(dict(reading))
+        return reading
+
+    read._monitor_cached_read = True
+    return read
 
 
 class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
@@ -43,7 +70,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             Emitted with a descriptive message if :meth:`read` raises an
             exception during polling.
         _last_reading (dict[str, float]):
-            Internal cache updated after each successful poll; exposed
+            Internal cache updated after each successful read; exposed
             read-only via the :attr:`last_reading` property.
 
     Keyword Parameters:
@@ -78,12 +105,20 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     instance_name_changed = pyqtSignal(str, str)
     comment_changed = pyqtSignal(str, str)
 
+    def __init_subclass__(cls, **kwargs) -> None:
+        """Wrap existing read implementations with shared caching and publication."""
+        super().__init_subclass__(**kwargs)
+        method = getattr(cls, "read", None)
+        if callable(method) and not getattr(method, "_monitor_cached_read", False):
+            cls.read = _cached_monitor_read(method)
+
     def __init__(self, parent: QObject | None = None) -> None:
         """Initialise the Qt object hierarchy and the internal polling timer."""
         super().__init__(parent)
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._poll)
         self._last_reading: dict[str, float] = {}
+        self._monitor_read_context = local()
 
     def _on_instance_name_changed(self, old_name: str, new_name: str) -> None:
         """Emit :attr:`instance_name_changed` when the instance name changes."""
@@ -141,6 +176,12 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     @abstractmethod
     def read(self) -> dict[str, float]:
         """Perform a single synchronous hardware read and return the results.
+
+        Subclasses implement acquisition only. The base class wraps overrides
+        to cache a copy and emit ``data_available`` once after a successful
+        outermost read. Direct, timer and generated calls share this behaviour.
+        Failed reads propagate without replacing the last successful reading;
+        the polling callback additionally emits ``read_error``.
 
         Returns:
             (dict[str, float]):
@@ -263,7 +304,6 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             >>> m.last_reading
             {}
             >>> _ = m.read()
-            >>> m._last_reading = {"v": 7.0}
             >>> m.last_reading
             {'v': 7.0}
         """
@@ -272,9 +312,7 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
     def _poll(self) -> None:
         """Timer callback: call :meth:`read` and emit the appropriate signal."""
         try:
-            reading = self.read()
-            self._last_reading = reading
-            self.data_available.emit(reading)
+            self.read()
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self.read_error.emit(str(exc))
 
@@ -322,42 +360,14 @@ class MonitorPlugin(QObject, BasePlugin, metaclass=_ABCQObjectMeta):
             "",
         ]
 
-    def reported_values(self) -> dict[str, str]:
-        """Return a mapping of quantity names to Python expressions for accessing monitor readings.
-
-        Each entry corresponds to one quantity polled by this plugin.  The key is
-        ``"{instance_name}:{quantity_name}"`` (a human-readable identifier) and the value
-        is the Python expression ``"{instance_name}.last_reading['{quantity_name}']"`` that
-        retrieves the most recently cached scalar reading for that quantity.
-
-        Returns:
-            (dict[str, str]):
-                Mapping of ``"{instance_name}:{quantity_name}"`` → expression for each
-                name in :attr:`quantity_names`.
-
-        Examples:
-            >>> from qtpy.QtWidgets import QApplication
-            >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.monitor import MonitorPlugin
-            >>> class _M(MonitorPlugin):
-            ...     @property
-            ...     def name(self): return "Temp"
-            ...     @property
-            ...     def quantity_names(self): return ["temperature", "pressure"]
-            ...     @property
-            ...     def units(self): return {"temperature": "K", "pressure": "Pa"}
-            ...     def read(self): return {"temperature": 300.0, "pressure": 1e5}
-            >>> m = _M()
-            >>> vals = m.reported_values()
-            >>> list(vals.keys())
-            ['temp:temperature', 'temp:pressure']
-            >>> vals['temp:temperature']
-            "temp.last_reading['temperature']"
-        """
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare monitor readings with their configured physical units."""
         var = self.instance_name
-        return {f"{var}:{qty}": f"{var}.last_reading['{qty}']" for qty in self.quantity_names}
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return the configured physical unit for every monitored quantity."""
-        var = self.instance_name
-        return {f"{var}:{qty}": self.units.get(qty, "") for qty in self.quantity_names}
+        return PluginOutputs(
+            values={
+                f"{var}:{quantity}": ScalarOutput(
+                    f"{var}.last_reading[{quantity!r}]", self.units.get(quantity, "")
+                )
+                for quantity in self.quantity_names
+            }
+        )

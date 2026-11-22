@@ -7,6 +7,7 @@ from typing import Any
 
 from qtpy.QtWidgets import QCheckBox, QComboBox, QFormLayout, QSpinBox, QVBoxLayout, QWidget
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.core.validation import ValidationError, validate_expression
 from stoner_measurement.instruments.electrometer import ElectrometerFunction
 from stoner_measurement.instruments.keithley import Keithley6485, Keithley6514, Keithley6517
@@ -22,8 +23,17 @@ _NUMERIC_SETTINGS = {
     "timeout": (0.01, 86400.0),
 }
 _SAVED_SETTINGS = (
-    "driver", "resource", "function", "autorange", "input_range", "nplc",
-    "filter_enabled", "filter_count", "zero_check", "trigger_delay", "timeout",
+    "driver",
+    "resource",
+    "function",
+    "autorange",
+    "input_range",
+    "nplc",
+    "filter_enabled",
+    "filter_count",
+    "zero_check",
+    "trigger_delay",
+    "timeout",
 )
 
 
@@ -202,9 +212,12 @@ class ReadElectrometerCommand(CommandPlugin):
         self._meter.transport.timeout = numeric["timeout"]
         self._meter.reset()
         self._meter.configure_input(
-            ElectrometerFunction(self.function), autorange=self.autorange,
-            input_range=numeric["input_range"], nplc=numeric["nplc"],
-            filter_enabled=self.filter_enabled, filter_count=self.filter_count,
+            ElectrometerFunction(self.function),
+            autorange=self.autorange,
+            input_range=numeric["input_range"],
+            nplc=numeric["nplc"],
+            filter_enabled=self.filter_enabled,
+            filter_count=self.filter_count,
             zero_check=self.zero_check,
         )
         self._meter.prepare_single_reading(trigger_delay=numeric["trigger_delay"])
@@ -216,7 +229,9 @@ class ReadElectrometerCommand(CommandPlugin):
         if self._meter is None:
             raise RuntimeError("Electrometer is not connected; run sequence setup first.")
         if self._configured_function != self.function or self._connected_driver != self.driver:
-            raise RuntimeError("Electrometer is not configured for this function; reconfigure it first.")
+            raise RuntimeError(
+                "Electrometer is not configured for this function; reconfigure it first."
+            )
         self.value = float(self._meter.read_measurement())
 
     def disconnect(self) -> None:
@@ -230,15 +245,11 @@ class ReadElectrometerCommand(CommandPlugin):
             finally:
                 meter.disconnect()
 
-    def reported_values(self) -> dict[str, str]:
-        """Publish the selected measurement as a scalar value."""
-        label, _ = FUNCTION_CHANNELS[ElectrometerFunction(self.function)]
-        return {f"{self.instance_name}:{label}": f"{self.instance_name}.value"}
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return the selected measurement's SI unit."""
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
+        var = self.instance_name
         label, unit = FUNCTION_CHANNELS[ElectrometerFunction(self.function)]
-        return {f"{self.instance_name}:{label}": unit}
+        return PluginOutputs(values={f"{var}:{label}": ScalarOutput(f"{var}.value", unit)})
 
     def to_json(self) -> dict[str, Any]:
         """Persist editable settings without connections or acquired readings."""

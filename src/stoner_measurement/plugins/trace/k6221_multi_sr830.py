@@ -31,6 +31,12 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    ScalarOutput,
+    TraceOutput,
+    trace_outputs,
+)
 from stoner_measurement.core.trace_data import COLUMN_ROLE_Y, TraceData
 from stoner_measurement.instruments.current_source import CurrentWaveform
 from stoner_measurement.instruments.keithley.k6221 import Keithley6221
@@ -403,6 +409,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     and selected outputs. Resistance conversion adds derived columns for
     non-angular outputs.
 
+    Channel selectors expose these configured columns before acquisition.
+    ``configured_trace_data()`` returns an empty Signals schema by trace
+    identifier, reflecting lock-in labels, selected outputs and derived channels.
+
     The runtime lifecycle follows a persistent-output model: :meth:`configure`
     leaves the 6221 output enabled, each :meth:`measure` reuses that configured
     source state to acquire a fresh scan, and :meth:`disconnect` turns the
@@ -560,47 +570,38 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             return "V"
         return _output_unit(self._lockin_entries[0], self._lockin_entries[0].outputs[0])
 
-    @property
-    def trace_names(self) -> list[str]:
-        """Return the single shared-x trace dataset name."""
-        return [_TRACE_NAME]
-
-    def reported_values(self) -> dict[str, str]:
-        """Return configured 6221 values and averaged outputs from every lock-in.
-
-        Lock-in catalogue names use ``instance.label.output`` so that every
-        selected output remains independently addressable even though the
-        acquired data is stored in one shared multicolumn trace. Derived
-        resistance means append ``.resistance`` to the corresponding output name.
-        """
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare lock-in traces and source/statistic scalars with their units."""
+        outputs = trace_outputs(self, [_TRACE_NAME])
+        key = f"{self.instance_name}:{_TRACE_NAME}"
+        if key in outputs.traces:
+            outputs.traces[key] = TraceOutput(
+                outputs.traces[key].expression,
+                result_key=_TRACE_NAME,
+                schema_factory=self._configured_signals_schema,
+            )
         var = self.instance_name
-        values = {
-            f"{var}.K6221.offset": f"{var}._waveform_offset",
-            f"{var}.K6221.amplitude": f"{var}._waveform_amplitude",
-            f"{var}.K6221.frequency": f"{var}._waveform_frequency",
-        }
-        if not self._report_channel_statistics:
-            return values
+        for name, attribute, unit in (
+            ("offset", "_waveform_offset", "A"),
+            ("amplitude", "_waveform_amplitude", "A"),
+            ("frequency", "_waveform_frequency", "Hz"),
+        ):
+            outputs.values[f"{var}.K6221.{name}"] = ScalarOutput(f"{var}.{attribute}", unit)
+        if self._report_channel_statistics:
+            for name, spec in self._reported_channel_specs():
+                statistic_key = f"{_TRACE_NAME} {spec.name}"
+                outputs.values[name] = ScalarOutput(
+                    f"{var}.get_channel_statistic({statistic_key!r}, 'mean')", spec.unit
+                )
+        return outputs
 
-        for name, spec in self._reported_channel_specs():
-            statistic_key = f"{_TRACE_NAME} {spec.name}"
-            values[name] = f"{var}.get_channel_statistic({statistic_key!r}, 'mean')"
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return units for source settings and averaged lock-in outputs."""
-        var = self.instance_name
-        units = {
-            f"{var}.K6221.offset": "A",
-            f"{var}.K6221.amplitude": "A",
-            f"{var}.K6221.frequency": "Hz",
-        }
-        if not self._report_channel_statistics:
-            return units
-
-        for name, spec in self._reported_channel_specs():
-            units[name] = spec.unit
-        return units
+    def _configured_signals_schema(self) -> TraceData:
+        """Build the empty Signals table using the acquisition metadata builder."""
+        specs = self._channel_specs()
+        data = self._build_signal_trace(
+            np.array([], dtype=float), {spec.name: () for spec in specs}, specs
+        )
+        return self._configured_trace_outputs(data)[f"{self.instance_name}:{_TRACE_NAME}"]
 
     def _reported_channel_specs(self) -> list[tuple[str, ChannelSpec]]:
         """Pair scalar output names with the channels actually acquired."""
@@ -622,6 +623,10 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
     def _measure(self, parameters: dict[str, Any]) -> dict[str, TraceData]:
         """Acquire all lock-in outputs once as one shared-x multicolumn trace."""
         x_values, channel_values, specs = self._acquire_trace(parameters)
+        return self._build_signal_trace(x_values, channel_values, specs)
+
+    def _build_signal_trace(self, x_values, channel_values, specs) -> dict[str, TraceData]:
+        """Build empty or acquired channels with identical roles, names and units."""
         frame = pd.DataFrame({"x": np.asarray(x_values, dtype=float)})
         roles: dict[str, str] = {}
         names = {"x": self.x_label}
@@ -1327,6 +1332,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         resistance_enabled.toggled.connect(
             lambda checked: setattr(self, "_resistance_enabled", bool(checked))
         )
+        resistance_enabled.toggled.connect(self._refresh_trace_catalog)
 
         derived_form.addRow(resistance_enabled)
         sc_layout.addWidget(derived_group)
@@ -1392,6 +1398,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
                 label_edit.textChanged.connect(
                     lambda text, *, idx=col: setattr(self._lockin_entries[idx], "label", text)
                 )
+                label_edit.textChanged.connect(self._refresh_trace_catalog)
                 label_edits[col] = label_edit
                 lockins_table.setCellWidget(_ROW_LABEL, col, label_edit)
 
@@ -1545,6 +1552,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
             remove_button.setEnabled(len(self._lockin_entries) > 1)
             lockins_table.blockSignals(False)
             update_selected_label_styles()
+            self._refresh_trace_catalog()
 
         add_button.clicked.connect(lambda: self._add_lockin_entry(_refresh_lockin_table))
         remove_button.clicked.connect(
@@ -1588,6 +1596,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         if isinstance(mode, WaveformScanMode):
             self._scan_mode = mode
         self._apply_scan_units()
+        self._refresh_trace_catalog()
 
     def _populate_lockin_input_controls(
         self, table: QTableWidget, column: int, entry: LockInEntry, refresh: Callable[[], None]
@@ -1749,6 +1758,7 @@ class Keithley6221_MultiSR830Plugin(TracePlugin):  # pylint: disable=invalid-nam
         )
         offset_widget.setEnabled(supports_offset)
         expand_widget.setEnabled(supports_offset)
+        self._refresh_trace_catalog()
 
     def _set_lockin_offset(self, index: int, value: float) -> None:
         """Store a manual output offset and enable compensation when needed."""

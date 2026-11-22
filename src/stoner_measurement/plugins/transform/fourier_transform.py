@@ -13,6 +13,10 @@ import numpy as np
 import pandas as pd
 from qtpy.QtWidgets import QComboBox, QFormLayout, QWidget
 
+from stoner_measurement.core.plugin_outputs import (
+    PluginOutputs,
+    transform_outputs,
+)
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
@@ -126,36 +130,9 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         """
         return []
 
-    @property
-    def output_names(self) -> list[str]:
-        """Return all plugin output names.
-
-        Returns:
-            (list[str]):
-                List containing the output trace key ``"fft"``.
-        """
-        return [_OUTPUT_TRACE_KEY]
-
-    @property
-    def output_trace_names(self) -> list[str]:
-        """Return the trace outputs produced by this plugin.
-
-        Returns:
-            (list[str]):
-                List containing the output trace key ``"fft"``.
-        """
-        return [_OUTPUT_TRACE_KEY]
-
-    @property
-    def output_value_names(self) -> list[str]:
-        """Return scalar output names produced by this plugin.
-
-        Returns:
-            (list[str]):
-                An empty list because this plugin does not report scalar
-                outputs.
-        """
-        return []
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare typed transform results without repeating output names."""
+        return transform_outputs(self, [_OUTPUT_TRACE_KEY], [])
 
     def transform(self, data: dict[str, Any]) -> dict[str, Any]:
         """Return Fourier-domain or time-domain data for the selected trace.
@@ -233,7 +210,9 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
             )
         }
 
-    def _forward_transform(self, x_uniform: np.ndarray, y_uniform: np.ndarray) -> tuple[np.ndarray, np.ndarray, str]:
+    def _forward_transform(
+        self, x_uniform: np.ndarray, y_uniform: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, str]:
         """Compute a shifted forward FFT on a uniform grid.
 
         Args:
@@ -253,9 +232,15 @@ class FourierTransformPlugin(TraceChannelSelectionMixin, TransformPlugin):
         delta = _mean_spacing(x_uniform)
         spectrum = np.fft.fft(y_uniform)
         frequencies = np.fft.fftfreq(len(y_uniform), d=delta)
-        return np.fft.fftshift(frequencies), np.fft.fftshift(spectrum), _reciprocal_unit(self._x_unit())
+        return (
+            np.fft.fftshift(frequencies),
+            np.fft.fftshift(spectrum),
+            _reciprocal_unit(self._x_unit()),
+        )
 
-    def _inverse_transform(self, x_uniform: np.ndarray, y_uniform: np.ndarray) -> tuple[np.ndarray, np.ndarray, str]:
+    def _inverse_transform(
+        self, x_uniform: np.ndarray, y_uniform: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, str]:
         """Compute an inverse FFT from shifted frequency-domain input data.
 
         Args:
@@ -435,7 +420,9 @@ def _resample_uniform(x_arr: np.ndarray, y_arr: np.ndarray) -> tuple[np.ndarray,
 
 def _interp_complex(x_uniform: np.ndarray, x_arr: np.ndarray, values: np.ndarray) -> np.ndarray:
     """Interpolate complex-valued data by interpolating real and imaginary parts."""
-    return np.interp(x_uniform, x_arr, np.real(values)) + 1j * np.interp(x_uniform, x_arr, np.imag(values))
+    return np.interp(x_uniform, x_arr, np.real(values)) + 1j * np.interp(
+        x_uniform, x_arr, np.imag(values)
+    )
 
 
 def _mean_spacing(x_arr: np.ndarray) -> float:

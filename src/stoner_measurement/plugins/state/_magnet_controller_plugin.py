@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from qtpy.QtWidgets import QCheckBox, QFormLayout, QHBoxLayout, QVBoxLayout, QWidget
 
+from stoner_measurement.core.plugin_outputs import PluginOutputs, ScalarOutput
 from stoner_measurement.magnet_control.engine import MagnetControllerEngine
 from stoner_measurement.ui.widgets import SISpinBox
 
@@ -162,26 +163,19 @@ class MagnetControllerPluginMixin:
             return math.nan
         return float(state.reading.voltage)
 
-    def reported_values(self) -> dict[str, str]:
-        values = super().reported_values()
+    def declared_outputs(self) -> PluginOutputs:
+        """Declare configured outputs and their physical units together."""
+        outputs = super().declared_outputs()
         selected = _OUTPUT_OPTIONS if self.report_outputs is None else tuple(self.report_outputs)
         var = self.instance_name
-        if "field" in selected:
-            values[f"{var}:Field"] = f"{var}.field"
-        if "current" in selected:
-            values[f"{var}:Current"] = f"{var}.current"
-        if "voltage" in selected:
-            values[f"{var}:Voltage"] = f"{var}.voltage"
-        return values
-
-    def reported_value_units(self) -> dict[str, str]:
-        """Return units for the scan value and optional measured outputs."""
-        units = super().reported_value_units()
-        var = self.instance_name
-        units.update(
-            {f"{var}:Field": "T", f"{var}:Current": "A", f"{var}:Voltage": "V"}
-        )
-        return units
+        for option, label, attribute, unit in [
+            ("field", "Field", "field", "T"),
+            ("current", "Current", "current", "A"),
+            ("voltage", "Voltage", "voltage", "V"),
+        ]:
+            if option in selected:
+                outputs.values[f"{var}:{label}"] = ScalarOutput(f"{var}.{attribute}", unit)
+        return outputs
 
     def _magnet_settings_to_json(self) -> dict[str, object]:
         return {
@@ -221,7 +215,9 @@ class _MagnetControllerSettingsWidget(QWidget):
         )
         form.addRow("Ramp rate:", self._ramp_rate_spin)
         outputs_row = QHBoxLayout()
-        selected = set(_OUTPUT_OPTIONS if self._plugin.report_outputs is None else self._plugin.report_outputs)
+        selected = set(
+            _OUTPUT_OPTIONS if self._plugin.report_outputs is None else self._plugin.report_outputs
+        )
         for name in _OUTPUT_OPTIONS:
             check = QCheckBox(name.title(), self)
             check.setChecked(name in selected)
