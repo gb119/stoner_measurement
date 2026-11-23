@@ -14,6 +14,8 @@ build:
   script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
   entry_points:
     - stoner-measurement = stoner_measurement.main:main
+    - stoner-measurement-install-menu = stoner_measurement.desktop_integration:main
+    - stoner-measurement-round-dial-demo = stoner_measurement.round_dial_demo:main
 
 requirements:
   host:
