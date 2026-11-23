@@ -29,6 +29,12 @@ class _ConstMonitor(MonitorPlugin):
         return {"temperature": 300.0, "pressure": 101325.0}
 
 
+def _run_generated_read(engine, monitor):
+    engine.add_plugin(monitor.instance_name, monitor)
+    source = "\n".join(monitor.generate_action_code(0, [], lambda *_: []))
+    engine.run_script(source)
+
+
 class TestMonitorPlugin:
     def test_plugin_type(self, qapp):
         assert _ConstMonitor().plugin_type == "monitor"
@@ -113,7 +119,7 @@ class TestMonitorPlugin:
 
 
 @pytest.mark.parametrize("path", ["direct", "poll", "generated"])
-def test_all_read_paths_cache_and_emit_once(qapp, path):
+def test_all_read_paths_cache_and_emit_once(engine, qtbot, path):
     monitor = _ConstMonitor()
     received = []
     monitor.data_available.connect(received.append)
@@ -123,10 +129,9 @@ def test_all_read_paths_cache_and_emit_once(qapp, path):
         monitor._poll()
         reading = received[0]
     else:
-        namespace = {monitor.instance_name: monitor}
-        source = "\n".join(monitor.generate_action_code(0, [], lambda *_: []))
-        exec(compile(source, "<monitor action>", "exec"), namespace)
-        reading = namespace["data"]
+        with qtbot.waitSignal(engine.script_finished, timeout=5000):
+            _run_generated_read(engine, monitor)
+        reading = engine.namespace["data"]
     assert received == [reading]
     assert monitor.last_reading == reading
     reading["temperature"] = -1
@@ -150,7 +155,7 @@ def test_inherited_read_caches_outer_result_and_preserves_keyword_arguments(qapp
 
 
 @pytest.mark.parametrize("path", ["direct", "poll", "generated"])
-def test_failed_read_keeps_last_success_and_does_not_publish(qapp, path):
+def test_failed_read_keeps_last_success_and_does_not_publish(engine, qtbot, path):
     class _FailingMonitor(_ConstMonitor):
         failed = False
 
@@ -170,13 +175,14 @@ def test_failed_read_keeps_last_success_and_does_not_publish(qapp, path):
     if path == "poll":
         monitor._poll()
         assert errors == ["read failed"]
-    else:
+    elif path == "direct":
         with pytest.raises(RuntimeError, match="read failed"):
-            if path == "direct":
-                monitor.read()
-            else:
-                source = "\n".join(monitor.generate_action_code(0, [], lambda *_: []))
-                exec(compile(source, "<monitor action>", "exec"), {monitor.instance_name: monitor})
+            monitor.read()
+        assert errors == []
+    else:
+        with qtbot.waitSignal(engine.error_output, timeout=5000) as failure:
+            _run_generated_read(engine, monitor)
+        assert "RuntimeError: read failed" in failure.args[0]
         assert errors == []
     assert monitor.last_reading == expected
     assert received == []
