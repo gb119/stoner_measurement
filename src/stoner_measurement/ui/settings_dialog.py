@@ -98,7 +98,6 @@ class SettingsDialog(QDialog):
         self._toolbar_cfg = load_toolbar_config()
         self._plugin_catalogue_cfg = load_plugin_catalogue_config()
         self._available_plugins = dict(available_plugins or {})
-        self._plugin_catalogue_dirty = False
         self._feature_checkboxes: dict[str, QCheckBox] = {}
         app_config = load_app_config()
 
@@ -107,12 +106,13 @@ class SettingsDialog(QDialog):
         tabs.addTab(self._build_features_tab(app_config), "Features")
         tabs.addTab(self._build_toolbar_tab(app_config), "Toolbar")
         tabs.addTab(self._build_plugin_catalogue_tab(), "Plugin List")
+        self._saved_toolbar_rows = self._toolbar_rows_from_ui()
 
         button_box = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
             self,
         )
-        button_box.accepted.connect(self._on_accept)
+        button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
@@ -121,6 +121,47 @@ class SettingsDialog(QDialog):
         layout.addWidget(tabs)
         layout.addWidget(button_box)
         self.setLayout(layout)
+
+    def done(self, result: int) -> None:
+        """Confirm pending list edits before accepting or rejecting the dialogue."""
+        # Losing focus commits any active table or tree cell editor.
+        editor = self.focusWidget()
+        if editor is not None:
+            editor.clearFocus()
+        if not self._confirm_list_changes():
+            return
+        if result == QDialog.DialogCode.Accepted:
+            self._save_app_settings()
+        super().done(result)
+
+    def _confirm_list_changes(self) -> bool:
+        """Offer to save the changed lists and keep the dialogue open on cancellation."""
+        toolbar_changed = self._toolbar_rows_from_ui() != self._saved_toolbar_rows
+        catalogue_changed = self._collect_plugin_catalogue_from_ui() != self._plugin_catalogue_cfg
+        changed_lists = [
+            name
+            for changed, name in ((toolbar_changed, "Toolbar"), (catalogue_changed, "Plugin List"))
+            if changed
+        ]
+        if not changed_lists:
+            return True
+
+        reply = QMessageBox.warning(
+            self,
+            "Unsaved Preferences",
+            f"Unsaved changes in {' and '.join(changed_lists)}. Save before closing?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if reply == QMessageBox.StandardButton.Discard:
+            return True
+        if reply != QMessageBox.StandardButton.Save:
+            return False
+        if toolbar_changed and not self._save_toolbar_from_ui(show_message=False):
+            return False
+        return not catalogue_changed or self._save_plugin_catalogue_from_ui(show_message=False)
 
     def _build_general_tab(self, app_config: dict) -> QWidget:
         tab = QWidget(self)
@@ -284,7 +325,7 @@ class SettingsDialog(QDialog):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._populate_plugin_catalogue_tree()
         self._plugin_catalogue_tree.itemChanged.connect(
-            lambda *_args: self._mark_plugin_catalogue_dirty()
+            lambda *_args: self._refresh_catalogue_plugin_combo()
         )
         layout.addWidget(self._plugin_catalogue_tree)
 
@@ -399,11 +440,6 @@ class SettingsDialog(QDialog):
             if index >= 0:
                 self._plugin_catalogue_combo.setCurrentIndex(index)
 
-    def _mark_plugin_catalogue_dirty(self) -> None:
-        """Record that the plugin-list configuration has changed."""
-        self._plugin_catalogue_dirty = True
-        self._refresh_catalogue_plugin_combo()
-
     def _add_catalogue_group(self) -> None:
         """Insert a new group immediately after the selected node."""
         existing: set[str] = set()
@@ -434,7 +470,7 @@ class SettingsDialog(QDialog):
                 parent.setExpanded(True)
         self._plugin_catalogue_tree.setCurrentItem(item)
         self._plugin_catalogue_tree.editItem(item, 0)
-        self._mark_plugin_catalogue_dirty()
+        self._refresh_catalogue_plugin_combo()
 
     def _selected_catalogue_group(self) -> QTreeWidgetItem | None:
         """Return the selected item as a group, or its parent group."""
@@ -466,7 +502,7 @@ class SettingsDialog(QDialog):
         group.addChild(child)
         group.setExpanded(True)
         self._plugin_catalogue_tree.setCurrentItem(child)
-        self._mark_plugin_catalogue_dirty()
+        self._refresh_catalogue_plugin_combo()
 
     def _remove_catalogue_item(self) -> None:
         """Remove the selected plugin or functional group."""
@@ -480,7 +516,7 @@ class SettingsDialog(QDialog):
             )
         else:
             parent.takeChild(parent.indexOfChild(selected))
-        self._mark_plugin_catalogue_dirty()
+        self._refresh_catalogue_plugin_combo()
 
     def _move_catalogue_item(self, offset: int) -> None:
         """Move the selected group or plugin one position up or down."""
@@ -497,7 +533,7 @@ class SettingsDialog(QDialog):
         parent.insertChild(target, item)
         item.setExpanded(was_expanded)
         self._plugin_catalogue_tree.setCurrentItem(item)
-        self._mark_plugin_catalogue_dirty()
+        self._refresh_catalogue_plugin_combo()
 
     def _move_catalogue_item_in(self) -> None:
         """Make the selected node the last child of its preceding sibling group."""
@@ -518,7 +554,7 @@ class SettingsDialog(QDialog):
         item.setExpanded(was_expanded)
         preceding.setExpanded(True)
         self._plugin_catalogue_tree.setCurrentItem(item)
-        self._mark_plugin_catalogue_dirty()
+        self._refresh_catalogue_plugin_combo()
 
     def _move_catalogue_item_out(self) -> None:
         """Promote the selected node to immediately after its parent group."""
@@ -536,7 +572,7 @@ class SettingsDialog(QDialog):
         grandparent.insertChild(parent_index + 1, item)
         item.setExpanded(was_expanded)
         self._plugin_catalogue_tree.setCurrentItem(item)
-        self._mark_plugin_catalogue_dirty()
+        self._refresh_catalogue_plugin_combo()
 
     def _collect_plugin_catalogue_from_ui(self) -> dict:
         """Build an ordered plugin-list configuration from the editor."""
@@ -559,12 +595,15 @@ class SettingsDialog(QDialog):
 
         return {"items": collect(self._plugin_catalogue_tree.invisibleRootItem())}
 
-    def _save_plugin_catalogue_from_ui(self, *, show_message: bool = True) -> None:
-        """Save functional plugin groups as a user YAML override."""
+    def _save_plugin_catalogue_from_ui(self, *, show_message: bool = True) -> bool:
+        """Save functional plugin groups as a user YAML override and report success."""
         config = self._collect_plugin_catalogue_from_ui()
-        path = save_plugin_catalogue_config(config)
+        try:
+            path = save_plugin_catalogue_config(config)
+        except OSError as exc:
+            QMessageBox.critical(self, "Save Plugin List", f"Could not save the plugin list:\n{exc}")
+            return False
         self._plugin_catalogue_cfg = config
-        self._plugin_catalogue_dirty = False
         self.plugin_catalogue_saved = True
         if show_message:
             QMessageBox.information(
@@ -572,6 +611,7 @@ class SettingsDialog(QDialog):
                 "Plugin List Saved",
                 f"Plugin list configuration saved to:\n{path}",
             )
+        return True
 
     def _load_toolbar_rows(self) -> None:
         """Populate the toolbar table from the effective toolbar configuration."""
@@ -737,63 +777,66 @@ class SettingsDialog(QDialog):
         warnings = []
         seen_sequences: set[str] = set()
         seen_names: set[str] = set()
-        for row in range(self._toolbar_table.rowCount()):
-            if self._row_is_separator(row):
+        for row_number, button in enumerate(self._toolbar_rows_from_ui(), start=1):
+            if button.get("separator"):
                 continue
-            name_item = self._toolbar_table.item(row, 0)
-            tooltip_item = self._toolbar_table.item(row, 3)
-            sequence_cell = self._toolbar_table.cellWidget(row, 1)
-            sequence_edit = sequence_cell.findChild(QLineEdit) if sequence_cell is not None else None
-            name = name_item.text().strip() if name_item is not None else ""
-            sequence = sequence_edit.text().strip() if sequence_edit is not None else ""
+            sequence = button["sequence"]
             if not sequence:
-                warnings.append(f"Row {row + 1}: button entries should specify a sequence filename.")
+                warnings.append(f"Row {row_number}: button entries should specify a sequence filename.")
                 continue
-            effective_name = name or Path(sequence).stem
+            effective_name = button["name"] or Path(sequence).stem
             if effective_name in seen_names:
-                warnings.append(f"Row {row + 1}: duplicate button name '{effective_name}'.")
+                warnings.append(f"Row {row_number}: duplicate button name '{effective_name}'.")
             else:
                 seen_names.add(effective_name)
             if sequence in seen_sequences:
-                warnings.append(f"Row {row + 1}: duplicate sequence filename '{sequence}'.")
+                warnings.append(f"Row {row_number}: duplicate sequence filename '{sequence}'.")
             else:
                 seen_sequences.add(sequence)
-            if tooltip_item is not None and not tooltip_item.text().strip():
-                warnings.append(f"Row {row + 1}: tooltip is empty.")
+            if not button["tooltip"]:
+                warnings.append(f"Row {row_number}: tooltip is empty.")
         return warnings
 
-    def _collect_toolbar_config_from_ui(self) -> dict:
-        """Build a toolbar configuration mapping from the table contents."""
-        buttons: list[dict] = []
+    def _toolbar_rows_from_ui(self) -> list[dict]:
+        """Read the toolbar editor, including incomplete rows."""
+        rows = []
         for row in range(self._toolbar_table.rowCount()):
+            if self._row_is_separator(row):
+                rows.append({"separator": True})
+                continue
             name_item = self._toolbar_table.item(row, 0)
             tooltip_item = self._toolbar_table.item(row, 3)
             sequence_cell = self._toolbar_table.cellWidget(row, 1)
             icon_cell = self._toolbar_table.cellWidget(row, 2)
             sequence_edit = sequence_cell.findChild(QLineEdit) if sequence_cell is not None else None
             icon_edit = icon_cell.findChild(QLineEdit) if icon_cell is not None else None
+            rows.append({
+                "name": name_item.text().strip() if name_item is not None else "",
+                "sequence": sequence_edit.text().strip() if sequence_edit is not None else "",
+                "image": icon_edit.text().strip() if icon_edit is not None else "",
+                "tooltip": tooltip_item.text().strip() if tooltip_item is not None else "",
+            })
+        return rows
 
-            if self._row_is_separator(row):
-                buttons.append({"separator": True})
+    def _collect_toolbar_config_from_ui(self) -> dict:
+        """Build a toolbar configuration mapping from the table contents."""
+        buttons = []
+        for button in self._toolbar_rows_from_ui():
+            if button.get("separator"):
+                buttons.append(button)
                 continue
-
-            name = name_item.text().strip() if name_item is not None else ""
-            sequence = sequence_edit.text().strip() if sequence_edit is not None else ""
-            tooltip = tooltip_item.text().strip() if tooltip_item is not None else ""
-            image = icon_edit.text().strip() if icon_edit is not None else ""
-
+            sequence = button["sequence"]
             if not sequence:
                 continue
-            entry = {"name": name or Path(sequence).stem, "sequence": sequence}
-            if image:
-                entry["image"] = image
-            if tooltip:
-                entry["tooltip"] = tooltip
+            entry = {"name": button["name"] or Path(sequence).stem, "sequence": sequence}
+            for field in ("image", "tooltip"):
+                if button[field]:
+                    entry[field] = button[field]
             buttons.append(entry)
         return {"buttons": buttons}
 
-    def _save_toolbar_from_ui(self) -> None:
-        """Save the toolbar table contents to the user toolbar.yaml file."""
+    def _save_toolbar_from_ui(self, *, show_message: bool = True) -> bool:
+        """Save the toolbar table contents to the user toolbar.yaml file and report success."""
         warnings = self._validate_toolbar_rows()
         if warnings:
             message = "Toolbar configuration has some issues:\n\n- " + "\n- ".join(warnings)
@@ -805,17 +848,22 @@ class SettingsDialog(QDialog):
                 QMessageBox.StandardButton.Cancel,
             )
             if result != QMessageBox.StandardButton.Save:
-                return
+                return False
         config = self._collect_toolbar_config_from_ui()
-        path = save_toolbar_config(config)
-        QMessageBox.information(self, "Toolbar Saved", f"Toolbar configuration saved to:\n{path}")
+        try:
+            path = save_toolbar_config(config)
+        except OSError as exc:
+            QMessageBox.critical(self, "Save Toolbar", f"Could not save the toolbar:\n{exc}")
+            return False
         self._toolbar_cfg = config
+        self._saved_toolbar_rows = self._toolbar_rows_from_ui()
         self.toolbar_saved = True
+        if show_message:
+            QMessageBox.information(self, "Toolbar Saved", f"Toolbar configuration saved to:\n{path}")
+        return True
 
-    def _on_accept(self) -> None:
+    def _save_app_settings(self) -> None:
         """Write the current field values to the user application config."""
-        if self._plugin_catalogue_dirty:
-            self._save_plugin_catalogue_from_ui(show_message=False)
         config = load_app_config()
         set_app_config_value(config, KEY_DEFAULT_DATA_DIR, self._data_dir_edit.text().strip())
         set_app_config_value(config, KEY_RIG, self._rig_edit.text().strip())
@@ -831,4 +879,3 @@ class SettingsDialog(QDialog):
                 self._feature_checkboxes[entry["key"]].isChecked(),
             )
         save_app_config(config)
-        self.accept()

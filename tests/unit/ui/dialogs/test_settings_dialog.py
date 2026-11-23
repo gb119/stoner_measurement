@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from qtpy.QtWidgets import QDialog, QLineEdit, QMessageBox
+from types import SimpleNamespace
+
+import pytest
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QDialog, QDialogButtonBox, QLineEdit, QMessageBox
 
 from stoner_measurement.app_config import FEATURE_DEFINITIONS
 from stoner_measurement.ui import settings_dialog as settings_module
+from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.settings_dialog import SettingsDialog
 
 
@@ -104,7 +109,7 @@ class TestSettingsDialogBasics:
         dialog._console_font_size_spin.setValue(11)
         dialog._toolbar_icon_size_spin.setValue(48)
         dialog._feature_checkboxes["pressure"].setChecked(False)
-        dialog._on_accept()
+        dialog.accept()
 
         assert dialog.result() == QDialog.DialogCode.Accepted
         assert saved == [
@@ -301,6 +306,162 @@ class TestSettingsDialogToolbarSave:
         assert dialog.toolbar_saved is True
 
 
+@pytest.fixture
+def preferences(managed_qt_widget, monkeypatch, tmp_path):
+    """Construct visible preferences and capture writes to all three settings files."""
+    app = _install_dialog_dependencies(
+        monkeypatch,
+        {"app": {"rig": "Original"}},
+        toolbar_config={"buttons": [{"name": "Original", "sequence": "run.json", "tooltip": "Run"}]},
+        plugin_catalogue_config={"items": [{"group": "Original", "items": []}]},
+    )
+    toolbar = []
+    catalogue = []
+    monkeypatch.setattr(
+        settings_module, "save_toolbar_config", lambda config: toolbar.append(config) or tmp_path / "toolbar.yaml"
+    )
+    monkeypatch.setattr(
+        settings_module,
+        "save_plugin_catalogue_config",
+        lambda config: catalogue.append(config) or tmp_path / "plugin_catalogue.yaml",
+    )
+    dialog = managed_qt_widget(SettingsDialog())
+    dialog.show()
+    return SimpleNamespace(dialog=dialog, app=app, toolbar=toolbar, catalogue=catalogue)
+
+
+class TestSettingsDialogCloseGuard:
+    @pytest.mark.parametrize(
+        ("route", "choice"),
+        [
+            ("ok", QMessageBox.StandardButton.Save),
+            ("ok", QMessageBox.StandardButton.Discard),
+            ("cancel", QMessageBox.StandardButton.Save),
+            ("escape", QMessageBox.StandardButton.Discard),
+            ("window", QMessageBox.StandardButton.Cancel),
+        ],
+    )
+    def test_close_choices(self, preferences, qtbot, monkeypatch, route, choice):
+        dialog = preferences.dialog
+        dialog._rig_edit.setText("New rig")
+        _cell_line_edit(dialog, 0, 1).setText("edited.json")
+        dialog._plugin_catalogue_tree.topLevelItem(0).setText(0, "Renamed")
+        prompts = []
+
+        def prompt(_parent, title, message, buttons, default):
+            prompts.append((title, message))
+            assert buttons == (
+                QMessageBox.StandardButton.Save
+                | QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel
+            )
+            assert default == QMessageBox.StandardButton.Cancel
+            return choice if len(prompts) == 1 else QMessageBox.StandardButton.Discard
+
+        monkeypatch.setattr(QMessageBox, "warning", prompt)
+        button_box = dialog.findChild(QDialogButtonBox)
+        if route == "ok":
+            button_box.button(QDialogButtonBox.StandardButton.Ok).click()
+        elif route == "cancel":
+            button_box.button(QDialogButtonBox.StandardButton.Cancel).click()
+        elif route == "escape":
+            qtbot.keyClick(dialog, Qt.Key.Key_Escape)
+        else:
+            dialog.close()
+
+        assert prompts == [
+            ("Unsaved Preferences", "Unsaved changes in Toolbar and Plugin List. Save before closing?")
+        ]
+        closes = choice != QMessageBox.StandardButton.Cancel
+        saves_lists = choice == QMessageBox.StandardButton.Save
+        assert dialog.isVisible() is not closes
+        assert bool(preferences.app) == (route == "ok")
+        assert bool(preferences.toolbar) == bool(preferences.catalogue) == saves_lists
+        if saves_lists:
+            assert preferences.toolbar[0]["buttons"][0]["sequence"] == "edited.json"
+            assert preferences.catalogue[0] == {"items": [{"group": "Renamed", "items": []}]}
+        if not closes:
+            assert _cell_line_edit(dialog, 0, 1).text() == "edited.json"
+            assert dialog._plugin_catalogue_tree.topLevelItem(0).text(0) == "Renamed"
+            dialog.close()
+
+    def test_close_commits_active_toolbar_cell_editor(self, preferences, qtbot, monkeypatch):
+        dialog = preferences.dialog
+        dialog.findChild(FontAwareTabWidget).setCurrentIndex(2)
+        table = dialog._toolbar_table
+        table.setCurrentCell(0, 0)
+        table.editItem(table.item(0, 0))
+        editor = dialog.focusWidget()
+        assert isinstance(editor, QLineEdit)
+        editor.selectAll()
+        qtbot.keyClicks(editor, "Edited")
+        monkeypatch.setattr(QMessageBox, "warning", lambda *_: QMessageBox.StandardButton.Save)
+
+        dialog.close()
+
+        assert not dialog.isVisible()
+        assert preferences.toolbar[0]["buttons"][0]["name"] == "Edited"
+
+    def test_close_without_prompt_after_manual_save_or_reverted_edit(self, preferences, monkeypatch):
+        dialog = preferences.dialog
+        _cell_line_edit(dialog, 0, 2).setText("new.png")
+        assert dialog._save_toolbar_from_ui()
+        group = dialog._plugin_catalogue_tree.topLevelItem(0)
+        group.setText(0, "Renamed")
+        group.setText(0, "Original")
+        warnings = []
+        monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args))
+
+        dialog.close()
+
+        assert not dialog.isVisible()
+        assert warnings == []
+        assert dialog.toolbar_saved
+        assert preferences.catalogue == []
+
+    def test_toolbar_validation_cancel_keeps_dialog_open(self, preferences, monkeypatch):
+        dialog = preferences.dialog
+        dialog._add_toolbar_row()
+        prompts = []
+
+        def prompt(_parent, title, *_args):
+            prompts.append(title)
+            if title == "Toolbar Validation Warnings":
+                return QMessageBox.StandardButton.Cancel
+            return QMessageBox.StandardButton.Save
+
+        monkeypatch.setattr(QMessageBox, "warning", prompt)
+        dialog.accept()
+
+        assert dialog.isVisible()
+        assert prompts == ["Unsaved Preferences", "Toolbar Validation Warnings"]
+        assert preferences.toolbar == preferences.app == []
+
+    def test_write_failure_keeps_dialog_open_for_retry(self, preferences, monkeypatch):
+        dialog = preferences.dialog
+        dialog._plugin_catalogue_tree.topLevelItem(0).setText(0, "Renamed")
+        errors = []
+        save_catalogue = settings_module.save_plugin_catalogue_config
+
+        def fail(_config):
+            raise OSError("Read-only directory")
+
+        monkeypatch.setattr(settings_module, "save_plugin_catalogue_config", fail)
+        monkeypatch.setattr(QMessageBox, "warning", lambda *_: QMessageBox.StandardButton.Save)
+        monkeypatch.setattr(QMessageBox, "critical", lambda _parent, _title, message: errors.append(message))
+        dialog.reject()
+
+        assert dialog.isVisible()
+        assert not dialog.plugin_catalogue_saved
+        assert "Read-only directory" in errors[0]
+
+        monkeypatch.setattr(settings_module, "save_plugin_catalogue_config", save_catalogue)
+        dialog.reject()
+
+        assert not dialog.isVisible()
+        assert preferences.catalogue == [{"items": [{"group": "Renamed", "items": []}]}]
+
+
 class TestSettingsDialogPluginCatalogue:
     def test_add_group_as_sibling_then_move_plugin_in_and_out(
         self, qapp, monkeypatch
@@ -463,7 +624,8 @@ class TestSettingsDialogPluginCatalogue:
         dialog = SettingsDialog()
         dialog._add_catalogue_group()
 
-        dialog._on_accept()
+        monkeypatch.setattr(QMessageBox, "warning", lambda *_: QMessageBox.StandardButton.Save)
+        dialog.accept()
 
         assert dialog.result() == QDialog.DialogCode.Accepted
         assert saved == [{"items": [{"group": "New Group", "items": []}]}]

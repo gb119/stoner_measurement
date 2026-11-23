@@ -2,10 +2,32 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from qtpy.QtWidgets import QDialog
+
+from stoner_measurement import app as app_module
 from stoner_measurement.ui.main_window import MainWindow
 
 
 class TestMainWindow:
+    def test_refreshes_saved_preference_lists_after_cancel(self, managed_measurement_app, monkeypatch):
+        app = managed_measurement_app()
+        refreshed = []
+        dialog = SimpleNamespace(
+            exec=lambda: QDialog.DialogCode.Rejected,
+            toolbar_saved=True,
+            plugin_catalogue_saved=True,
+        )
+        monkeypatch.setattr(app_module, "SettingsDialog", lambda **_kwargs: dialog)
+        monkeypatch.setattr(app, "_refresh_configured_toolbar_buttons", lambda: refreshed.append("toolbar"))
+        monkeypatch.setattr(app._main_window.dock_panel, "refresh_plugins", lambda: refreshed.append("plugins"))
+        monkeypatch.setattr(app, "_apply_app_config", lambda: refreshed.append("application"))
+
+        app._on_settings()
+
+        assert refreshed == ["toolbar", "plugins"]
+
     def test_creates_window(self, plugin_manager, managed_qt_widget):
         window = managed_qt_widget(MainWindow(plugin_manager=plugin_manager))
         assert window is not None

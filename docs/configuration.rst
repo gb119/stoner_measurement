@@ -15,6 +15,12 @@ toolbar size and predefined-sequence buttons. **Plugin List** controls the
 catalogue organisation. A hidden feature is not the same as uninstalling its
 Python package or instrument driver.
 
+Use **Save Toolbar** or **Save Plugin List** to save those lists from their
+tabs. If either list has unsaved edits when you close Preferences, choose
+**Save** to keep the edits, **Discard** to close without them, or **Cancel** to
+continue editing. **OK** also applies the general and feature settings, as
+well as the toolbar icon size.
+
 Relative Save paths are resolved against the default data directory. Selecting
 a directory does not automatically save results: place a Save command in the
 sequence. Changing the theme or font changes presentation, not acquired data.

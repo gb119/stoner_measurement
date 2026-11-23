@@ -2345,11 +2345,12 @@ class MeasurementApp(QMainWindow):
             parent=self,
             available_plugins=self._plugin_manager.plugins,
         )
-        if dlg.exec():
-            if dlg.toolbar_saved:
-                self._refresh_configured_toolbar_buttons()
-            if dlg.plugin_catalogue_saved:
-                self._main_window.dock_panel.refresh_plugins()
+        accepted = dlg.exec()
+        if dlg.toolbar_saved:
+            self._refresh_configured_toolbar_buttons()
+        if dlg.plugin_catalogue_saved:
+            self._main_window.dock_panel.refresh_plugins()
+        if accepted:
             self._app_config = load_app_config()
             self._apply_app_config()
             new_theme = theme_setting(config=self._app_config)
