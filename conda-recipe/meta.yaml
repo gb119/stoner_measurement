@@ -1,4 +1,4 @@
-{% set version = "0.1.0" %}
+{% set version = "0.10.0b1" %}
 
 package:
   name: stoner_measurement

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stoner_measurement"
-version = "0.1.0"
+version = "0.10.0b1"
 description = "A Python/Qt (PyQt5/PyQt6 via qtpy) application for running scientific measurements"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["scientific", "measurement", "Qt", "PyQt5", "PyQt6", "pyqtgraph"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
