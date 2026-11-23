@@ -40,14 +40,15 @@ class TemperatureConnectionMixin:
     """Build one connection form using the shared transport widgets."""
 
     def _build_connection_form(self) -> QWidget:
-        """Build the Connection tab widget.
+        """Build the driver, address and action controls for one controller.
 
         Returns:
             (QWidget):
-                The assembled connection tab.
+                The assembled connection form.
         """
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
         # Driver selection
@@ -101,7 +102,6 @@ class TemperatureConnectionMixin:
         btn_row.addWidget(self._btn_disconnect)
         btn_row.addStretch()
         layout.addLayout(btn_row)
-        layout.addStretch()
 
         return widget
 
@@ -316,16 +316,17 @@ class TemperatureConnectionMixin:
         self._engine.preferred_address = address
 
 
-class TemperatureConnectionGroup(TemperatureConnectionMixin, QGroupBox):
-    """An independently connected secondary slot using the same form as primary."""
+class TemperatureConnectionGroup(TemperatureConnectionMixin, QWidget):
+    """Connection form and status for an independently connected slot."""
 
     def __init__(self, service, slot, manager, parent=None):
-        super().__init__(slot.title(), parent)
+        super().__init__(parent)
         self._service = service
         self._slot = slot
         self._engine = service.controller(slot)
         self._driver_manager = manager
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._build_connection_form())
         self._connection_status = QLabel()
         layout.addWidget(self._connection_status)

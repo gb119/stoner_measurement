@@ -21,6 +21,44 @@ def rig(monkeypatch, qapp):
     service.shutdown()
 
 
+def test_connection_tabs_keep_secondary_enable_and_shared_settings_accessible(
+    rig, managed_temperature_panel, wait_temperature_tasks
+):
+    panel = managed_temperature_panel()
+    panel.show()
+    tabs = panel._connection_tabs
+    assert [tabs.tabText(index) for index in range(tabs.count())] == ["Primary", "Secondary"]
+    assert panel._btn_connect.isVisible()
+    assert not panel._secondary_enabled.isVisible()
+
+    tabs.setCurrentIndex(1)
+    assert not panel._btn_connect.isVisible()
+    assert panel._secondary_enabled.isVisible()
+    assert not panel._secondary_connection.isEnabled()
+    assert panel._polling_rate_spin.isVisible()
+    assert panel._btn_save_configuration.isVisible()
+
+    panel._secondary_enabled.click()
+    wait_temperature_tasks(rig)
+    assert rig.controller_enabled("secondary")
+    assert panel._secondary_connection.isEnabled()
+    panel._secondary_connection._transport_combo.setCurrentText("Ethernet")
+
+    tabs.setCurrentIndex(0)
+    assert panel._btn_connect.isVisible()
+    assert panel._transport_combo.currentText() == "Null (test)"
+    assert panel._polling_rate_spin.isVisible()
+    assert panel._btn_save_configuration.isVisible()
+    tabs.setCurrentIndex(1)
+    assert panel._secondary_connection._transport_combo.currentText() == "Ethernet"
+
+    panel._secondary_enabled.click()
+    wait_temperature_tasks(rig)
+    assert not rig.controller_enabled("secondary")
+    assert panel._secondary_enabled.isVisible()
+    assert not panel._secondary_connection.isEnabled()
+
+
 def test_combined_controls_restrict_inputs_and_keep_primary_layout(
     rig, managed_temperature_panel, monkeypatch
 ):

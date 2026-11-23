@@ -326,44 +326,55 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
 
     # --- Connection tab ---
 
-
-
-
-
-    def _build_connection_tab(self):
-        """Show independent connection forms and one service settings action."""
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        primary = QGroupBox("Primary")
+    def _build_connection_tab(self) -> QWidget:
+        """Show per-controller connection tabs above the shared settings."""
+        primary = QWidget()
         primary_layout = QVBoxLayout(primary)
         primary_layout.addWidget(self._build_connection_form())
         self._primary_connection_status = QLabel()
         primary_layout.addWidget(self._primary_connection_status)
-        layout.addWidget(primary)
+        primary_layout.addStretch()
+
+        secondary = QWidget()
+        secondary_layout = QVBoxLayout(secondary)
         self._secondary_enabled = QCheckBox("Enable secondary controller")
         self._secondary_enabled.setChecked(self._engine.controller_enabled("secondary"))
-        layout.addWidget(self._secondary_enabled)
+        secondary_layout.addWidget(self._secondary_enabled)
         self._secondary_connection = TemperatureConnectionGroup(
             self._engine, "secondary", self._driver_manager
         )
         self._secondary_connection.setEnabled(self._secondary_enabled.isChecked())
         self._secondary_enabled.toggled.connect(self._set_secondary_enabled)
-        layout.addWidget(self._secondary_connection)
+        secondary_layout.addWidget(self._secondary_connection)
+        secondary_layout.addStretch()
+
+        self._connection_tabs = FontAwareTabWidget()
+        for title, page in (("Primary", primary), ("Secondary", secondary)):
+            scroll = QScrollArea()
+            scroll.setWidgetResizable(True)
+            scroll.setWidget(page)
+            self._connection_tabs.addTab(scroll, title)
+
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._connection_tabs, 1)
         self._polling_rate_spin = SISpinBox()
         self._polling_rate_spin.setOpts(bounds=(0, 10), suffix="Hz", decimals=1)
         self._polling_rate_spin.setValue(self._engine.polling_rate_hz)
         self._polling_rate_spin.sigValueChanged.connect(lambda spin: self._engine.set_polling_rate(spin.value()))
-        polling = QFormLayout()
-        polling.addRow("Polling rate (0 disables):", self._polling_rate_spin)
-        layout.addLayout(polling)
+        polling_label = QLabel("Shared polling rate (0 disables):")
+        polling_label.setBuddy(self._polling_rate_spin)
         self._btn_save_configuration = QPushButton("Save Settings to YAML")
         self._btn_save_configuration.clicked.connect(self._on_save_configuration)
-        layout.addWidget(self._btn_save_configuration)
-        layout.addStretch()
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setWidget(content)
-        return scroll
+        shared_settings = QHBoxLayout()
+        shared_settings.setContentsMargins(8, 0, 8, 0)
+        shared_settings.addWidget(polling_label)
+        shared_settings.addWidget(self._polling_rate_spin)
+        shared_settings.addStretch()
+        shared_settings.addWidget(self._btn_save_configuration)
+        layout.addLayout(shared_settings)
+        return content
 
     def _set_secondary_enabled(self, enabled):
         engine = self._engine

@@ -14,26 +14,27 @@ Existing single-controller settings and sequences continue to select primary.
 Connecting instruments
 ----------------------
 
-Open the Temperature Control panel. The Connection tab has a Primary connection
-form and an **Enable secondary controller** switch. Enable the switch only for
-a rig with a second controller, then select its driver, transport and address.
-Each instrument has independent Connect and Disconnect buttons. A secondary
-instrument can remain connected when the primary is disconnected.
+Open **Connection** in the Temperature Control panel. Use the **Primary** and
+**Secondary** sub-tabs to select each controller's driver, transport and
+address. For a rig with a second controller, select **Enable secondary
+controller** on the **Secondary** sub-tab to make its form available. Each
+controller has its own **Connect** and **Disconnect** buttons.
 
 .. figure:: _static/screenshots/controller-temperature-connection.png
-   :alt: Dark Temperature Control connection page showing the primary and enabled secondary controller forms.
+   :alt: Temperature Control Connection page with the Secondary tab selected and its connection form enabled.
    :width: 100%
 
-   Independent connection forms, shown with built-in simulated controllers.
+   The Secondary connection form, shown with a built-in simulated controller.
 
 The main-window **Temp** indicator's Connect and Disconnect shortcuts address
 the primary slot. Use the panel's secondary controls to change the secondary
 connection; disconnecting primary does not disconnect secondary.
 
-**Save Settings to YAML** saves both connection forms, including settings for
-an instrument that has not yet been connected. Disabling secondary disconnects
-it while retaining its saved settings. The shared polling rate applies to both
-instruments; zero disables automatic polling. Immediate reads still work.
+The shared polling rate and **Save Settings to YAML** appear below both
+sub-tabs. Saving records both connection forms, including settings for an
+instrument that has yet to connect. Disabling secondary disconnects it while
+retaining its saved settings. A polling rate of zero disables automatic
+polling. Immediate reads still work.
 
 The service rejects using the same physical connection in both slots. Different
 instances of the simulated temperature controller can be used for testing.
