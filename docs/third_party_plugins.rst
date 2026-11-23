@@ -98,6 +98,8 @@ older generator-based trace API or the compatibility ``state_control`` alias.
 All imports in the table are relative to ``stoner_measurement``. See the
 corresponding classes in :doc:`api/plugins` for detailed signatures. Use
 ``state_scan`` in new code; ``StateControlPlugin`` remains a compatibility alias.
+The :ref:`example package <minimal-sequence-plugin-package>` has a runnable
+example for each family.
 
 These execution hooks and output declarations have separate responsibilities.
 ``declared_outputs()`` describes identities and metadata; ``execute()``,
@@ -442,20 +444,16 @@ do not block the GUI on pending plot tickets. See :doc:`plotting_contracts`
 for data ownership, cancellation, completion and surface assembly. The legacy
 ``engine.plot_widget`` facade is not a requirement for a new renderer.
 
-A complete minimal package
----------------------------
+.. _minimal-sequence-plugin-package:
 
-The downloadable :download:`record_value_plugin.py
-<examples/record_value_plugin.py>` demonstrates a lifecycle-free command,
-runtime expressions, a unified scalar/unit declaration, a configuration page
-and persistence. Its inherited ``reported_values()`` and
-``reported_value_units()`` views still work for legacy consumers.
-Copy it to ``src/my_measurement_extras/record_value.py`` in your package:
+A minimal package for all seven families
+----------------------------------------
 
-.. literalinclude:: examples/record_value_plugin.py
-   :language: python
-
-Include an ``__init__.py`` in ``src/my_measurement_extras/`` and this metadata:
+Each example runs without instruments. Create ``src/my_measurement_extras/``
+with an empty ``__init__.py``. Copy the example files below into that
+directory, saving ``record_value_plugin.py`` as ``record_value.py`` and keeping
+the other filenames. Put this ``pyproject.toml`` in the package root. To
+install only a subset, keep the corresponding entry-point lines and files.
 
 .. code-block:: toml
 
@@ -467,18 +465,111 @@ Include an ``__init__.py`` in ``src/my_measurement_extras/`` and this metadata:
    name = "my-measurement-extras"
    version = "0.1.0"
    requires-python = ">=3.12"
-   dependencies = ["stoner_measurement"]
+   dependencies = ["stoner_measurement", "numpy", "qtpy"]
 
    [tool.setuptools.packages.find]
    where = ["src"]
 
    [project.entry-points."stoner_measurement.plugins"]
    my_lab_record_value = "my_measurement_extras.record_value:RecordValueCommand"
+   my_lab_demo_trace = "my_measurement_extras.demo_trace:DemoTracePlugin"
+   my_lab_demo_scan = "my_measurement_extras.demo_scan:DemoScanPlugin"
+   my_lab_demo_sweep = "my_measurement_extras.demo_sweep:DemoSweepPlugin"
+   my_lab_demo_monitor = "my_measurement_extras.demo_monitor:DemoMonitorPlugin"
+   my_lab_demo_mean = "my_measurement_extras.demo_transform:DemoTransformPlugin"
+   my_lab_demo_group = "my_measurement_extras.demo_sequence:DemoSequencePlugin"
 
 Declare the application-version range your package actually supports and test
 against it. In the environment used to run the application, install with
 ``python -m pip install -e .``. For the repository's Conda environment this is
 ``conda run -n stoner_measurement python -m pip install -e .``.
+Restart the application to discover the examples.
+
+Command
+~~~~~~~
+
+:download:`Record Value <examples/record_value_plugin.py>` evaluates an
+expression once per execution, logs the result and publishes a scalar with
+configurable units. The **General** tab edits the expression and units, and
+both settings survive saving and reopening the sequence.
+
+.. literalinclude:: examples/record_value_plugin.py
+   :language: python
+
+Trace
+~~~~~
+
+:download:`Demo Trace <examples/demo_trace.py>` returns three fixed samples as
+one ``TraceData`` table. The configured schema uses the same column names and
+units as the acquisition. The inherited declaration helper applies the
+configured transpose and includes statistics when enabled.
+
+.. literalinclude:: examples/demo_trace.py
+   :language: python
+
+State scan
+~~~~~~~~~~
+
+:download:`Demo Scan <examples/demo_scan.py>` stores each setpoint immediately.
+Choose points on the **Scan** tab and nest a **Record Value** step beneath it.
+With the scan instance named ``demo_scan``, set the command's expression to
+``demo_scan.value`` and its units to ``V`` to log the voltage at each point.
+The inherited **Data** tab can collect the command's output after each point
+marked for measurement.
+
+.. literalinclude:: examples/demo_scan.py
+   :language: python
+
+State sweep
+~~~~~~~~~~~
+
+:download:`Demo Sweep <examples/demo_sweep.py>` simulates a continuous voltage
+ramp. The inherited **Sweep** tab starts with a segment from 0 to 1 V at
+5 V/s. Nest a **Record Value** step with expression ``demo_sweep.value`` and
+units ``V`` to log the sampled voltage as it changes. Use ``demo_sweep`` as
+the sweep instance name. The generator polls the simulated state and the
+sweep runs its children at each yielded point.
+
+.. literalinclude:: examples/demo_sweep.py
+   :language: python
+
+Monitor
+~~~~~~~
+
+:download:`Demo Monitor <examples/demo_monitor.py>` returns one simulated
+temperature reading. The base class caches it in ``last_reading`` and
+publishes the temperature with its units. Running it as a sequence step
+performs one read. The example sets ``has_lifecycle`` to ``False`` because it
+needs no instrument setup.
+
+.. literalinclude:: examples/demo_monitor.py
+   :language: python
+
+Transform
+~~~~~~~~~
+
+:download:`Demo Mean Voltage <examples/demo_transform.py>` uses the completed
+``Demo Trace`` table. Add a **Demo Trace** step named ``demo_trace`` before
+the transform. The transform reads that fixed source from the live namespace
+and publishes **Mean Voltage**, which is 2 V for the three example samples.
+The inherited ``run({})`` call stores the result in ``data``.
+
+.. literalinclude:: examples/demo_transform.py
+   :language: python
+
+Sequence container
+~~~~~~~~~~~~~~~~~~
+
+:download:`Demo Group <examples/demo_sequence.py>` logs the start of the group
+and then runs the nested steps in order. Try nesting **Demo Trace** followed
+by **Demo Mean Voltage**. The generated action emits the same log call as the
+direct execution method and delegates child rendering to the base class.
+
+.. literalinclude:: examples/demo_sequence.py
+   :language: python
+
+For the renderer extension point, see the independent downloadable example in
+:doc:`plot_display_plugins`.
 
 Verification checklist
 ------------------------
