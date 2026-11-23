@@ -4,6 +4,11 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      upload_conda:
+        description: Upload the verified Conda package to phygbu on Anaconda.org
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -26,7 +31,7 @@ jobs:
       - name: Checkout release source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Set up project environment
@@ -89,6 +94,56 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  package-conda:
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash -el {0}
+    env:
+      CONDA_BLD_PATH: D:\conda-bld
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Checkout release source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Download verified release files
+        uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: ${{ runner.temp }}/release-packages
+
+      - name: Stage the freshly compiled User Guide
+        shell: pwsh
+        run: |
+          $guide = Join-Path $env:RUNNER_TEMP 'release-packages/stoner_measurement.chm'
+          Copy-Item -LiteralPath $guide -Destination 'src/stoner_measurement/help/stoner_measurement.chm'
+
+      - name: Set up Conda Build
+        uses: conda-incubator/setup-miniconda@fc2d68f6413eb2d87b895e92f8584b5b94a10167
+        with:
+          miniforge-version: latest
+          conda-build-version: "*"
+          activate-environment: conda-packaging
+          channels: phygbu,conda-forge
+          channel-priority: flexible
+
+      - name: Build and test the Conda package
+        run: >-
+          conda build conda-recipe
+          --no-anaconda-upload --package-format 2 --output-folder conda-dist
+
+      - name: Upload the verified Conda artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: conda-package
+          path: conda-dist/noarch/*.conda
+          if-no-files-found: error
+
   publish:
     if: github.event_name == 'release'
     needs: package
@@ -133,3 +188,32 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: python -m twine upload --repository pypi --non-interactive dist/*.whl
+
+  publish-conda:
+    if: github.event_name == 'release' || inputs.upload_conda
+    needs: package-conda
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - name: Download the verified Conda package
+        uses: actions/download-artifact@v4
+        with:
+          name: conda-package
+          path: dist
+
+      - name: Set up Conda
+        uses: conda-incubator/setup-miniconda@fc2d68f6413eb2d87b895e92f8584b5b94a10167
+        with:
+          miniforge-version: latest
+          activate-environment: conda-publish
+          channels: conda-forge
+
+      - name: Install the Anaconda client
+        run: conda install --yes anaconda-client
+
+      - name: Upload the Conda package to phygbu
+        env:
+          ANACONDA_API_TOKEN: ${{ secrets.ANACONDA }}
+        run: anaconda upload --user phygbu --label main --skip-existing dist/*.conda

@@ -45,8 +45,15 @@ Successful builds retain the packages and standalone CHM in the
 `release-packages` Actions artifact. A published GitHub release or prerelease
 also attaches these files to that release using the built-in GitHub token. A
 separate release job uploads the verified wheel to PyPI with Twine using the
-repository's `PYPI_TOKEN` secret. Manual runs stop after uploading Actions
-artifacts.
+repository's `PYPI_TOKEN` secret.
+
+The workflow also builds one `noarch: python` Conda package with the same
+compiled guide. It tests the package on Windows with Python 3.13, the minimum
+supported by the recipe. Publishing a release or prerelease uploads the
+package to `phygbu` under the `main` label using the `ANACONDA` secret.
+On a manual run, select **Upload the verified Conda package to phygbu on
+Anaconda.org** to publish it. The default manual run provides the packages
+as Actions artifacts.
 
 Compiler setup on the release runner requires network access to Chocolatey's
 package and its upstream installer.

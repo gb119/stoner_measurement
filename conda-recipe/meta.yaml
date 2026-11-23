@@ -1,4 +1,5 @@
 {% set version = "0.10.0b1" %}
+{% set python_min = "3.13" %}
 
 package:
   name: stoner_measurement
@@ -9,17 +10,18 @@ source:
 
 build:
   number: 0
+  noarch: python
   script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
   entry_points:
     - stoner-measurement = stoner_measurement.main:main
 
 requirements:
   host:
-    - python >=3.13
+    - python {{ python_min }}
     - pip
     - setuptools >=75
   run:
-    - python >=3.13
+    - python >={{ python_min }}
     - asteval >=1.0
     - click>=8.3.3
     - platformdirs >=4.9
@@ -51,20 +53,22 @@ requirements:
 
 
 test:
+  requires:
+    - python {{ python_min }}
   imports:
     - stoner_measurement
-    - stoner_measurement.core.sequence
+    - stoner_measurement.core.serializer
+    - stoner_measurement.core.sequence_engine
     - stoner_measurement.core.plugin_manager
-    - stoner_measurement.core.runner
     - stoner_measurement.plugins.base_plugin
-    - stoner_measurement.plugins.dummy
+    - stoner_measurement.plugins.trace.dummy
     - stoner_measurement.instruments
     - stoner_measurement.instruments.transport
     - stoner_measurement.instruments.protocol
     - stoner_measurement.instruments.keithley
     - stoner_measurement.instruments.thorlabs
   commands:
-    - stoner-measurement --help || true
+    - stoner-measurement --help
     - >-
       python -c "from importlib.resources import files;
       p = files('stoner_measurement').joinpath('help', 'stoner_measurement.chm');
