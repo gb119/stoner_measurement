@@ -18,10 +18,10 @@
       "addedState": "Added",
       "repositoryId": 857542,
       "remoteIdentifier": "1199443664",
-      "lastUpdated": "2026-11-13T21:51:31.819Z",
+      "lastUpdated": "2026-11-23T20:47:14.810Z",
       "permission": "admin",
       "stack": {
-        "commitUuid": "0c87f03eddd12dc643a3673689e6231ca6164981",
+        "commitUuid": "a43190d39da09248a4c3a5a044b1631b92af0ef7",
         "stackTags": [
           "fwk:github-actions",
           "lib:numpy",
@@ -30,7 +30,7 @@
           "lib:scipy",
           "tool:black"
         ],
-        "discoveredAt": "2026-11-13T21:51:52.243651Z"
+        "discoveredAt": "2026-11-23T20:47:30.720475Z"
       },
       "defaultBranch": {
         "id": 57541956,
@@ -38,8 +38,8 @@
         "isDefault": true,
         "isEnabled": true,
         "branchType": "Branch",
-        "lastUpdated": "2026-11-13T21:51:31.819Z",
-        "lastCommit": "0c87f03eddd12dc643a3673689e6231ca6164981"
+        "lastUpdated": "2026-11-23T20:47:14.810Z",
+        "lastCommit": "a43190d39da09248a4c3a5a044b1631b92af0ef7"
       },
       "badges": {
         "grade": "https://app.codacy.com/project/badge/Grade/f20d5771398343cd87a26c21ca6b7c7e",
@@ -47,34 +47,34 @@
       }
     },
     "lastAnalysedCommit": {
-      "sha": "0c87f03eddd12dc643a3673689e6231ca6164981",
-      "id": 1217335219,
-      "commitTimestamp": "2026-11-13T21:51:16Z",
+      "sha": "a43190d39da09248a4c3a5a044b1631b92af0ef7",
+      "id": 1221720819,
+      "commitTimestamp": "2026-11-23T20:46:59Z",
       "authorName": "Gavin Burnell",
       "authorEmail": "g.burnell@leeds.ac.uk",
-      "message": "Clear current Codacy findings and import lint issues",
-      "startedAnalysis": "2026-11-13T21:51:40.525Z",
-      "endedAnalysis": "2026-11-13T21:52:01.1Z",
+      "message": "Run generated plugin test actions through the sequence engine",
+      "startedAnalysis": "2026-11-23T20:47:22.859Z",
+      "endedAnalysis": "2026-11-23T20:47:37.818Z",
       "isMergeCommit": false,
       "parents": [
-        "a38d98d8316656648583b2b6f0e019d056e145dc"
+        "db26cd1abbfe1324a470cf831c14f887dafff5db"
       ]
     },
     "grade": 100,
     "gradeLetter": "A",
     "issuesPercentage": 0,
     "issuesCount": 0,
-    "loc": 101074,
+    "loc": 103885,
     "complexFilesPercentage": 27,
-    "complexFilesCount": 178,
+    "complexFilesCount": 182,
     "branch": {
       "id": 57541956,
       "name": "main",
       "isDefault": true,
       "isEnabled": true,
       "branchType": "Branch",
-      "lastUpdated": "2026-11-13T21:51:31.819Z",
-      "lastCommit": "0c87f03eddd12dc643a3673689e6231ca6164981"
+      "lastUpdated": "2026-11-23T20:47:14.810Z",
+      "lastCommit": "a43190d39da09248a4c3a5a044b1631b92af0ef7"
     },
     "selectedBranch": {
       "id": 57541956,
@@ -82,21 +82,21 @@
       "isDefault": true,
       "isEnabled": true,
       "branchType": "Branch",
-      "lastUpdated": "2026-11-13T21:51:31.819Z",
-      "lastCommit": "0c87f03eddd12dc643a3673689e6231ca6164981"
+      "lastUpdated": "2026-11-23T20:47:14.810Z",
+      "lastCommit": "a43190d39da09248a4c3a5a044b1631b92af0ef7"
     },
     "coverage": {
-      "filesUncovered": 333,
-      "filesWithLowCoverage": 95,
+      "filesUncovered": 355,
+      "filesWithLowCoverage": 90,
       "coveragePercentage": 87,
-      "coveragePercentageWithDecimals": 87.04,
-      "numberTotalFiles": 646,
-      "numberCoveredLines": 47015,
-      "numberCoverableLines": 54014,
-      "status": "Waiting",
-      "lastCommitWithCoverage": "a38d98d8316656648583b2b6f0e019d056e145dc",
-      "statusUpdatedAt": "2026-11-13T21:52:01.51818Z",
-      "valueUpdatedAt": "2026-11-13T17:35:18.900414Z"
+      "coveragePercentageWithDecimals": 87.41,
+      "numberTotalFiles": 673,
+      "numberCoveredLines": 48188,
+      "numberCoverableLines": 55129,
+      "status": "UpToDate",
+      "lastCommitWithCoverage": "a43190d39da09248a4c3a5a044b1631b92af0ef7",
+      "statusUpdatedAt": "2026-11-23T20:58:58.138695Z",
+      "valueUpdatedAt": "2026-11-23T20:58:58.138695Z"
     },
     "goals": {
       "maxIssuePercentage": 2,
