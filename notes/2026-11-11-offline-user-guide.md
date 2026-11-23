@@ -41,12 +41,15 @@ builds the CHM, and only then builds the wheel and source distribution.
 Both archives must contain exactly the freshly compiled guide; missing or
 different help fails the job before any release assets are uploaded.
 
-Successful builds retain the packages and standalone CHM as Actions artifacts.
-For release events, a separate job attaches these files to that release using
-the built-in GitHub token. Manual runs do not publish release assets. The
-existing documentation website workflow remains independent. Compiler setup
-requires network access to Chocolatey's package and its upstream installer;
-this requirement applies only to the release runner.
+Successful builds retain the packages and standalone CHM in the
+`release-packages` Actions artifact. A published GitHub release or prerelease
+also attaches these files to that release using the built-in GitHub token. A
+separate release job uploads the verified wheel to PyPI with Twine using the
+repository's `PYPI_TOKEN` secret. Manual runs stop after uploading Actions
+artifacts.
+
+Compiler setup on the release runner requires network access to Chocolatey's
+package and its upstream installer.
 
 Inspect wheel and sdist contents for `help/stoner_measurement.chm`. Install the
 wheel and check Help > User Guide and F1 with networking disconnected. Verify
