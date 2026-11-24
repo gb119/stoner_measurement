@@ -37,6 +37,7 @@ jobs:
           auto-update-conda: true
           activate-environment: stoner_measurement
           environment-file: environment.yml
+          python-version: "3.14"
           channels: phygbu,conda-forge,defaults
           channel-priority: flexible
 
@@ -47,6 +48,8 @@ jobs:
 
       - name: Build documentation
         shell: bash -el {0}
+        env:
+          QT_API: pyqt5
         run: |
           python -m sphinx -E -a -b html -W --keep-going docs docs/_build/html
       - name: Upload Pages artifact
