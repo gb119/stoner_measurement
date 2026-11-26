@@ -211,6 +211,7 @@ class MeasurementApp(QMainWindow):
             snap_reference_widget=self._main_window.tabs,
         )
         self._data_manager = DataManagerWindow(engine=self._engine, parent=None)
+        self._data_manager.trace_plotted.connect(self._on_data_manager_trace_plotted)
 
         # Temperature control panel (hidden initially) -------------------------
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
@@ -855,7 +856,7 @@ class MeasurementApp(QMainWindow):
 
         self._act_show_data_manager = QAction(make_data_manager_icon(), "Show &Data Manager", self)
         self._act_show_data_manager.setShortcut(QKeySequence("Ctrl+Shift+D"))
-        self._act_show_data_manager.setStatusTip("Inspect and save completed trace data")
+        self._act_show_data_manager.setStatusTip("Inspect, plot and save trace data")
         self._act_show_data_manager.triggered.connect(self._on_show_data_manager)
 
         self._act_show_temp_panel = QAction(
@@ -2377,6 +2378,10 @@ class MeasurementApp(QMainWindow):
     def _on_show_data_manager(self) -> None:
         """Show the trace Data Manager, bringing it to the front if open."""
         self._data_manager.show_and_raise()
+
+    def _on_data_manager_trace_plotted(self, _title: str) -> None:
+        """Show the measurement display while trace plot controls remain open."""
+        self._main_window.tabs.setCurrentIndex(0)
 
     def _on_measurement_details_changed(self, user: str, project: str, sample: str) -> None:
         """Show the most recently executed measurement details in the title."""

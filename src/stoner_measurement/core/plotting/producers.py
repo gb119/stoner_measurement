@@ -146,6 +146,7 @@ def xy_update(
     y_axis="left",
     style=None,
     append=False,
+    title=None,
 ) -> SeriesUpdate:
     """Capture data, errors, physical labels, axes and styles in one operation.
 
@@ -162,6 +163,7 @@ def xy_update(
         PlotData({"x": xs, "y": ys}, metadata, errors),
         CoordinateBinding("x", "y"),
         mode=UpdateMode.APPEND if append else UpdateMode.REPLACE,
+        title=title,
         axes={"x": x_axis, "y": y_axis},
         style=style or {},
     )

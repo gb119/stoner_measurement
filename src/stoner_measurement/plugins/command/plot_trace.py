@@ -24,18 +24,12 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
-from qtpy.QtCore import Qt  # type: ignore[attr-defined]
-from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QCheckBox,
-    QColorDialog,
     QComboBox,
-    QDoubleSpinBox,
     QFormLayout,
     QLabel,
     QLineEdit,
-    QMenu,
-    QPushButton,
     QWidget,
 )
 
@@ -72,7 +66,11 @@ from stoner_measurement.plugins.trace_catalog_ui import (
 )
 from stoner_measurement.qt_compat import pyqtSignal
 from stoner_measurement.ui.axis_mappings import AxisLabel
-from stoner_measurement.ui.theme import button_swatch_stylesheet, contrasting_text_colour
+from stoner_measurement.ui.trace_plot_style import (
+    add_trace_style_controls,
+    choose_trace_colour,
+    trace_style_dict,
+)
 
 if TYPE_CHECKING:
     from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -80,11 +78,6 @@ if TYPE_CHECKING:
 _DEFAULT_X_AXIS = "bottom"
 _DEFAULT_Y_AXIS = "left"
 _DEFAULT_COLUMN_OPTION = "(default)"
-
-#: Valid line-style names accepted by the plot widget.
-_LINE_STYLE_OPTIONS = ("solid", "dash", "dot", "dash-dot", "none")
-#: Valid point-style names accepted by the plot widget.
-_POINT_STYLE_OPTIONS = ("none", "circle", "square", "triangle", "diamond", "plus", "cross")
 
 _PLOT_SIGNAL_BINDINGS = (
     ("plot_trace", "set_trace"),
@@ -733,18 +726,7 @@ class PlotTraceCommand(CommandPlugin):
                 :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace_style_from_dict`.
                 Empty when no format overrides are set.
         """
-        style: dict = {}
-        if self.colour:
-            style["colour"] = self.colour
-        if self.line_style:
-            style["line_style"] = self.line_style
-        if self.point_style:
-            style["point_style"] = self.point_style
-        if self.line_width > 0.0:
-            style["line_width"] = self.line_width
-        if self.point_size > 0.0:
-            style["point_size"] = self.point_size
-        return style
+        return trace_style_dict(self)
 
     def _emit_single_trace(
         self,
@@ -913,15 +895,6 @@ class PlotTraceCommand(CommandPlugin):
             combo.setSizeAdjustPolicy(
                 QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
             )
-        colour_button = self._build_colour_button(widget, self.colour)
-        line_style_combo = self._build_options_combo(
-            widget, ("",) + _LINE_STYLE_OPTIONS, self.line_style, "line_style"
-        )
-        point_style_combo = self._build_options_combo(
-            widget, ("",) + _POINT_STYLE_OPTIONS, self.point_style, "point_style"
-        )
-        line_width_spin = self._build_format_spinbox(widget, self.line_width, "line_width")
-        point_size_spin = self._build_format_spinbox(widget, self.point_size, "point_size")
 
         layout.addRow("Trace:", trace_combo)
         layout.addRow("Column:", column_combo)
@@ -940,11 +913,7 @@ class PlotTraceCommand(CommandPlugin):
         advanced_help.setWordWrap(True)
         layout.addRow(advanced_help)
         layout.addRow(QLabel("<b>Format (optional):</b>", widget))
-        layout.addRow("Colour:", colour_button)
-        layout.addRow("Line style:", line_style_combo)
-        layout.addRow("Point style:", point_style_combo)
-        layout.addRow("Line width (0=default):", line_width_spin)
-        layout.addRow("Point size (0=default):", point_size_spin)
+        add_trace_style_controls(layout, self, choose_colour=self._choose_colour)
         widget.setLayout(layout)
 
         self._wire_config_signals(
@@ -958,7 +927,6 @@ class PlotTraceCommand(CommandPlugin):
             x_axis_combo,
             y_axis_combo,
             channel_items,
-            colour_button,
         )
         source_widgets = {
             "trace_combo": trace_combo,
@@ -993,61 +961,7 @@ class PlotTraceCommand(CommandPlugin):
         update_form()
         return widget
 
-    def _build_colour_button(self, widget: QWidget, colour: str) -> QPushButton:
-        """Build a colour selector button matching the plot panel behaviour."""
-        button = QPushButton(widget)
-        button.setToolTip(
-            "Click to choose a colour. Right-click to reset to automatic (no colour override)."
-        )
-        self._update_colour_button(button, colour)
-        return button
-
-    def _update_colour_button(self, button: QPushButton, colour: str) -> None:
-        """Apply swatch styling and text to a colour selector button.
-
-        Args:
-            button (QPushButton):
-                The button to update.
-            colour (str):
-                Colour string (hex, named, or empty for auto).
-        """
-        if not colour:
-            button.setText("(auto)")
-            button.setStyleSheet("")
-            return
-        if not QColor(colour).isValid():
-            button.setText(colour)
-            button.setStyleSheet("")
-            return
-        hex_colour = QColor(colour).name(QColor.NameFormat.HexRgb)
-        button.setText(hex_colour)
-        button.setStyleSheet(
-            button_swatch_stylesheet(hex_colour, contrasting_text_colour(hex_colour))
-        )
-
-    def _choose_colour(self, current_colour: str, title: str, parent: QWidget | None = None) -> str:
-        """Open a colour picker and return the selected hex colour or current value.
-
-        Args:
-            current_colour (str):
-                The currently stored colour string; used as the initial picker colour.
-            title (str):
-                Title string for the colour dialog window.
-            parent (QWidget | None):
-                Parent widget for the dialog, ensuring correct modality.
-        """
-        base_colour = (
-            QColor(current_colour) if QColor(current_colour).isValid() else QColor("black")
-        )
-        selected = QColorDialog.getColor(
-            base_colour,
-            parent,
-            title,
-            QColorDialog.ColorDialogOption.DontUseNativeDialog,
-        )
-        if not selected.isValid():
-            return current_colour
-        return selected.name(QColor.NameFormat.HexRgb)
+    _choose_colour = staticmethod(choose_trace_colour)
 
     def _channel_label_for_expression(self, expression: str) -> AxisLabel:
         """Return the data-selection label for a configured channel expression."""
@@ -1174,82 +1088,6 @@ class PlotTraceCommand(CommandPlugin):
             )
         return []
 
-    def _build_options_combo(
-        self,
-        widget: QWidget,
-        options: tuple,
-        current: str,
-        attr: str,
-    ) -> QComboBox:
-        """Build a combo box for a fixed set of string options.
-
-        The first option in *options* is used as the "default" sentinel
-        (displayed as blank when empty).  When the current value does not
-        appear in *options* the first item is selected.
-
-        Args:
-            widget (QWidget):
-                Parent widget for the combo box.
-            options (tuple):
-                Sequence of option strings.  The first entry may be ``""``
-                to represent the default / unset state.
-            current (str):
-                Currently stored value.
-            attr (str):
-                Attribute name on ``self`` to update when the selection changes.
-
-        Returns:
-            (QComboBox):
-                Populated combo box widget.
-        """
-        combo = QComboBox(widget)
-        display_options = [o if o else "(default)" for o in options]
-        combo.addItems(display_options)
-        if current in options:
-            idx = list(options).index(current)
-            combo.setCurrentIndex(idx)
-        else:
-            combo.setCurrentIndex(0)
-            setattr(self, attr, options[0])
-
-        def _on_changed(_i: int) -> None:
-            idx = combo.currentIndex()
-            setattr(self, attr, options[idx] if idx < len(options) else "")
-
-        combo.currentIndexChanged.connect(_on_changed)
-        return combo
-
-    def _build_format_spinbox(
-        self,
-        widget: QWidget,
-        current: float,
-        attr: str,
-    ) -> QDoubleSpinBox:
-        """Build a spinbox for a format float value (line width or point size).
-
-        A value of ``0.0`` means "use the plot panel default".
-
-        Args:
-            widget (QWidget):
-                Parent widget.
-            current (float):
-                Currently stored value.
-            attr (str):
-                Attribute name on ``self`` to update when the value changes.
-
-        Returns:
-            (QDoubleSpinBox):
-                Configured spinbox widget.
-        """
-        spinbox = QDoubleSpinBox(widget)
-        spinbox.setRange(0.0, 100.0)
-        spinbox.setSingleStep(0.5)
-        spinbox.setDecimals(1)
-        spinbox.setSpecialValueText("default")
-        spinbox.setValue(current)
-        spinbox.valueChanged.connect(lambda val: setattr(self, attr, val))
-        return spinbox
-
     def _build_channel_combo(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         widget: QWidget,
@@ -1292,7 +1130,6 @@ class PlotTraceCommand(CommandPlugin):
         x_axis_combo: QComboBox,
         y_axis_combo: QComboBox,
         channel_items: dict[str, str],
-        colour_button: QPushButton,
     ) -> None:
         self._wire_mode_controls(
             trace_combo,
@@ -1334,19 +1171,6 @@ class PlotTraceCommand(CommandPlugin):
         def _apply_title() -> None:
             self.title_expr = title_edit.text().strip()
 
-        def _apply_colour() -> None:
-            self.colour = self._choose_colour(self.colour, "Select trace colour")
-            self._update_colour_button(colour_button, self.colour)
-
-        def _reset_colour_to_auto(pos: Any) -> None:
-            menu = QMenu(colour_button)
-            action = menu.addAction("Auto (clear colour)")
-            if menu.exec(colour_button.mapToGlobal(pos)) == action:
-                self.colour = ""
-                self._update_colour_button(colour_button, self.colour)
-
-        colour_button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        colour_button.customContextMenuRequested.connect(_reset_colour_to_auto)
         trace_combo.currentTextChanged.connect(_apply_trace)
         column_combo.currentTextChanged.connect(_apply_column)
         transpose_check.toggled.connect(lambda checked: setattr(self, "transpose", checked))
@@ -1356,7 +1180,6 @@ class PlotTraceCommand(CommandPlugin):
         title_edit.editingFinished.connect(_apply_title)
         x_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "x_axis_name", text))
         y_axis_combo.currentTextChanged.connect(lambda text: setattr(self, "y_axis_name", text))
-        colour_button.clicked.connect(_apply_colour)
 
     def _wire_mode_controls(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,

@@ -222,6 +222,31 @@ readings; enabling **Collect data** retains those readings in a table that
 Save can write. Saving selects the underlying trace tables, not a screenshot
 of the plot.
 
+Inspecting and replotting acquired traces
+-----------------------------------------
+
+Open **View → Show Data Manager** after acquiring data. Each trace tab shows
+the acquired dataframe, with the trace's channel names and units in the column
+headers. The **All Traces** tab shows each trace's size and lets you select
+several traces for export.
+
+On a trace tab, choose **Plot Trace…** from the toolbar or **Trace** menu.
+Select the columns for **X data** and **Y data**, then choose the display axes
+and optional title, colour, line and point settings. The initial selections
+follow the trace's X and primary Y roles. Associated uncertainties follow the
+channels when you swap them. Use the Cartesian XY display for this workflow.
+
+Click **Send to Plot Window** to add a series to the main Measurement plot.
+The Data Manager hides while the plot dialog is open, so you can move the
+dialog aside and use the Measurement plot. The dialog stays open so you can
+try another pair of columns from the same snapshot. Close it to return to the
+same trace tab in the Data Manager, or reopen it to use newly acquired rows.
+
+Choose **Save as TDI Format 2.0…** or **Save as NeXus/HDF5…** from the toolbar
+or **File** menu. The active trace tab saves that trace. On **All Traces**,
+the same actions save the checked traces together. Exports use the most recent
+available data and write the file in the background.
+
 Saving complete traces
 ----------------------
 
