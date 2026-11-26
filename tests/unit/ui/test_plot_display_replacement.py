@@ -348,6 +348,31 @@ def test_missing_saved_factory_and_invalid_settings_fall_back(managed_qt_widget,
     assert other.factory_id == "cartesian" and other.diagnostics
 
 
+def test_axis_preferences_are_session_only(managed_qt_widget, tmp_path, qtlog, qapp):
+    settings = QSettings(str(tmp_path / "axes.ini"), QSettings.Format.IniFormat)
+    first = managed_qt_widget(PlotDisplayHost(settings=settings))
+    first.display_widget.add_x_axis("field", "Field", position="top")
+    first.display_widget.add_y_axis("voltage", "Voltage", side="right")
+    first.display_widget.set_axis_range("field", 1, 5)
+    legacy = first.display_widget.export_plot_settings()
+    first.save_preferences()
+    saved = json.loads(settings.value("plotDisplay/preferences"))
+    assert (
+        not {"axes", "manual_ranges", "axis_order", "axis_labels"}
+        & saved["renderers"]["cartesian"].keys()
+    )
+    assert "field" in first.display_widget.axis_names
+    assert "axes" in first._settings_cache["cartesian"]
+    # Existing installations may already have custom axes in their settings.
+    saved["renderers"]["cartesian"] = legacy
+    settings.setValue("plotDisplay/preferences", json.dumps(saved))
+    second = managed_qt_widget(PlotDisplayHost(settings=settings))
+    second.show()
+    qapp.processEvents()
+    assert set(second.display_widget.axis_names) == {"bottom", "left"}
+    assert not any("already taken" in record.message for record in qtlog.records)
+
+
 def test_canonical_source_binding_and_metadata_survive_replay(hosted):
     host, _ = hosted
     update = SeriesUpdate(

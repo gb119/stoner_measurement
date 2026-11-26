@@ -172,7 +172,7 @@ class PlotDisplayHost(QWidget):
             if saved.get("version") != 1 or not isinstance(saved.get("renderers"), dict):
                 raise ValueError("Unsupported display preferences version.")
             freeze_settings(saved)
-            self._settings_cache = saved["renderers"]
+            self._settings_cache = self._persistent_renderer_settings(saved["renderers"])
             return saved["factory_id"]
         except Exception as exc:
             self._diagnostics.append(f"Ignored invalid display preferences: {exc}")
@@ -187,7 +187,7 @@ class PlotDisplayHost(QWidget):
             importer(preferences)
 
     def save_preferences(self) -> None:
-        """Persist factory and versioned renderer settings, never measurement arrays."""
+        """Persist display preferences without measurement arrays or Cartesian axes."""
         exporter = getattr(self._display, "export_settings", None)
         if callable(exporter):
             preferences = settings_dict(freeze_settings(exporter()))
@@ -199,10 +199,22 @@ class PlotDisplayHost(QWidget):
                     {
                         "version": 1,
                         "factory_id": self.factory_id,
-                        "renderers": self._settings_cache,
+                        "renderers": self._persistent_renderer_settings(self._settings_cache),
                     }
                 ),
             )
+
+    @staticmethod
+    def _persistent_renderer_settings(renderers: dict[str, dict]) -> dict[str, dict]:
+        """Exclude run-specific axes from disk while retaining live replay settings."""
+        result = dict(renderers)
+        if "cartesian" in result:
+            result["cartesian"] = {
+                key: value
+                for key, value in result["cartesian"].items()
+                if key not in {"axes", "manual_ranges", "axis_order", "axis_labels"}
+            }
+        return result
 
     def export_state(self) -> DisplayState:
         """Capture current UI state and canonical source channels on the GUI thread."""

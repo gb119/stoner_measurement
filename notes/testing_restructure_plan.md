@@ -1,5 +1,15 @@
 # Testing Restructure Plan
 
+## 2026-11-26: Session-only Cartesian axes
+
+- Added a host regression covering removal of axes from saved preferences and
+  ignoring legacy axis settings at startup. Live renderer caches retain axes
+  for display switching within the same application session. No tests moved.
+- Display replacement, sequence display preference, Plot Trace and Plot Points
+  checks passed: 152 tests on Conda/offscreen Python 3.14.10 / PyQt5.
+  Ruff passed. Running the real application entry point with existing user
+  settings reproduced occupied-cell warnings before the change and none after.
+
 ## 2026-11-26: Collected-output labels
 
 - Added `tests/unit/plugins/state/test_output_labels.py` for scan/sweep custom

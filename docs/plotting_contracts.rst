@@ -336,8 +336,10 @@ refuse the replacement. This never changes a coordinate system implicitly.
 
 The application stores the selected factory and versioned per-factory renderer
 preferences at ``plotDisplay/preferences`` in QSettings. Measurements and plotted
-arrays are excluded; restarting restores preferences without restoring acquired
-series. Unsupported or malformed saved settings fall back to Cartesian defaults.
+arrays and Cartesian axis definitions, labels, order and ranges are excluded.
+Restarting begins with the default bottom/left axes; plotting commands recreate
+their configured axes when a sequence is loaded or run. Other display preferences
+remain available. Unsupported or malformed saved settings fall back to Cartesian defaults.
 ``host.save_preferences()`` persists current controls; close and successful
 replacement also save them. Shared plots remain application-wide across sequence
 documents.
