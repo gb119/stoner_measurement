@@ -1,5 +1,18 @@
 # Testing Restructure Plan
 
+## 2026-11-26: Collected-output labels
+
+- Added `tests/unit/plugins/state/test_output_labels.py` for scan/sweep custom
+  headers, configured schemas, repeated collection, catalogue selectors,
+  persistence, blank fallback, collisions and label editor refresh/selection.
+- Extended direct/generated execution parity to collect a labelled column.
+  Updated existing table tests for the new Label column; no tests were moved
+  or removed.
+- Conda/offscreen Python 3.14.10 / PyQt5: 246 tests passed across unit state
+  plugins, the sweep module, trace catalogue UI and symmetry decomposition.
+  Ruff check/format and `git diff --check` passed. Other Qt bindings were not
+  exercised.
+
 ## 2026-11-22: Plugin contract documentation
 
 - Added the unified output reference and aligned plugin authoring, trace data,

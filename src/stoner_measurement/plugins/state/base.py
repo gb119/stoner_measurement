@@ -81,6 +81,10 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             promotes a measured readback to the trace x axis; ``"d"``,
             ``"y"``, and ``"e"`` set data-column roles; ``"-"`` leaves the
             role unspecified for the normal fallback heuristics.
+        collect_output_labels (dict[str, str]):
+            Optional dataframe headers keyed by catalogue output name. Edit
+            these in the Data tab's Label column; blank labels use the output
+            name. Labels also apply to trace names, roles and units.
         data (TraceData):
             Accumulated measurement data.  The controlled state is the shared
             x axis; ``iteration`` and ``stage`` are auxiliary columns and the
@@ -150,6 +154,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.clear_filter: str = "True"
         self.collect_outputs: list[str] | None = None
         self.collect_output_roles: dict[str, str] = {}
+        self.collect_output_labels: dict[str, str] = {}
         # Subclass state metadata may depend on fields initialised after
         # ``super().__init__`` (for example a source-mode selector).
         self._data = TraceData()
@@ -415,11 +420,32 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         row.update(output_values)
 
         row = {"x": x_value, **row}
+        column_labels = self._collected_column_labels(keys, explicit_x)
         if self._data.row_count == 0:
             self._data = self._build_collected_trace(pd.DataFrame([row]), explicit_x)
             self._data.reserve_rows(256)
         else:
-            self._data.append_row(row)
+            self._data.append_row(
+                {column_labels.get(key, key): value for key, value in row.items()}
+            )
+
+    def _collected_column_labels(self, keys: list[str], explicit_x: str | None) -> dict[str, str]:
+        """Resolve unique dataframe headers, preserving catalogue identities for lookup."""
+        labels = {}
+        used = {"iteration", "stage", "state"}
+        if explicit_x is None or not self.collect_output_labels.get(explicit_x, "").strip():
+            used.add("x")
+        for key in keys:
+            label = self.collect_output_labels.get(key, "").strip()
+            column = "x" if key == explicit_x else key
+            header = label or column
+            if header in used and not (key == explicit_x and header == "x"):
+                raise ValueError(
+                    f"Collected output {key!r} has a duplicate or reserved label: {header!r}"
+                )
+            used.add(header)
+            labels[column] = header
+        return labels
 
     def _resolve_collect_keys(
         self, values_cat: dict[str, str], outputs: list[str] | None
@@ -481,7 +507,20 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 for column in output_columns
             }
         )
-        return TraceData(frame, column_roles=roles, names=names, units=units)
+        labels = self._collected_column_labels(
+            output_columns + ([explicit_x] if explicit_x else []), explicit_x
+        )
+        if explicit_x is not None:
+            units["x"] = str(getattr(values_cat.get(explicit_x), "units", "") or "")
+        return TraceData(
+            frame.rename(columns=labels),
+            column_roles={labels.get(key, key): value for key, value in roles.items()},
+            names={
+                labels.get(key, key): labels[key] if labels.get(key, key) != key else value
+                for key, value in names.items()
+            },
+            units={labels.get(key, key): value for key, value in units.items()},
+        )
 
     def _configured_collected_trace(self) -> TraceData:
         """Return the configured collected-data schema before acquisition.
@@ -545,6 +584,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             None if self.collect_outputs is None else list(self.collect_outputs)
         )
         data["collect_output_roles"] = dict(self.collect_output_roles)
+        data["collect_output_labels"] = dict(self.collect_output_labels)
         return data
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -559,6 +599,12 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 Serialised plugin dict as produced by :meth:`to_json`.
         """
         super()._restore_from_json(data)
+        raw_labels = data.get("collect_output_labels", {})
+        self.collect_output_labels = (
+            {str(key): str(label) for key, label in raw_labels.items() if isinstance(label, str)}
+            if isinstance(raw_labels, dict)
+            else {}
+        )
         if "collect_data" in data:
             self.collect_data = bool(data["collect_data"])
         if "clear_on_start" in data:

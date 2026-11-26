@@ -67,6 +67,10 @@ Select the parent scan or sweep and open its **Data** tab:
 3. Set each included output's **Role**. In this example, collect
    ``curve_fit:Ic``, ``curve_fit:Rn`` and their ``_err`` uncertainties.
    ``scan:Value`` is selected as the independent variable.
+   Optionally enter a **Label** to use as its dataframe column header and
+   trace channel name. Leave it blank to retain the output name (or the
+   standard ``x`` column for an independent variable). Labels must be unique
+   and must not use the bookkeeping names ``iteration``, ``stage`` or ``state``.
 4. Keep **Clear on start** enabled for a fresh table on each execution of the
    scan. Disable it only when you intend to accumulate successive executions.
 

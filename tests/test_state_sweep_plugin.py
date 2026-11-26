@@ -173,7 +173,7 @@ class TestStateSweepPlugin:
             row for row in range(table.rowCount()) if table.item(row, 1).text() == "counter:Value"
         )
         value_checkbox = table.cellWidget(value_row, 0)
-        role_combo = table.cellWidget(value_row, 2)
+        role_combo = table.cellWidget(value_row, 3)
         assert isinstance(value_checkbox, QCheckBox)
         assert isinstance(role_combo, QComboBox)
         select_all_checkbox = next(

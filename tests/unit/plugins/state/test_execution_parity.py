@@ -65,6 +65,7 @@ def _axis(engine, kind):
     engine.add_plugin("readback", readback)
     engine.update_step_plugin_catalog([axis, readback])
     axis.collect_outputs = ["readback:Measured"]
+    axis.collect_output_labels = {"readback:Measured": "Measured signal"}
     return axis, readback
 
 
@@ -123,7 +124,7 @@ def test_collection_flags_and_child_measurements_match(state_case, path, clear, 
     expected = ([] if clear else [-1.0]) + ([1.0, 2.0] if collect else [])
     assert axis.data.x.tolist() == expected
     if collect:
-        assert axis.data.df["readback:Measured"].tolist() == ([] if clear else [99.0]) + [
+        assert axis.data.df["Measured signal"].tolist() == ([] if clear else [99.0]) + [
             10.0,
             20.0,
         ]

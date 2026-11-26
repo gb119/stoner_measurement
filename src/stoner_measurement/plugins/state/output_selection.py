@@ -10,6 +10,7 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
     QHeaderView,
+    QLineEdit,
     QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
@@ -30,20 +31,21 @@ class OutputSelectionTable(QTableWidget):
     selection_changed = pyqtSignal(bool)
 
     def __init__(self, plugin: StatePlugin, parent=None) -> None:
-        super().__init__(0, 3, parent)
+        super().__init__(0, 4, parent)
         self._plugin = plugin
         self._sync_in_progress = False
         self._checks: dict[str, QCheckBox] = {}
         self._role_combos: dict[str, QComboBox] = {}
         self.setObjectName("stateOutputSelectionTable")
-        self.setHorizontalHeaderLabels(["Include", "Output", "Role"])
+        self.setHorizontalHeaderLabels(["Include", "Output", "Label", "Role"])
         self.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.verticalHeader().setVisible(False)
         header = self.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.refresh()
 
@@ -59,7 +61,9 @@ class OutputSelectionTable(QTableWidget):
         self._checks.clear()
         self._role_combos.clear()
         keys = sorted(str(key) for key in self._plugin.engine_namespace.get("_values", {}))
-        selected = None if self._plugin.collect_outputs is None else set(self._plugin.collect_outputs)
+        selected = (
+            None if self._plugin.collect_outputs is None else set(self._plugin.collect_outputs)
+        )
         configured_roles = self._plugin.collect_output_roles
         inferred_roles = (
             self._plugin.inferred_output_roles(keys)
@@ -78,6 +82,15 @@ class OutputSelectionTable(QTableWidget):
             name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             self.setItem(row, 1, name_item)
 
+            label_edit = QLineEdit(self._plugin.collect_output_labels.get(key, ""), self)
+            label_edit.setObjectName(f"collectOutputLabel:{key}")
+            label_edit.setPlaceholderText(key)
+            label_edit.setToolTip("Dataframe column label; leave blank to use the output name.")
+            label_edit.textChanged.connect(
+                lambda label, output_key=key: self._label_changed(output_key, label)
+            )
+            self.setCellWidget(row, 2, label_edit)
+
             role_combo = QComboBox(self)
             role_combo.setObjectName(f"collectOutputRole:{key}")
             role_combo.setProperty("output_key", key)
@@ -86,7 +99,7 @@ class OutputSelectionTable(QTableWidget):
             role_combo.currentTextChanged.connect(
                 lambda role, output_key=key: self._role_changed(output_key, role)
             )
-            self.setCellWidget(row, 2, role_combo)
+            self.setCellWidget(row, 3, role_combo)
             self._checks[key] = check
             self._role_combos[key] = role_combo
         self._sync_in_progress = False
@@ -134,6 +147,12 @@ class OutputSelectionTable(QTableWidget):
                     combo.setCurrentText("-")
             self._sync_in_progress = False
         self._sync_plugin()
+
+    def _label_changed(self, output_key: str, label: str) -> None:
+        if label.strip():
+            self._plugin.collect_output_labels[output_key] = label
+        else:
+            self._plugin.collect_output_labels.pop(output_key, None)
 
     def _sync_plugin(self) -> None:
         if self._sync_in_progress:

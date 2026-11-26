@@ -15,6 +15,7 @@ from qtpy.QtWidgets import (
     QComboBox,
     QFormLayout,
     QFrame,
+    QLabel,
     QLineEdit,
     QPushButton,
     QVBoxLayout,
@@ -263,7 +264,8 @@ class _StateSweepDataPage(QWidget):
         layout.addLayout(data_form)
         output_form = QFormLayout()
         output_form.setFormAlignment(Qt.AlignmentFlag.AlignTop)
-        output_form.addRow("Collected outputs:", output_table)
+        output_form.addRow(QLabel("Collected outputs:"))
+        output_form.addRow(output_table)
         layout.addLayout(output_form)
         layout.addStretch(1)
 

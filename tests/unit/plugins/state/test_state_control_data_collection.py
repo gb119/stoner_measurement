@@ -284,7 +284,7 @@ class TestStateControlDataCollection:
         assert table is not None
         value_row = next(row for row in range(table.rowCount()) if table.item(row, 1).text() == "counter:Value")
         value_checkbox = table.cellWidget(value_row, 0)
-        role_combo = table.cellWidget(value_row, 2)
+        role_combo = table.cellWidget(value_row, 3)
         assert isinstance(value_checkbox, QCheckBox)
         assert isinstance(role_combo, QComboBox)
         select_all_checkbox = next(
@@ -319,7 +319,7 @@ class TestStateControlDataCollection:
         role_combo.setCurrentText("x")
         assert p.collect_output_roles["counter:Value"] == "x"
         other_role_combo = next(
-            table.cellWidget(row, 2)
+            table.cellWidget(row, 3)
             for row in range(table.rowCount())
             if table.item(row, 1).text() == "instantstate:Voltage"
         )
