@@ -57,6 +57,8 @@ from weakref import ref
 import numpy as np
 from qtpy.QtCore import QObject, QThread
 
+from stoner_measurement.core.chart_trace import ChartTrace
+from stoner_measurement.core.trace_data import TraceData
 from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
@@ -763,14 +765,18 @@ class SequenceEngine(QObject):
         root_logger.addHandler(self._log_handler)
 
         self._namespace = self._make_namespace()
+        self._chart_traces: dict[str, ChartTrace] = {}
+        self._chart_trace_keys: dict[str, ChartTrace] = {}
+        self._namespace["_chart_traces"] = self._chart_traces
+        self._step_trace_catalog: dict[str, str] = {}
+        self._step_trace_schemas: dict[str, TraceData] = {}
         self._namespace["wait_for_plot_ready"] = self.wait_for_plot_ready
         self._namespace["select_display_plugin"] = self.select_display_plugin
         self.preferred_display_plugin = "cartesian"
         self.plot_display_host: Any = None
         self._plugin_var_names: dict[str, str] = {}  # ep_name → var_name in namespace
         # Step-plugin instances provided by the application layer (e.g. from the
-        # sequence editor).  These are the sole source for the _traces/_values
-        # catalogs; base plugins registered via add_plugin are not included.
+        # sequence editor). Base plugins registered via add_plugin are omitted.
         self._extra_catalog_plugins: list[BasePlugin] = []
         # Plugins collected from the most recently generated sequence (set by
         # generate_sequence_code; replaced on each call, not appended).  These are
@@ -1132,11 +1138,8 @@ class SequenceEngine(QObject):
         schemas are materialised into ``_trace_schemas`` after scalar outputs
         are available, before catalogue-change signals are emitted.
 
-        Only sequence-step plugins contribute to the catalogs.  Base plugins
-        registered via :meth:`add_plugin` (the plugin-manager singletons) are
-        intentionally excluded because the trace and value catalogs represent
-        the outputs produced by the current measurement sequence, not the
-        available instrument drivers.
+        The trace catalogue also includes recorded controller charts. Base plugins
+        registered via :meth:`add_plugin` (the plugin-manager singletons) are excluded.
 
         This method is called automatically by :meth:`add_plugin`,
         :meth:`remove_plugin`, :meth:`rename_plugin`, and
@@ -1162,7 +1165,9 @@ class SequenceEngine(QObject):
                             for key, item in outputs.values.items()
                         }
                     )
-        self._namespace["_traces"] = traces
+        self._step_trace_catalog = traces
+        trace_catalog, chart_schemas = self._combined_trace_catalog()
+        self._namespace["_traces"] = trace_catalog
         self._namespace["_values"] = values
         # State collection schemas depend on the completed scalar catalogue.
         schemas = {}
@@ -1180,10 +1185,71 @@ class SequenceEngine(QObject):
                         plugin.instance_name,
                         exc_info=True,
                     )
-        self._namespace["_trace_schemas"] = schemas
-        self.traces_catalog_changed.emit(dict(traces))
+        self._step_trace_schemas = schemas
+        self._namespace["_trace_schemas"] = {**schemas, **chart_schemas}
+        self.traces_catalog_changed.emit(dict(trace_catalog))
         self.values_catalog_changed.emit(dict(values))
         self.namespace_updated.emit()
+
+    def register_chart_trace(self, name: str, owner: object) -> ChartTrace:
+        """Reserve a chart trace name or resume a trace owned by the same chart."""
+        name = name.strip()
+        if not name:
+            raise ValueError("Enter a trace name to start recording.")
+        existing = self._chart_traces.get(name)
+        if existing is not None and existing.owner is owner:
+            return existing
+        occupied = set(self.traces_catalog) | self._chart_traces.keys()
+        if name.casefold() in {key.casefold() for key in occupied}:
+            raise ValueError(f"A trace named {name!r} already exists. Choose another name.")
+        trace = ChartTrace(owner)
+        self._chart_traces[name] = trace
+        self._publish_chart_traces()
+        return trace
+
+    def append_chart_sample(
+        self, trace: ChartTrace, timestamp: float, samples: dict[tuple[str, str], float]
+    ) -> None:
+        """Append one chart row and notify trace and namespace consumers."""
+        if not samples:
+            return
+        if trace.append(timestamp, samples):
+            self._publish_chart_traces()
+        else:
+            self.notify_namespace_updated()
+
+    def chart_trace(self, key: str) -> ChartTrace | None:
+        """Return the recorded chart behind a published catalogue key."""
+        return self._chart_trace_keys.get(key)
+
+    def _publish_chart_traces(self) -> None:
+        traces, chart_schemas = self._combined_trace_catalog()
+        self._namespace["_traces"] = traces
+        self._namespace["_trace_schemas"] = {**self._step_trace_schemas, **chart_schemas}
+        self.traces_catalog_changed.emit(dict(traces))
+        self.notify_namespace_updated()
+
+    def _combined_trace_catalog(self) -> tuple[dict[str, str], dict[str, TraceData]]:
+        traces = dict(self._step_trace_catalog)
+        schemas = {}
+        charts = {}
+        step_names = {name.casefold() for name in traces}
+        reserved = step_names | {name.casefold() for name in self._chart_traces}
+        for name, chart in self._chart_traces.items():
+            key = name
+            if name.casefold() in step_names:
+                # A sequence opened after recording began keeps its configured output keys.
+                key = f"{name} (chart)"
+                suffix = 1
+                while key.casefold() in reserved:
+                    suffix += 1
+                    key = f"{name} (chart {suffix})"
+                reserved.add(key.casefold())
+            traces[key] = f"_chart_traces[{name!r}]"
+            schemas[key] = chart.schema()
+            charts[key] = chart
+        self._chart_trace_keys = charts
+        return traces, schemas
 
     def update_step_plugin_catalog(self, plugins: list[BasePlugin]) -> None:
         """Update the engine's step-plugin catalog and rebuild ``_traces``/``_values``.
@@ -1394,17 +1460,11 @@ class SequenceEngine(QObject):
 
     @property
     def traces_catalog(self) -> dict[str, str]:
-        """Master catalog of all trace data produced by registered plugins.
+        """Return the catalogue of sequence outputs and recorded chart traces.
 
-        Returns a snapshot of the ``_traces`` dict in the engine namespace.
-        Each entry maps a human-readable name (``"{instance_name}:{channel_name}"``)
-        to the Python expression that retrieves the corresponding
-        ``(x_array, y_array)`` tuple from the namespace.
-
-        The catalog is rebuilt automatically whenever a plugin is added,
-        removed, or renamed.  It is also available directly inside sequence
-        scripts and plugin :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`
-        calls as the variable ``_traces``.
+        Each name maps to a Python expression that resolves a ``TraceData``
+        object. The live catalogue is accessible in sequence scripts as
+        ``_traces``.
 
         Returns:
             (dict[str, str]):
@@ -1413,14 +1473,10 @@ class SequenceEngine(QObject):
         Examples:
             >>> from qtpy.QtWidgets import QApplication
             >>> _ = QApplication.instance() or QApplication([])
-            >>> from stoner_measurement.plugins.trace import DummyPlugin
             >>> engine = SequenceEngine()
-            >>> engine.add_plugin("dummy", DummyPlugin())
-            >>> cat = engine.traces_catalog
-            >>> "dummy:Dummy" in cat
+            >>> chart = engine.register_chart_trace("Temperature chart", object())
+            >>> engine.evaluate_expression(engine.traces_catalog["Temperature chart"]) is chart
             True
-            >>> cat["dummy:Dummy"]
-            "dummy.data['Dummy']"
             >>> engine.shutdown()
         """
         return dict(self._namespace.get("_traces", {}))

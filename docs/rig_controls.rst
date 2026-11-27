@@ -89,10 +89,31 @@ points, a sweep to collect while state changes, or a monitor for scalar
 readback. The specific controller pages list the available steps and any
 stability or movement conditions.
 
-Control-panel charts are live diagnostics, separate from sequence result
-tables. Select outputs in the scan/sweep data controls, then use Plot Points,
-Plot Trace and Save as described in :doc:`data_workflows` to retain the
-measurement you need.
+Recording controller charts
+---------------------------
+
+On the **Chart** tab of the Temperature, Magnet or Pressure panel, enter a
+trace name and tick **Write data to Trace**. Choose a name that is not already
+used by another trace. Each chart update adds one row with a Unix timestamp in
+seconds and a column for each recorded series. Missing readings appear as
+``NaN``. The Temperature panel records its primary and secondary readings in
+the same row, under distinct column names.
+
+Recorded traces appear in the sequence trace selectors and the **Data
+Manager**, where you can inspect, plot or export them as described in
+:doc:`data_workflows`. In the engine console or a script, use
+``_chart_traces['Temperature chart']`` to access the live trace, or call
+``_chart_traces['Temperature chart'].clear()`` to empty it.
+
+Untick the checkbox to stop recording. Tick it again with the same name to
+continue the same trace, or enter a new name to start another one. The chart's
+rolling duration and **Clear** button affect the display. To empty the recorded
+table, select its tab in Data Manager and choose **Trace → Clear Trace…**.
+This keeps the trace available, and recording continues if the checkbox is
+ticked. Export the trace to retain it after application exit.
+
+If a sequence later uses the same catalogue name, the recorded chart appears
+with a ``(chart)`` suffix so both traces remain available.
 
 For direct Python access, use the public controller services in
 :doc:`console_api` and the signatures in :doc:`api/core` and

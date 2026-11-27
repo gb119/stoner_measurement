@@ -26,6 +26,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.instruments.addressing import DEFAULT_ETHERNET_HOST, DEFAULT_ETHERNET_PORT
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.mass_flow_controller import MassFlowController
@@ -36,6 +37,7 @@ from stoner_measurement.instruments.pressure_controller import (
 from stoner_measurement.pressure_control.engine import PressureControllerEngine
 from stoner_measurement.pressure_control.types import PressureEngineState, PressureEngineStatus
 from stoner_measurement.qt_compat import pyqtSlot
+from stoner_measurement.ui.chart_trace_controls import ChartTraceControls
 from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.plot_widget import PlotWidget, configure_chart_legend
 from stoner_measurement.ui.time_utils import format_local_time
@@ -99,13 +101,16 @@ def _line_edit(placeholder: str = "") -> QLineEdit:
 class PressureControlPanel(QWidget):
     """Non-blocking window for pressure controller and MFC monitoring."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, sequence_engine: SequenceEngine | None = None
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Pressure Control")
         self.setMinimumSize(820, 620)
         self.setWindowFlags(Qt.WindowType.Window)
 
         self._engine = PressureControllerEngine.instance()
+        self._sequence_engine = sequence_engine
         self._driver_manager = InstrumentDriverManager()
         self._driver_manager.discover()
         self._allow_exit_close = False
@@ -436,6 +441,8 @@ class PressureControlPanel(QWidget):
         clear_btn.clicked.connect(self._on_clear_chart)
         controls.addWidget(clear_btn)
         layout.addLayout(controls)
+        self._chart_recording = ChartTraceControls(self._sequence_engine, "Pressure chart", widget)
+        layout.addWidget(self._chart_recording)
         content = QHBoxLayout()
         self._chart_widget = PlotWidget(show_axis_controls=False, show_trace_table=False)
         self._chart_widget.set_default_axis_labels("Time (s ago)", "Pressure")
@@ -868,20 +875,25 @@ class PressureControlPanel(QWidget):
         if state.reading is None:
             return
         timestamp = state.reading.timestamp.timestamp()
+        flow_unit = "" if state.flow_unit is None else str(state.flow_unit)
         for channel, reading in state.readings.items():
             if reading.value is not None:
                 trace = f"Pressure {channel}"
                 self._chart_history.setdefault(trace, []).append((timestamp, float(reading.value)))
                 unit = reading.unit.value if hasattr(reading.unit, "value") else str(reading.unit)
+                self._chart_recording.collect(trace, float(reading.value), unit)
                 self._update_legend_value(trace, f"{reading.value:.4E} {unit}")
         for channel, value in state.flow_setpoints.items():
             trace = f"Flow setpoint {channel}"
             self._chart_history.setdefault(trace, []).append((timestamp, float(value)))
+            self._chart_recording.collect(trace, float(value), flow_unit)
             self._update_legend_value(trace, self._format_flow_value(value, state.flow_unit))
         for channel, value in state.flow_actual.items():
             trace = f"Flow actual {channel}"
             self._chart_history.setdefault(trace, []).append((timestamp, float(value)))
+            self._chart_recording.collect(trace, float(value), flow_unit)
             self._update_legend_value(trace, self._format_flow_value(value, state.flow_unit))
+        self._chart_recording.commit(timestamp)
 
     def _refresh_chart(self) -> None:
         now = datetime.now(tz=UTC).timestamp()

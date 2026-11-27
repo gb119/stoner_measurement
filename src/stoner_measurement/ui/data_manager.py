@@ -9,6 +9,7 @@ from qtpy import QtCore, QtWidgets  # pylint: disable=no-name-in-module
 from qtpy.QtCore import Qt  # pylint: disable=no-name-in-module
 from qtpy.QtGui import QAction
 
+from stoner_measurement.core.chart_trace import ChartTrace
 from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.core.trace_data import TraceData
 from stoner_measurement.plugins.command.save import SAVE_WRITERS, SaveCommand, SavePayload
@@ -145,8 +146,12 @@ class _TracePage(QtWidgets.QWidget):
         """Capture the current frame before exposing its cells to the table."""
         try:
             trace = engine.evaluate_expression(expression)
-            self.trace = TraceData(
-                trace.df, column_roles=trace.column_roles, names=trace.names, units=trace.units
+            self.trace = (
+                trace.snapshot()
+                if isinstance(trace, ChartTrace)
+                else TraceData(
+                    trace.df, column_roles=trace.column_roles, names=trace.names, units=trace.units
+                )
             )
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
             self.trace = None
@@ -246,6 +251,8 @@ class DataManagerWindow(QtWidgets.QWidget):
         self._save_actions: dict[str, QAction] = {}
         self._plot_action = QAction("Plot Trace…", self)
         self._plot_action.triggered.connect(self._configure_plot)
+        self._clear_trace_action = QAction("Clear Trace…", self)
+        self._clear_trace_action.triggered.connect(self._clear_trace)
         menu_bar, toolbar = self._build_actions()
 
         footer = QtWidgets.QHBoxLayout()
@@ -288,6 +295,7 @@ class DataManagerWindow(QtWidgets.QWidget):
         refresh = QAction("Refresh", self)
         refresh.triggered.connect(self.refresh_traces)
         trace_menu.addAction(self._plot_action)
+        trace_menu.addAction(self._clear_trace_action)
         trace_menu.addAction(refresh)
         toolbar.addSeparator()
         toolbar.addAction(self._plot_action)
@@ -382,10 +390,14 @@ class DataManagerWindow(QtWidgets.QWidget):
         """Return a rows-by-columns summary and a detailed column tooltip."""
         try:
             trace_data = self._engine.evaluate_expression(expression)
-            frame = trace_data.df
-            columns = [str(trace_column_label(trace_data, column)) for column in frame.columns]
+            if isinstance(trace_data, TraceData):
+                rows, keys = trace_data.row_count, trace_data.columns
+            else:
+                frame = trace_data.df
+                rows, keys = len(frame), frame.columns
+            columns = [str(trace_column_label(trace_data, column)) for column in keys]
             return (
-                f"{len(frame):,} \N{MULTIPLICATION SIGN} {len(columns)}",
+                f"{rows:,} \N{MULTIPLICATION SIGN} {len(columns)}",
                 "Columns:\n" + "\n".join(columns),
             )
         except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
@@ -414,6 +426,32 @@ class DataManagerWindow(QtWidgets.QWidget):
         self._plot_action.setEnabled(
             isinstance(page, _TracePage) and has_selection and self._engine.plot_client is not None
         )
+        self._clear_trace_action.setEnabled(
+            isinstance(page, _TracePage)
+            and has_selection
+            and self._engine.chart_trace(page.key) is not None
+        )
+
+    @pyqtSlot()
+    def _clear_trace(self) -> None:
+        page = self._tabs.currentWidget()
+        if not isinstance(page, _TracePage):
+            return
+        trace = self._engine.chart_trace(page.key)
+        if trace is None:
+            return
+        buttons = QtWidgets.QMessageBox.StandardButton
+        confirm = QtWidgets.QMessageBox.question(
+            self,
+            "Clear Trace",
+            f"Discard the recorded rows in {page.key!r}?",
+            buttons.Yes | buttons.Cancel,
+            buttons.Cancel,
+        )
+        if confirm == buttons.Yes:
+            trace.clear()
+            self._engine.notify_namespace_updated()
+            self.refresh_traces()
 
     @pyqtSlot()
     def _configure_plot(self) -> None:

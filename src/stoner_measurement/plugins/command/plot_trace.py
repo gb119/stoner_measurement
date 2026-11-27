@@ -33,6 +33,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.chart_trace import ChartTrace
 from stoner_measurement.core.plotting.producers import ensure_plugin_axes, xy_update
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_D,
@@ -552,6 +553,8 @@ class PlotTraceCommand(CommandPlugin):
                 "PlotTrace: trace %r is unavailable — skipping plot: %s", self.trace_key, exc
             )
             return
+        if isinstance(trace_data, ChartTrace):
+            trace_data = trace_data.snapshot()
         try:
             x_arr = np.asarray(trace_data.x, dtype=float)
         except AttributeError:

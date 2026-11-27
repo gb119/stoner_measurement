@@ -45,6 +45,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.instruments.addressing import (
     DEFAULT_ETHERNET_HOST,
     DEFAULT_ETHERNET_PORT,
@@ -60,8 +61,10 @@ from stoner_measurement.magnet_control.engine import MagnetControllerEngine
 from stoner_measurement.magnet_control.types import (
     MagnetEngineState,
     MagnetEngineStatus,
+    MagnetReading,
 )
 from stoner_measurement.qt_compat import pyqtSlot
+from stoner_measurement.ui.chart_trace_controls import ChartTraceControls
 from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.icons import make_magnet_icon
 from stoner_measurement.ui.plot_widget import PlotWidget, configure_chart_legend
@@ -191,7 +194,9 @@ class MagnetControlPanel(QWidget):
         'Magnet Control'
     """
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, sequence_engine: SequenceEngine | None = None
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Magnet Control")
         self.setMinimumSize(640, 520)
@@ -199,6 +204,7 @@ class MagnetControlPanel(QWidget):
         self.setWindowFlags(Qt.WindowType.Window)
 
         self._engine = MagnetControllerEngine.instance()
+        self._sequence_engine = sequence_engine
         self._driver_manager = InstrumentDriverManager()
         self._driver_manager.discover()
 
@@ -641,6 +647,9 @@ class MagnetControlPanel(QWidget):
         controls.addWidget(self._btn_clear_chart)
         layout.addLayout(controls)
 
+        self._chart_recording = ChartTraceControls(self._sequence_engine, "Magnet chart", widget)
+        layout.addWidget(self._chart_recording)
+
         content = QHBoxLayout()
 
         self._chart_widget = PlotWidget(
@@ -808,6 +817,7 @@ class MagnetControlPanel(QWidget):
         self._chart_target_rate.append(
             state.ramp_rate_field if state.ramp_rate_field is not None else 0.0
         )
+        self._record_chart_sample(ts, state, reading)
 
         while self._chart_times and now_ts - self._chart_times[0] > duration_s:
             self._chart_times.pop(0)
@@ -919,6 +929,24 @@ class MagnetControlPanel(QWidget):
             self._update_legend_value("Target Rate", f"{state.ramp_rate_field:.4f} T/min")
 
         self._chart_widget.set_rolling_time_window(duration_s)
+
+    def _record_chart_sample(
+        self, timestamp: float, state: MagnetEngineState, reading: MagnetReading
+    ) -> None:
+        for name, value, unit in (
+            ("Field", self._chart_field[-1], "T"),
+            ("Target", state.target_field, "T"),
+            ("Current", self._chart_current[-1], "A"),
+            ("Persistent Field", reading.persistent_field, "T"),
+            ("Persistent Current", reading.persistent_current, "A"),
+            ("Voltage", self._chart_voltage[-1], "V"),
+            ("Heater", self._chart_heater[-1], ""),
+            ("Field Rate", self._chart_field_rate[-1], "T/min"),
+            ("Target Rate", state.ramp_rate_field, "T/min"),
+        ):
+            if value is not None:
+                self._chart_recording.collect(name, value, unit)
+        self._chart_recording.commit(timestamp)
 
     def _update_legend_value(self, trace: str, value: str) -> None:
         """Create or update a live-value legend entry."""

@@ -204,6 +204,12 @@ class TraceData:
         self._df.iloc[self._row_count] = [row[column] for column in columns]
         self._row_count += 1
 
+    def clear(self) -> None:
+        """Discard all rows and reserved capacity, retaining the trace schema."""
+        self._df = self._df.iloc[:0].copy().reset_index(drop=True)
+        self._row_count = 0
+        self._capacity = 0
+
     def _sync_external_growth(self) -> None:
         """Account for legacy direct row additions when no capacity was reserved."""
         actual_rows = len(self._df)

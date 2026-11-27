@@ -104,6 +104,23 @@ class TestConstruction:
         assert len(trace._df) == 4
         assert len(trace.df) == 2
 
+    def test_clear_preserves_schema_and_allows_new_rows(self):
+        trace = TraceData(_frame(signal=[1.0]), names={"signal": "Voltage"}, units={"signal": "V"})
+        trace.reserve_rows(8)
+        original = trace.df.copy()
+
+        trace.clear()
+
+        assert trace.row_count == 0
+        assert trace.df.empty
+        assert trace.df.dtypes.equals(original.dtypes)
+        assert trace.expected_columns == ["x", "signal"]
+        assert trace.names["signal"] == "Voltage"
+        assert trace.units["signal"] == "V"
+        trace.append_row({"x": 5.0, "signal": 7.0})
+        assert trace.df.index.tolist() == [0]
+        assert trace.y.tolist() == [7.0]
+
 
 class TestMetadata:
     def test_metadata_defaults_cover_every_column(self):

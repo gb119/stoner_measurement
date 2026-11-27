@@ -216,12 +216,12 @@ class MeasurementApp(QMainWindow):
         # Temperature control panel (hidden initially) -------------------------
         from stoner_measurement.ui.temperature_panel import TemperatureControlPanel
 
-        self._temp_panel = TemperatureControlPanel(parent=None)
+        self._temp_panel = TemperatureControlPanel(parent=None, sequence_engine=self._engine)
 
         # Magnet control panel (hidden initially) ------------------------------
         from stoner_measurement.ui.magnet_panel import MagnetControlPanel
 
-        self._magnet_panel = MagnetControlPanel(parent=None)
+        self._magnet_panel = MagnetControlPanel(parent=None, sequence_engine=self._engine)
 
         # Motor control panel (hidden initially) -------------------------------
         from stoner_measurement.ui.motor_panel import MotorControlPanel
@@ -231,7 +231,7 @@ class MeasurementApp(QMainWindow):
         # Pressure control panel (hidden initially) ----------------------------
         from stoner_measurement.ui.pressure_panel import PressureControlPanel
 
-        self._pressure_panel = PressureControlPanel(parent=None)
+        self._pressure_panel = PressureControlPanel(parent=None, sequence_engine=self._engine)
 
         # X-ray diffractometer panel (hidden initially) -----------------------
         from stoner_measurement.ui.xray_panel import XrayControlPanel

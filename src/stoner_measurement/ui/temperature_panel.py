@@ -58,6 +58,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.instruments.driver_manager import InstrumentDriverManager
 from stoner_measurement.instruments.temperature_controller import (
     ControllerCapabilities,
@@ -74,6 +75,7 @@ from stoner_measurement.temperature_control.types import (
     StabilityConfig,
     TemperatureEngineState,
 )
+from stoner_measurement.ui.chart_trace_controls import ChartTraceControls
 from stoner_measurement.ui.font_aware_tabs import FontAwareTabWidget
 from stoner_measurement.ui.icons import make_temperature_icon
 from stoner_measurement.ui.plot_widget import PlotWidget, configure_chart_legend
@@ -199,7 +201,9 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         'Temperature Control'
     """
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, parent: QWidget | None = None, *, sequence_engine: SequenceEngine | None = None
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Temperature Control")
         self.setMinimumSize(700, 560)
@@ -207,6 +211,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         self.setWindowFlags(Qt.WindowType.Window)
 
         self._engine = TemperatureControllerEngine.instance()
+        self._sequence_engine = sequence_engine
         self._service = self._engine
         self._slot = "primary"
         self._stability_engine = self._engine
@@ -628,6 +633,11 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         controls.addWidget(clear_btn)
         layout.addLayout(controls)
 
+        self._chart_recording = ChartTraceControls(
+            self._sequence_engine, "Temperature chart", widget
+        )
+        layout.addWidget(self._chart_recording)
+
         self._chart_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._chart_splitter.setChildrenCollapsible(False)
         self._chart_splitter.setHandleWidth(7)
@@ -751,6 +761,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         if state.secondary is not None:
             self._update_chart(state.secondary, now_ts, "secondary:", update_rate=False)
         self._update_rate_chart(state, now_ts)
+        self._chart_recording.commit(now_ts)
 
         if self._stab_diagnostics_check.isChecked():
             lines = []
@@ -827,6 +838,8 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         value: float,
         now_ts: float,
         duration_s: float,
+        *,
+        unit: str,
     ) -> tuple[list[float], list[float]]:
         """Append and time-trim one sample for a chart trace.
 
@@ -845,6 +858,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
                 Current time as a Unix timestamp.
             duration_s (float):
                 Length of the retained rolling window in seconds.
+            unit (str): Physical unit of the plotted value.
 
         Returns:
             (tuple[list[float], list[float]]):
@@ -854,6 +868,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         buf = self._chart_values.setdefault(key, [])
         times.append(timestamp)
         buf.append(value)
+        self._chart_recording.collect(key, value, unit)
         while times and now_ts - times[0] > duration_s:
             times.pop(0)
             buf.pop(0)
@@ -874,7 +889,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
             ts = reading.timestamp.timestamp()
             trace_name = f"{prefix}T_{ch}"
             buf_t, buf_v = self._append_chart_sample(
-                trace_name, ts, reading.value, now_ts, duration_s
+                trace_name, ts, reading.value, now_ts, duration_s, unit=reading.units
             )
             xs = [t - now_ts for t in buf_t]
             self._chart_widget.set_trace(trace_name, xs, buf_v)
@@ -892,7 +907,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
             for loop, sp in state.setpoints.items():
                 trace_name = f"{prefix}SP_{loop}"
                 sp_times, sp_buf = self._append_chart_sample(
-                    trace_name, sample_ts, sp, now_ts, duration_s
+                    trace_name, sample_ts, sp, now_ts, duration_s, unit="K"
                 )
                 xs = [t - now_ts for t in sp_times]
                 self._chart_widget.set_trace(trace_name, xs, sp_buf)
@@ -907,7 +922,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
             for loop, ho in state.heater_outputs.items():
                 trace_name = f"{prefix}H_{loop}"
                 heater_times, h_buf = self._append_chart_sample(
-                    trace_name, sample_ts, ho, now_ts, duration_s
+                    trace_name, sample_ts, ho, now_ts, duration_s, unit="%"
                 )
                 xs = [t - now_ts for t in heater_times]
                 self._chart_widget.set_trace(trace_name, xs, h_buf)
@@ -917,7 +932,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
 
             if state.needle_valve is not None:
                 needle_times, nv_buf = self._append_chart_sample(
-                    f"{prefix}NV", sample_ts, state.needle_valve, now_ts, duration_s
+                    f"{prefix}NV", sample_ts, state.needle_valve, now_ts, duration_s, unit="%"
                 )
                 xs = [t - now_ts for t in needle_times]
                 self._chart_widget.set_trace(f"{prefix}NV", xs, nv_buf)
@@ -932,6 +947,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         self._chart_widget.set_rolling_time_window(duration_s)
         if update_rate:
             self._update_rate_chart(state, now_ts)
+            self._chart_recording.commit(now_ts)
 
     # ------------------------------------------------------------------
     # Connection tab slots
@@ -1560,7 +1576,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         if valid:
             times, rates = self._append_chart_sample(
                 "dT/dt", reading.timestamp.timestamp(), reading.rate_of_change,
-                now_ts, self._chart_duration_min * 60.0,
+                now_ts, self._chart_duration_min * 60.0, unit="K/min",
             )
             xs = [time - now_ts for time in times]
         self._chart_widget.set_trace("dT/dt", xs, rates)

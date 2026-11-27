@@ -724,8 +724,9 @@ class SaveCommand(CommandPlugin):
                 continue
             try:
                 trace_data = self.eval(expr)
-                for column_name in trace_data.df.columns:
-                    values = trace_data.df[column_name].to_numpy(dtype=float, copy=True)
+                frame = trace_data.df
+                for column_name in frame.columns:
+                    values = frame[column_name].to_numpy(dtype=float, copy=True)
                     label = (trace_data.names or {}).get(column_name) or str(column_name)
                     units = (trace_data.units or {}).get(column_name, "")
                     columns.append((f"{trace_key}:{label} ({units})", values))
