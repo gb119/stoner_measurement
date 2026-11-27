@@ -2,3 +2,15 @@ include scripts/build_chm.py
 include scripts/build_windows_release.ps1
 include scripts/install_windows_start_menu.ps1
 include src/stoner_measurement/help/stoner_measurement.chm
+
+# Ship the compiled guide and runtime resources. Keep repository tooling,
+# documentation sources and tests in the checkout.
+prune .agents
+prune codacy-reports
+prune conda-recipe
+prune docs
+prune notes
+prune tests
+exclude .codacy.yaml .markdownlint.json AGENTS.md TODO.md
+exclude environment*.yml path_to_dummy_plugin_file.py screenshot.png
+global-exclude .gitkeep

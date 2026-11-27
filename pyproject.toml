@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stoner_measurement"
-version = "0.10.0b1"
+version = "0.10.0b2"
 description = "A Python/Qt (PyQt5/PyQt6 via qtpy) application for running scientific measurements"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -154,7 +154,14 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "stoner_measurement" = ["help/stoner_measurement.chm"]
-"stoner_measurement.conf" = ["*.yaml", "instruments/*.yaml", "resources/*.png", "sequences/*.json"]
+"stoner_measurement.conf" = [
+    "*.yaml",
+    "instruments/*.yaml",
+    "resources/*.png",
+    "resources/*.ico",
+    "resources/*.ttf",
+    "sequences/*.json",
+]
 "stoner_measurement.conf.plugins" = ["*.yaml"]
 "stoner_measurement.ui" = ["*.png", "resources/*.png", "resources/*.svg"]
 
