@@ -436,13 +436,12 @@ class PressureControlPanel(QWidget):
         self._duration_combo.setCurrentIndex(1)
         self._duration_combo.currentIndexChanged.connect(self._on_duration_changed)
         controls.addWidget(self._duration_combo)
-        controls.addStretch()
+        self._chart_recording = ChartTraceControls(self._sequence_engine, "Pressure chart", widget)
+        controls.addWidget(self._chart_recording, 1)
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self._on_clear_chart)
         controls.addWidget(clear_btn)
         layout.addLayout(controls)
-        self._chart_recording = ChartTraceControls(self._sequence_engine, "Pressure chart", widget)
-        layout.addWidget(self._chart_recording)
         content = QHBoxLayout()
         self._chart_widget = PlotWidget(show_axis_controls=False, show_trace_table=False)
         self._chart_widget.set_default_axis_labels("Time (s ago)", "Pressure")
@@ -455,7 +454,7 @@ class PressureControlPanel(QWidget):
         self._legend_tree.setMinimumWidth(220)
         self._legend_tree.itemChanged.connect(self._on_legend_item_changed)
         content.addWidget(self._legend_tree, stretch=1)
-        layout.addLayout(content)
+        layout.addLayout(content, 1)
         return widget
 
     def _build_status_bar(self) -> QWidget:

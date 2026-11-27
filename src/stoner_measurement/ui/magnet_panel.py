@@ -641,14 +641,12 @@ class MagnetControlPanel(QWidget):
             self._duration_combo.addItem(label, minutes)
         self._duration_combo.currentIndexChanged.connect(self._on_duration_changed)
         controls.addWidget(self._duration_combo)
-        controls.addStretch()
+        self._chart_recording = ChartTraceControls(self._sequence_engine, "Magnet chart", widget)
+        controls.addWidget(self._chart_recording, 1)
         self._btn_clear_chart = QPushButton("Clear")
         self._btn_clear_chart.clicked.connect(self._on_clear_chart)
         controls.addWidget(self._btn_clear_chart)
         layout.addLayout(controls)
-
-        self._chart_recording = ChartTraceControls(self._sequence_engine, "Magnet chart", widget)
-        layout.addWidget(self._chart_recording)
 
         content = QHBoxLayout()
 
@@ -671,7 +669,7 @@ class MagnetControlPanel(QWidget):
         self._legend_tree.customContextMenuRequested.connect(self._on_legend_context_menu)
         content.addWidget(self._legend_tree, stretch=1)
 
-        layout.addLayout(content)
+        layout.addLayout(content, 1)
         return widget
 
     # --- Status bar ---

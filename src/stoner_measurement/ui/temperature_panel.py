@@ -626,17 +626,15 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
             self._duration_combo.addItem(label, minutes)
         self._duration_combo.currentIndexChanged.connect(self._on_duration_changed)
         controls.addWidget(self._duration_combo)
-        controls.addStretch()
+        self._chart_recording = ChartTraceControls(
+            self._sequence_engine, "Temperature chart", widget
+        )
+        controls.addWidget(self._chart_recording, 1)
 
         clear_btn = QPushButton("Clear")
         clear_btn.clicked.connect(self._on_clear_chart)
         controls.addWidget(clear_btn)
         layout.addLayout(controls)
-
-        self._chart_recording = ChartTraceControls(
-            self._sequence_engine, "Temperature chart", widget
-        )
-        layout.addWidget(self._chart_recording)
 
         self._chart_splitter = QSplitter(Qt.Orientation.Horizontal)
         self._chart_splitter.setChildrenCollapsible(False)
@@ -665,7 +663,7 @@ class TemperatureControlPanel(TemperatureConnectionMixin, QWidget):
         content.setSizes([800, 240])
         content.handle(1).setToolTip("Drag to resize the chart and legend")
 
-        layout.addWidget(content)
+        layout.addWidget(content, 1)
         return widget
 
     # --- Status bar ---
