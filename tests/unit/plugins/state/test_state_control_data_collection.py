@@ -49,7 +49,7 @@ class TestStateControlDataCollection:
 
     def test_default_config_values(self, qapp):
         p = _InstantState()
-        assert p.collect_data is False
+        assert p.collect_data is True
         assert p.clear_on_start is True
         assert p.collect_filter == f"{p.instance_name}.meas_flag"
         assert p.clear_filter == "True"
@@ -228,7 +228,6 @@ class TestStateControlDataCollection:
 
     def test_to_json_includes_data_collection_settings(self, qapp):
         p = _InstantState()
-        p.collect_data = True
         p.clear_on_start = False
         p.collect_filter = "custom_expr"
         p.clear_filter = "another_expr"
@@ -244,14 +243,14 @@ class TestStateControlDataCollection:
 
     def test_from_json_restores_data_collection_settings(self, qapp):
         p = _InstantState()
-        p.collect_data = True
+        p.collect_data = False
         p.clear_on_start = False
         p.collect_filter = "my_filter"
         p.clear_filter = "other"
         p.collect_outputs = ["counter:Value"]
         p.collect_output_roles = {"counter:Value": "x"}
         restored = BasePlugin.from_json(p.to_json())
-        assert restored.collect_data is True
+        assert restored.collect_data is False
         assert restored.clear_on_start is False
         assert restored.collect_filter == "my_filter"
         assert restored.clear_filter == "other"

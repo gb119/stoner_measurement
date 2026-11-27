@@ -14,7 +14,9 @@ from stoner_measurement.plugins.trace_catalog_ui import trace_channel_items
 @pytest.mark.parametrize("role", ["y", "x", "e"])
 def test_labels_match_schema_collection_and_catalogue(engine, plugin_class, role):
     plugin = plugin_class()
+    plugin.instance_name = "axis"
     source = CounterPlugin()
+    source.instance_name = "readback"
     engine.add_plugin("axis", plugin)
     engine.add_plugin("readback", source)
     key = f"{source.instance_name}:Value"

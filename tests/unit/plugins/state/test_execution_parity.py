@@ -165,7 +165,6 @@ def test_failed_child_does_not_collect_and_disconnects(state_case, monkeypatch, 
 @pytest.mark.parametrize("clear_filter", ["axis.value == 0", "False"])
 def test_repeated_execution_resets_metadata_before_clear_filter(state_case, path, clear_filter):
     axis, readback, execute = state_case
-    axis.collect_data = True
     axis.clear_filter = clear_filter
 
     def child():

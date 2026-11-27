@@ -784,9 +784,7 @@ class StateSweepPlugin(StatePlugin):
             >>> lines2 = p.generate_action_code(1, [], lambda s, i: [])
             >>> any(".clear_data()" in line for line in lines2)
             True
-            >>> p.collect_data = True
-            >>> lines3 = p.generate_action_code(1, [], lambda s, i: [])
-            >>> any(".collect()" in line for line in lines3)
+            >>> any(".collect()" in line for line in lines)
             True
         """
         prefix = "    " * indent

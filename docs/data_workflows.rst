@@ -58,20 +58,22 @@ running: this example writes into a ``guide`` subdirectory there.
 Choosing what a scan or sweep collects
 --------------------------------------
 
-Select the parent scan or sweep and open its **Data** tab:
+Select the parent scan or sweep and open its **Data** tab. **Collect data** is
+enabled by default on new steps. Clear the checkbox to skip collecting a table
+of scalar readings for that step.
 
-1. Enable **Collect data** to accumulate a table of scalar readings.
-2. In **Collected outputs**, tick **Include** for each output you want to
-   retain. Add measurement and processing steps first so their outputs appear;
-   use **Refresh output list** after changing the available outputs.
-3. Set each included output's **Role**. In this example, collect
+1. Use the **Include** checkboxes in **Collected outputs** to choose which
+   readings to retain. Add measurement and processing steps first so their
+   outputs appear. Use **Refresh output list** after changing the available
+   outputs.
+2. Set each included output's **Role**. In this example, collect
    ``curve_fit:Ic``, ``curve_fit:Rn`` and their ``_err`` uncertainties.
    ``scan:Value`` is selected as the independent variable.
    Optionally enter a **Label** to use as its dataframe column header and
    trace channel name. Leave it blank to retain the output name (or the
    standard ``x`` column for an independent variable). Labels must be unique
    and must not use the bookkeeping names ``iteration``, ``stage`` or ``state``.
-4. Keep **Clear on start** enabled for a fresh table on each execution of the
+3. Keep **Clear on start** enabled for a fresh table on each execution of the
    scan. Disable it only when you intend to accumulate successive executions.
 
 This is the parent state scan/sweep's Data tab. A trace plugin's **Scan** tab

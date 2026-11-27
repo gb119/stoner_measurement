@@ -151,12 +151,14 @@ class TestReportedTraces:
         assert vals["instantstate:Voltage"] == "instantstate.value"
         assert vals["instantstate:Index"] == "instantstate.index"
 
-    def test_state_control_plugin_reported_traces_empty(self, qapp):
-        assert _InstantState().reported_traces() == {}
+    def test_state_control_plugin_reports_no_trace_when_collection_disabled(self, qapp):
+        plugin = _InstantState()
+        plugin.collect_data = False
+
+        assert plugin.reported_traces() == {}
 
     def test_state_control_plugin_reports_instance_data_trace(self, qapp):
         plugin = _InstantState()
-        plugin.collect_data = True
 
         assert plugin.reported_traces() == {"instantstate.data": "instantstate.data"}
 

@@ -64,7 +64,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             Whether the current step should be recorded as a measurement.
         collect_data (bool):
             When ``True``, :meth:`collect` is called at each iteration step.
-            Defaults to ``False``.
+            Defaults to ``True``.
         clear_on_start (bool):
             When ``True``, :meth:`clear_data` is called before the loop begins.
             Defaults to ``True``.
@@ -147,7 +147,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         self.value: float = 0.0
         self.meas_flag: bool = False
         self.stage: int = 0
-        self._collect_data: bool = False
+        self._collect_data: bool = True
         self.clear_on_start: bool = True
         self.start_from_current_value: bool = False
         self.collect_filter: str = f"{self.instance_name}.meas_flag"
@@ -189,7 +189,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
     def collect_data(self, enabled: bool) -> None:
         """Enable collection and refresh the engine catalogues when attached."""
         new_value = bool(enabled)
-        changed = new_value != getattr(self, "_collect_data", False)
+        changed = new_value != getattr(self, "_collect_data", True)
         self._collect_data = new_value
         engine = self.sequence_engine
         if changed and engine is not None:
@@ -570,7 +570,7 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             >>> from stoner_measurement.plugins.state_scan import CounterPlugin
             >>> d = CounterPlugin().to_json()
             >>> d["collect_data"]
-            False
+            True
             >>> d["clear_on_start"]
             True
         """

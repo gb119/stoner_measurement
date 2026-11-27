@@ -727,6 +727,7 @@ class TestDataCatalogs:
         from stoner_measurement.plugins.state_scan import CounterPlugin
 
         plugin = CounterPlugin()
+        plugin.collect_data = False
         engine.add_plugin("counter", plugin)
         engine.update_step_plugin_catalog([plugin])
         assert "counter.data" not in engine.traces_catalog

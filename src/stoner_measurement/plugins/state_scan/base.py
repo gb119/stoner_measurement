@@ -406,7 +406,7 @@ class StateScanPlugin(StatePlugin):
             >>> "scan_generator" in d
             True
             >>> d["collect_data"]
-            False
+            True
             >>> d["clear_on_start"]
             True
         """
@@ -762,9 +762,7 @@ class StateScanPlugin(StatePlugin):
             >>> lines2 = p.generate_action_code(1, [], lambda s, i: [])
             >>> any("s.clear_data()" in line for line in lines2)
             True
-            >>> p.collect_data = True
-            >>> lines3 = p.generate_action_code(1, [], lambda s, i: [])
-            >>> any("s.collect()" in line for line in lines3)
+            >>> any("s.collect()" in line for line in lines)
             True
         """
         prefix = "    " * indent
