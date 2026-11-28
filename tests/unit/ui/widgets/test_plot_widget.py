@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from qtpy.QtCore import QPointF
-from qtpy.QtGui import QColor
+from qtpy.QtGui import QColor, QImage, QPainter
 from qtpy.QtWidgets import QComboBox, QDialog, QHeaderView, QLabel, QLineEdit, QStyle
 
 from stoner_measurement.ui.axis_mappings import AxisLabel, inverse_values, transform_values
@@ -835,6 +835,46 @@ class TestPlotWidget:
         assert item.opts["y"].tolist() == pytest.approx([centre])
         assert item.opts["bottom"].tolist() == pytest.approx([centre - lower])
         assert item.opts["top"].tolist() == pytest.approx([upper - centre])
+
+    def test_error_bar_stems_and_fixed_pixel_caps_follow_series_style(self, qapp):
+        widget = self.make_plot_widget()
+        widget.set_trace_with_errors("signal", [2.0], [4.0], [0.5], [1.0])
+        item = widget._error_bar_items["signal"]
+        assert item.opts["pen"].color() == QColor(widget.trace_style("signal")["colour"])
+
+        widget.set_trace_style(
+            "signal",
+            colour="#aa3077",
+            line_style="none",
+            point_style="circle",
+            line_width=3.5,
+            point_size=14.0,
+        )
+        assert item.opts["pen"].color() == QColor("#aa3077")
+        assert item.opts["pen"].widthF() == pytest.approx(3.5)
+        for x_scale, y_scale in [(3.0, 7.0), (10.0, 5.0)]:
+            image = QImage(64, 64, QImage.Format.Format_ARGB32_Premultiplied)
+            image.fill(0)
+            painter = QPainter(image)
+            try:
+                painter.scale(x_scale, y_scale)
+                item.paint(painter)
+            finally:
+                painter.end()
+            path = item._cap_path
+            assert path.elementCount() == 8
+            assert path.elementAt(0).y == path.elementAt(1).y == 3.0
+            assert (path.elementAt(1).x - path.elementAt(0).x) * x_scale == pytest.approx(14.0)
+            assert path.elementAt(4).x == path.elementAt(5).x == 1.5
+            assert (path.elementAt(5).y - path.elementAt(4).y) * y_scale == pytest.approx(14.0)
+
+        widget.set_trace_visible("signal", False)
+        widget.set_trace_with_errors("signal", [2.0], [4.0], None, [0.25])
+        assert not item.isVisible()
+        assert item.opts["left"] is None
+        path = item._build_cap_path(1.0, 1.0)
+        assert path.elementCount() == 4
+        assert path.elementAt(0).y == path.elementAt(1).y == 3.75
 
     def test_set_axis_grid_updates_axis_state(self, qapp):
         widget = self.make_plot_widget()

@@ -4,7 +4,7 @@ from threading import Thread
 
 import pytest
 from qtpy.QtCore import QObject, QThread
-from qtpy.QtWidgets import QScrollArea, QWidget
+from qtpy.QtWidgets import QComboBox, QWidget
 
 from stoner_measurement.core.plotting.contracts import (
     AddMarker,
@@ -233,8 +233,7 @@ def test_cartesian_configured_axes_and_label_edit_use_the_host_service(engine, m
     engine._namespace["_values"] = {"p:x": "1.0", "p:y": "2.0"}
     engine.plot_widget.append_point("Old", 1, 2)
     widget = managed_qt_widget(command.config_widget())
-    grid = widget.findChild(QScrollArea).widget().layout()
-    label = grid.itemAtPosition(2, 1).widget().lineEdit()
+    label = widget.findChild(QComboBox, "plot_points_y_label_0").lineEdit()
     observations = []
     command.plot_rename_trace.connect(lambda *args: observations.append(args))
     label.setText("New")

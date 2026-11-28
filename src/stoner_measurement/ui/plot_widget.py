@@ -12,12 +12,13 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from itertools import cycle
+from math import hypot
 from typing import Literal, TypedDict, cast
 
 import numpy as np
 import pyqtgraph as pg
 from qtpy.QtCore import QPoint, QPointF, Qt
-from qtpy.QtGui import QColor, QCursor
+from qtpy.QtGui import QColor, QCursor, QPainterPath, QPen
 from qtpy.QtWidgets import (
     QCheckBox,
     QColorDialog,
@@ -138,6 +139,88 @@ _AXIS_COLUMN_WIDTH = 120
 _TRACE_NAME_PROPERTY = "trace_name"
 _TRACE_AXIS_PROPERTY = "axis"
 _MARKER_HIT_RADIUS = 14.0
+
+
+class _CappedErrorBars(pg.ErrorBarItem):
+    """Draw data-space stems with screen-space caps on the same axes."""
+
+    def __init__(self) -> None:
+        self.cap_size = 0.0
+        self._cap_extents = (0.0, 0.0)
+        self._cap_path: QPainterPath | None = None
+        super().__init__()
+
+    def set_endpoints(self, data: dict[str, np.ndarray]) -> None:
+        """Replace stem and cap coordinates, clearing any unused axis."""
+        self._cap_path = None
+        self.setData(**dict.fromkeys(("left", "right", "bottom", "top")) | data)
+
+    def _build_cap_path(self, half_x: float, half_y: float) -> QPainterPath:
+        """Construct horizontal caps on Y errors and vertical caps on X errors."""
+        path = QPainterPath()
+        x, y = self.opts["x"], self.opts["y"]
+        top, bottom = self.opts["top"], self.opts["bottom"]
+        left, right = self.opts["left"], self.opts["right"]
+        if top is not None and bottom is not None:
+            cap_x, cap_y = np.tile(x, 2), np.concatenate((y - bottom, y + top))
+            path.addPath(self._segments(cap_x, cap_y, half_x, 0.0))
+        if left is not None and right is not None:
+            cap_x, cap_y = np.concatenate((x - left, x + right)), np.tile(y, 2)
+            path.addPath(self._segments(cap_x, cap_y, 0.0, half_y))
+        return path
+
+    @staticmethod
+    def _segments(xs, ys, dx, dy) -> QPainterPath:
+        finite = np.isfinite(xs) & np.isfinite(ys)
+        x, y = xs[finite], ys[finite]
+        return pg.arrayToQPath(
+            pg.functions.interweaveArrays(x - dx, x + dx),
+            pg.functions.interweaveArrays(y - dy, y + dy),
+            connect="pairs",
+        )
+
+    def paint(self, painter, *args) -> None:
+        super().paint(painter, *args)
+        transform = painter.worldTransform()
+        sx = hypot(transform.m11(), transform.m12())
+        sy = hypot(transform.m21(), transform.m22())
+        if not sx or not sy or not self.cap_size:
+            return
+        extents = (self.cap_size / (2 * sx), self.cap_size / (2 * sy))
+        if self._cap_path is None or self._cap_extents != extents:
+            self._cap_path = self._build_cap_path(*extents)
+            self._cap_extents = extents
+        painter.drawPath(self._cap_path)
+
+    def dataBounds(self, ax, frac=1.0, orthoRange=None):
+        """Report the stem endpoints to the ViewBox for autoranging."""
+        stems = super().boundingRect()
+        return (stems.left(), stems.right()) if ax == 0 else (stems.top(), stems.bottom())
+
+    def pixelPadding(self) -> float:
+        pen = self.opts["pen"]
+        return (self.cap_size + (pen.widthF() if pen is not None else 1.0)) / 2
+
+    def boundingRect(self):
+        stems = super().boundingRect()
+        px, py = self.pixelVectors()
+        if px is None or py is None:
+            return stems
+        padding = self.pixelPadding()
+        dx, dy = px.length() * padding, py.length() * padding
+        return stems.adjusted(-dx, -dy, dx, dy)
+
+    def viewTransformChanged(self):
+        self.prepareGeometryChange()
+        super().viewTransformChanged()
+
+    def set_trace_style(self, pen: QPen, cap_size: float) -> None:
+        """Apply the same stroke to the stems and their fixed-size caps."""
+        self.prepareGeometryChange()
+        self.opts["pen"] = pen
+        self.cap_size = cap_size
+        self.update()
+        self.informViewBoundsChanged()
 
 
 @dataclass
@@ -758,7 +841,7 @@ class PlotWidget(QWidget):
         # Per-trace plot item
         self._traces: dict[str, pg.PlotDataItem] = {}
         # Per-trace error-bar item (optional)
-        self._error_bar_items: dict[str, pg.ErrorBarItem] = {}
+        self._error_bar_items: dict[str, _CappedErrorBars] = {}
         self._trace_error_data: dict[str, tuple[np.ndarray | None, np.ndarray | None]] = {}
         # Per-trace axis assignment: name → (x_axis_name, y_axis_name)
         self._trace_axes: dict[str, tuple[str, str]] = {}
@@ -1556,6 +1639,8 @@ class PlotWidget(QWidget):
             return
         self._trace_visible[trace_name] = visible
         self._traces[trace_name].setVisible(visible)
+        if trace_name in self._error_bar_items:
+            self._error_bar_items[trace_name].setVisible(visible)
         self.plot_state_changed.emit()
 
     def set_trace_visible(self, trace_name: str, visible: bool) -> None:
@@ -2159,9 +2244,22 @@ class PlotWidget(QWidget):
 
     def _update_error_bar_display(self, trace_name: str) -> None:
         """Transform and redraw retained error-bar endpoints for one trace."""
-        if trace_name not in self._error_bar_items:
+        item = self._error_bar_items.get(trace_name)
+        if item is None:
             return
-        self._error_bar_items[trace_name].setData(**self._mapped_error_bar_data(trace_name))
+        item.set_endpoints(self._mapped_error_bar_data(trace_name))
+        item.setVisible(self._trace_visible[trace_name])
+
+    def _update_error_bar_style(self, trace_name: str) -> None:
+        """Match the trace colour, point size and line width with solid bars."""
+        item = self._error_bar_items.get(trace_name)
+        if item is not None:
+            pen = pg.mkPen(
+                color=self._trace_style[trace_name]["colour"],
+                width=self._trace_line_width[trace_name],
+            )
+            pen.setCapStyle(Qt.PenCapStyle.FlatCap)
+            item.set_trace_style(pen, self._trace_point_size[trace_name])
 
     def _mapped_error_bar_data(self, trace_name: str) -> dict[str, np.ndarray]:
         """Build transformed pyqtgraph error-bar data for one trace."""
@@ -2422,12 +2520,12 @@ class PlotWidget(QWidget):
                     x_err_arr if has_x_err else None,
                     y_err_arr if has_y_err else None,
                 )
-                if trace_name in self._error_bar_items:
-                    self._update_error_bar_display(trace_name)
-                else:
-                    ebi = pg.ErrorBarItem(**self._mapped_error_bar_data(trace_name))
-                    vb.addItem(ebi)
+                if trace_name not in self._error_bar_items:
+                    ebi = _CappedErrorBars()
                     self._error_bar_items[trace_name] = ebi
+                    self._update_error_bar_style(trace_name)
+                    vb.addItem(ebi)
+                self._update_error_bar_display(trace_name)
             elif trace_name in self._error_bar_items:
                 ebi = self._error_bar_items.pop(trace_name)
                 self._trace_error_data.pop(trace_name, None)
@@ -2606,6 +2704,7 @@ class PlotWidget(QWidget):
             curve.setSymbolBrush(style["colour"])
             curve.setSymbolPen(pen)
         curve.setSymbolSize(self._trace_point_size.get(trace_name, _DEFAULT_POINT_SIZE))
+        self._update_error_bar_style(trace_name)
         self._refresh_trace_and_axis_controls()
 
     @pyqtSlot(str, object)
