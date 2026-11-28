@@ -69,6 +69,7 @@ class TestPluginManager:
         assert "branch_split" in pm.plugins
         assert "run_parallel" in pm.plugins
         assert "run_sequentially" in pm.plugins
+        assert "skip_collection" in pm.plugins
 
 
 if __name__ == "__main__":

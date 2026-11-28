@@ -73,12 +73,16 @@ connection settings.
 Collecting and saving inside loops
 -----------------------------------
 
-State scans/sweeps collect a row after their child actions. A Plot Points child
-can plot current scalar results immediately, but a Save child selecting the
-collected table sees earlier rows. Place a complete Save after the parent
-container for the finished table, or add a final call to the same incremental
-Save instance before generated cleanup when editing Python. The complete
-worked example and file behavior are in :doc:`data_workflows`.
+State scans and sweeps collect a row after their child actions. **Break If**
+and **Continue If** finish the current point using the normal collection
+rules and then change the loop flow. Use **Skip Collection** inside an **If**
+to clear the current point's measurement flag. The next point gets its own
+flag from the generator.
+
+An incremental Save child selecting an enclosing collection table writes
+after the innermost loop's point finishes collecting. An **If** around Save
+controls when the unsaved rows are written. See :doc:`data_workflows` for the
+worked example and the behaviour when saving several traces.
 
 Sequence files, scripts and result provenance
 ---------------------------------------------

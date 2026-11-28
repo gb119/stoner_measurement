@@ -52,6 +52,8 @@ class IfCommand(CommandPlugin, SequencePlugin):
             if_command.condition = "counter.value > 0"
     """
 
+    _DEFAULT_INSTANCE = "if_command"
+
     def __init__(self, parent=None, condition: str = "True") -> None:
         """Initialise the condition command."""
         super().__init__(parent)
@@ -72,8 +74,9 @@ class IfCommand(CommandPlugin, SequencePlugin):
     def execute_sequence(self, sub_steps: list) -> None:
         """Run *sub_steps* when :attr:`condition` evaluates truthy."""
         if bool(self.eval(self.condition)):
-            for sub_step in sub_steps:
-                sub_step()
+            with self.sequence_hook_scope():
+                for sub_step in sub_steps:
+                    sub_step()
 
     def generate_action_code(
         self,
@@ -94,11 +97,8 @@ class IfCommand(CommandPlugin, SequencePlugin):
                 self.instance_name,
             )
             return []
-        lines = [f"{prefix}if {condition}:"]
-        for sub_step in sub_steps:
-            lines.extend(render_sub_step(sub_step, indent + 1))
-        lines.append("")
-        return lines
+        body = SequencePlugin.generate_action_code(self, indent + 1, sub_steps, render_sub_step)
+        return [f"{prefix}if {condition}:", *body, ""] if body else []
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
         """Return the condition editor widget."""

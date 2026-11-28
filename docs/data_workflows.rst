@@ -293,34 +293,26 @@ separate destinations instead of one growing file.
    The incremental command remembers its chosen destination for the current
    run, including any suffix selected to avoid overwriting an older file.
 
-.. important::
+An incremental Save that selects an enclosing scan or sweep table runs at
+the end of the innermost enclosing loop's point, after automatic collection.
+The six-point example therefore writes all six rows to ``scan_live.txt``.
+For an outer loop's current row, place Save in the outer loop body outside
+the inner loop. The example's ``save_complete`` also writes a complete
+snapshot to ``'guide/scan_complete.txt'`` after the scan.
 
-   Automatic collection occurs **after all child steps** for a scan/sweep
-   point. A Save child therefore sees rows collected on preceding iterations;
-   it does not yet see the current point's row. In this six-point example,
-   ``scan_live.txt`` contains five rows when the loop ends.
+An **If** around incremental Save batches writes. The next execution writes
+all unsaved rows available at that point. Use **Skip Collection** inside a
+conditional child to exclude a point from the table itself. To retain a
+reading for every point between batches, include its reported scalar output
+in the parent's **Data** tab and save the collected table. A separate trace
+selected alongside that loop's collected table contributes its last sample
+captured at the Save step to the current point's row. Earlier rows with no
+captured reading have NaN in those columns. Save complete traces separately
+to retain every sample in repeated acquisitions.
 
-For a complete file using only the sequence editor, put a separate Save
-**after the parent scan/sweep**, select ``scan.data``, and leave incremental
-saving off. The example's ``save_complete`` writes all six rows to
-``'guide/scan_complete.txt'``.
-
-To finish the *same incremental file* when developing a Python script, add
-one final call to the **same Save instance** after the generated loop has
-completed successfully, **inside the outer try block, before its finally
-cleanup**:
-
-.. code-block:: python
-
-    save_live()  # after the scan loop, before the generated finally block
-
-Do not rerun the whole sequence to flush the file: a new run clears the
-scan table when **Clear on start** is enabled and starts a new Save session.
-Calling the Save instance from the console after cleanup also requires a new
-connection/configuration, which starts a new save session; keep the final call
-before cleanup to retain the original incremental destination.
-The incremental setting tracks additional rows; use complete-trace saving
-for repeated acquisitions that replace a fixed-length table.
+For other incremental exports, the longest selected table determines which
+rows are available. Shorter columns use their value at the row index while
+available and their last value beyond that point. Empty columns supply NaN.
 
 For a one-off check, use **Run Selection…** or :kbd:`Shift+F5` on the parent
 scan so its acquisition, processing, plotting and Save children are included.

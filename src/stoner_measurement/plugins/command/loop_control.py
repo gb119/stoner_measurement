@@ -6,7 +6,27 @@ from typing import Any
 
 from qtpy.QtWidgets import QFormLayout, QLineEdit, QWidget
 
+from stoner_measurement.core.sequence_hooks import active_iteration_scopes
 from stoner_measurement.plugins.command.base import CommandPlugin
+
+
+def _has_valid_loop_position(command, sequence_steps: list, *, python_control: bool) -> bool:
+    """Check every position, respecting Python helper scopes for break and continue."""
+    positions = []
+
+    def walk(steps: list, inside_loop: bool = False) -> None:
+        for step in steps:
+            plugin, children = step if isinstance(step, tuple) else (step, [])
+            if plugin is command:
+                positions.append(inside_loop)
+            inherits_loop = inside_loop and not (
+                python_control and getattr(plugin, "isolates_loop_control", False)
+            )
+            if children:
+                walk(children, inherits_loop or bool(getattr(plugin, "is_loop_container", False)))
+
+    walk(sequence_steps)
+    return bool(positions) and all(positions)
 
 
 class _ConditionalLoopControlCommand(CommandPlugin):
@@ -34,32 +54,7 @@ class _ConditionalLoopControlCommand(CommandPlugin):
 
     def validate_sequence_position(self, sequence_steps: list) -> None:
         """Raise when any occurrence of this command is outside a loop container."""
-        found = False
-        invalid = False
-
-        def _walk(steps: list, inside_loop: bool = False) -> None:
-            nonlocal found, invalid
-            for step in steps:
-                if isinstance(step, tuple):
-                    plugin, children = step
-                else:
-                    plugin, children = step, []
-                if plugin is self:
-                    found = True
-                    invalid = invalid or not inside_loop
-                inherited_loop = (
-                    False
-                    if getattr(plugin, "isolates_loop_control", False)
-                    else inside_loop
-                )
-                child_inside_loop = inherited_loop or bool(
-                    getattr(plugin, "is_loop_container", False)
-                )
-                if children:
-                    _walk(children, child_inside_loop)
-
-        _walk(sequence_steps)
-        if not found or invalid:
+        if not _has_valid_loop_position(self, sequence_steps, python_control=True):
             raise ValueError(f"{self.name} must be placed inside a scan or sweep loop.")
 
     def config_widget(self, parent: QWidget | None = None) -> QWidget:
@@ -205,3 +200,45 @@ class ContinueIfCommand(_ConditionalLoopControlCommand):
     def name(self) -> str:
         """Return the command's human-readable name."""
         return "Continue If"
+
+
+class SkipCollectionCommand(CommandPlugin):
+    """Clear the measurement flag for the current scan or sweep point.
+
+    Place **Skip Collection** inside the scan or sweep. Wrap it in an **If**
+    step to reject a point based on a measurement or another runtime condition.
+    Subsequent steps see the cleared flag immediately. The next point receives
+    its own flag from the scan or sweep generator.
+
+    The **General** tab sets the instance name and comment.
+
+    Attributes:
+        instance_name (str): Inherited script and QtConsole identifier.
+        comment (str): Inherited note displayed beside the step.
+
+    Examples:
+        In the Script tab, an instance named ``skip_collection`` can be called
+        after evaluating a point inside the loop::
+
+            if measured_signal < minimum_signal:
+                skip_collection()
+    """
+
+    @property
+    def name(self) -> str:
+        """Return the command's human-readable name."""
+        return "Skip Collection"
+
+    def validate_sequence_position(self, sequence_steps: list) -> None:
+        """Require an enclosing scan or sweep, including through helper containers."""
+        if not _has_valid_loop_position(self, sequence_steps, python_control=False):
+            raise ValueError(f"{self.name} must be placed inside a scan or sweep loop.")
+
+    def execute(self) -> None:
+        """Clear the live flag of the innermost active point."""
+        from stoner_measurement.plugins.state.base import StatePlugin
+
+        scopes = active_iteration_scopes()
+        if not scopes or not isinstance(scopes[0].owner, StatePlugin):
+            raise RuntimeError(f"{self.name} requires an active scan or sweep point.")
+        scopes[0].owner.meas_flag = False

@@ -696,12 +696,12 @@ class StateSweepPlugin(StatePlugin):
                 self.clear_data()
             self._begin_sweep()
             try:
-                while next(self):
-                    logger.debug("Iterated: running sub-sequence")
-                    for sub_step in sub_steps:
-                        sub_step()
-                    if self.collect_data:
-                        self.collect()
+                with self.sequence_hook_scope():
+                    while next(self):
+                        with self.point_hook_scope():
+                            logger.debug("Iterated: running sub-sequence")
+                            for sub_step in sub_steps:
+                                sub_step()
             finally:
                 self._end_sweep()
         finally:
@@ -784,12 +784,14 @@ class StateSweepPlugin(StatePlugin):
             >>> lines2 = p.generate_action_code(1, [], lambda s, i: [])
             >>> any(".clear_data()" in line for line in lines2)
             True
-            >>> any(".collect()" in line for line in lines)
+            >>> any(".point_hook_scope()" in line for line in lines)
             True
         """
         prefix = "    " * indent
         loop_prefix = "    " * (indent + 1)
         body_prefix = "    " * (indent + 2)
+        iteration_prefix = "    " * (indent + 3)
+        point_prefix = "    " * (indent + 4)
         var_name = self.instance_name
         lines: list[str] = [f"{prefix}{var_name}._reset_iteration_state(-1)"]
         if self.clear_on_start:
@@ -797,14 +799,13 @@ class StateSweepPlugin(StatePlugin):
         lines += [
             f"{prefix}{var_name}._begin_sweep()",
             f"{prefix}try:",
-            f"{loop_prefix}while next({var_name}):",
-            f"{body_prefix}wait_for_plot_ready()",
+            f"{loop_prefix}with {var_name}.sequence_hook_scope():",
+            f"{body_prefix}while next({var_name}):",
+            f"{iteration_prefix}with {var_name}.point_hook_scope():",
+            f"{point_prefix}wait_for_plot_ready()",
         ]
-        if sub_steps:
-            for sub_step in sub_steps:
-                lines.extend(render_sub_step(sub_step, indent + 2))
-        if self.collect_data:
-            lines.append(f"{body_prefix}{var_name}.collect()")
+        for sub_step in sub_steps:
+            lines.extend(render_sub_step(sub_step, indent + 4))
         lines.extend(
             [
                 f"{prefix}finally:",

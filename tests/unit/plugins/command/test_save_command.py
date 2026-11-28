@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from math import isnan
 from types import SimpleNamespace
 
 import pytest
@@ -809,6 +810,83 @@ class TestSaveCommand:
         assert second_lines[: len(first_lines)] == first_lines
         assert len(second_lines) == len(first_lines) + 3
         assert [line.split("\t")[1] for line in second_lines[-3:]] == ["40.0", "41.0", "42.0"]
+
+    @pytest.mark.parametrize("save_format", ["tdi", "nexus"])
+    @pytest.mark.parametrize("starts_empty", [False, True])
+    def test_incremental_mixed_traces_keep_each_saved_reading(
+        self, qapp, engine, tmp_path, save_format, starts_empty
+    ):
+        from stoner_measurement.core import TraceData
+        from stoner_measurement.plugins.state_scan import CounterPlugin
+        from stoner_measurement.plugins.trace import DummyPlugin
+
+        if save_format == "nexus":
+            h5py = pytest.importorskip("h5py")
+
+        dummy = DummyPlugin()
+        counter = CounterPlugin()
+        counter.collect_data = True
+        counter.collect_outputs = []
+        cmd = SaveCommand()
+        engine.add_plugin("dummy", dummy)
+        engine.add_plugin("counter", counter)
+        engine.add_plugin("save", cmd)
+        engine.update_step_plugin_catalog([dummy, counter, cmd])
+        cmd.save_format = save_format
+        cmd.incremental_save = True
+        path = tmp_path / ("mixed.txt" if save_format == "tdi" else "mixed.nxs")
+        cmd.path_expr = repr(str(path))
+
+        def collect(value):
+            counter.meas_flag = True
+            counter.value = value
+            counter.collect()
+
+        if not starts_empty:
+            collect(1.0)
+        dummy.data = {"Dummy": TraceData.from_xy([0.0], [10.0])}
+        cmd()
+
+        if starts_empty:
+            collect(1.0)
+        collect(2.0)
+        dummy.data = {"Dummy": TraceData.from_xy([0.0], [20.0])}
+        cmd()
+
+        # Replacing a short trace without adding a row must leave saved readings intact.
+        before = path.read_bytes()
+        dummy.data = {"Dummy": TraceData.from_xy([0.0], [99.0])}
+        cmd()
+        assert path.read_bytes() == before
+
+        # A shorter multi-row trace uses the same rule as a single-row trace.
+        collect(3.0)
+        collect(4.0)
+        dummy.data = {"Dummy": TraceData.from_xy([0.0, 1.0], [25.0, 30.0])}
+        cmd()
+
+        signal_header = "dummy:Dummy:y ()"
+        state_header = "counter.data:Value ()"
+        iteration_header = "counter.data:Iteration ()"
+        if save_format == "tdi":
+            header, *rows = [
+                line.split("\t") for line in path.read_text(encoding="utf-8").splitlines()
+            ]
+            assert iteration_header in header
+            signal_index = header.index(signal_header)
+            state_index = header.index(state_header)
+            saved = [
+                (float(row[state_index]), float(row[signal_index])) for row in rows if row[state_index]
+            ]
+        else:
+            with h5py.File(path) as handle:
+                columns = {ds.attrs["original_name"]: ds[:] for ds in handle["entry/data"].values()}
+            assert iteration_header in columns
+            saved = list(zip(columns[state_header], columns[signal_header], strict=True))
+        first_state, first_signal = saved[0]
+        assert first_signal == 10.0
+        assert isnan(first_state) if starts_empty else first_state == 1.0
+        assert saved[1:] == [(2.0, 20.0), (3.0, 30.0), (4.0, 30.0)]
 
     def test_incremental_state_trace_reuses_no_overwrite_filename(self, qapp, engine, tmp_path):
         from stoner_measurement.plugins.state_control import CounterPlugin

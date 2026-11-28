@@ -2043,7 +2043,13 @@ class SequenceEngine(QObject):
 
         action_lines, action_line_owner = self._build_action_lines(steps, plugins)
 
-        lines.append("try:")
+        lines.extend([
+            "from stoner_measurement.core.sequence_hooks import sequence_hook_scope as _sequence_hook_scope",
+            "try:",
+            '    with _sequence_hook_scope(None, "root"):',
+        ])
+        if not action_lines:
+            action_lines.append("        pass")
 
         if return_line_map:
             # Add standalone ownership markers before each contiguous run of
@@ -2263,7 +2269,7 @@ class SequenceEngine(QObject):
 
         Returns:
             (tuple[list[str], dict[int, BasePlugin]]):
-                A pair of action lines (indented one level, trimmed of trailing
+                A pair of action lines (indented inside the root scope, trimmed of trailing
                 blanks) and a mapping of action-lines index → plugin instance.
         """
         from stoner_measurement.plugins.base_plugin import BasePlugin
@@ -2299,7 +2305,7 @@ class SequenceEngine(QObject):
 
         for step in steps:
             start_idx = len(action_lines)
-            action_lines.extend(_render_action(step, 1))
+            action_lines.extend(_render_action(step, 2))
             end_idx = len(action_lines)
 
             step_plugin_or_name = step[0] if isinstance(step, tuple) else step

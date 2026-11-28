@@ -343,29 +343,15 @@ class TestStateControlDataCollection:
         lines = p.generate_action_code(1, [], lambda s, i: [])
         assert not any("clear_data()" in line for line in lines)
 
-    def test_generate_action_code_includes_collect_when_collect_data(self, qapp):
+    def test_generate_action_code_wraps_substeps_in_point_scope(self, qapp):
         p = _InstantState()
         p.clear_on_start = False
-        p.collect_data = True
-        lines = p.generate_action_code(1, [], lambda s, i: [])
-        assert any("collect()" in line for line in lines)
-
-    def test_generate_action_code_no_collect_when_collect_data_false(self, qapp):
-        p = _InstantState()
-        p.clear_on_start = False
-        p.collect_data = False
-        lines = p.generate_action_code(1, [], lambda s, i: [])
-        assert not any("collect()" in line for line in lines)
-
-    def test_generate_action_code_collect_after_substeps(self, qapp):
-        p = _InstantState()
-        p.clear_on_start = False
-        p.collect_data = True
-        rendered_sub = ["        sub_step_line()"]
-        lines = p.generate_action_code(1, ["dummy_step"], lambda s, i: rendered_sub)
-        collect_idx = next(i for i, line in enumerate(lines) if "collect()" in line)
-        sub_idx = next(i for i, line in enumerate(lines) if "sub_step_line()" in line)
-        assert collect_idx > sub_idx
+        lines = p.generate_action_code(
+            1, ["dummy_step"], lambda step, indent: [f"{'    ' * indent}sub_step_line()"]
+        )
+        scope = next(line for line in lines if ".point_hook_scope()" in line)
+        prefix = scope[: len(scope) - len(scope.lstrip())]
+        assert f"{prefix}    sub_step_line()" in lines
 
     def test_generate_action_code_does_not_wrap_substeps_in_measure_flag_if(self, qapp):
         p = _InstantState()

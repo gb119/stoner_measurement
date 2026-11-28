@@ -12,10 +12,13 @@ import ast
 import importlib
 import pathlib
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from qtpy.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -30,6 +33,7 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+from stoner_measurement.core.sequence_hooks import HookScope, active_iteration_scopes
 from stoner_measurement.core.sequence_metadata import sequence_metadata
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.trace_catalog_ui import (
@@ -47,6 +51,27 @@ class SavePayload:
 
     metadata: list[str]
     columns: list[tuple[str, np.ndarray]]
+    # Destination row index corresponding to the first value in each column.
+    row_offset: int = 0
+
+
+@dataclass
+class _SavedFile:
+    """Remember a destination's data length and original metadata snapshot."""
+
+    destination: pathlib.Path
+    rows_saved: int
+    metadata: list[str]
+
+
+def _incremental_values(values: np.ndarray, start: int, stop: int) -> np.ndarray:
+    """Read the new row range, carrying the latest available value beyond its end."""
+    available = values[start:stop]
+    if len(available) == stop - start:
+        return available
+    result = np.full(stop - start, values[-1] if len(values) else np.nan)
+    result[: len(available)] = available
+    return result
 
 
 class BaseSaveWriter:
@@ -108,11 +133,22 @@ class TdiSaveWriter(BaseSaveWriter):
         stop: int,
     ) -> None:
         dest.parent.mkdir(parents=True, exist_ok=True)
+        if stop <= start:
+            return
+        columns = [
+            _incremental_values(values, start - payload.row_offset, stop - payload.row_offset)
+            for _, values in payload.columns
+        ]
+        metadata = payload.metadata
         lines = []
-        for i in range(start, stop):
-            data_cells = [str(col[1][i]) if i < len(col[1]) else "" for col in payload.columns]
-            lines.append("\t".join([""] + data_cells))
-        if not lines:
+        for index, row in enumerate(zip(*columns, strict=True), start):
+            meta_cell = metadata[index] if index < len(metadata) else ""
+            lines.append("\t".join([meta_cell, *map(str, row)]))
+        if start < len(metadata):
+            # Fill the data cells beside the existing metadata without replacing saved readings.
+            existing = dest.read_text(encoding="utf-8").splitlines()
+            lines = existing[: start + 1] + lines + existing[stop + 1 :]
+            dest.write_text("\n".join(lines) + "\n", encoding="utf-8")
             return
         with dest.open("a", encoding="utf-8") as handle:
             handle.write("\n".join(lines) + "\n")
@@ -219,10 +255,13 @@ class NexusSaveWriter(BaseSaveWriter):
             for header, values in payload.columns:
                 name = self._unique_dataset_name(header, used_names)
                 dataset = data_group[name]
-                new_values = np.asarray(values[start:stop], dtype=float)
                 old_size = dataset.shape[0]
-                dataset.resize((old_size + len(new_values),))
-                dataset[old_size:] = new_values
+                dataset.resize((stop,))
+                if old_size < start:
+                    dataset[old_size:start] = np.full(start - old_size, np.nan)
+                dataset[start:stop] = _incremental_values(
+                    values, start - payload.row_offset, stop - payload.row_offset
+                )
 
     def _unique_dataset_name(self, header: str, used_names: set[str]) -> str:
         base = self._dataset_name(header)
@@ -387,6 +426,15 @@ class SaveCommand(CommandPlugin):
     filename already exists, a numeric suffix is added automatically.
 
     The format selector offers TDI text or NeXus/HDF5 (requiring ``h5py``).
+    **Save incrementally** writes every unsaved row available at each call.
+    When Save selects an enclosing scan or sweep table, the write is deferred
+    to the end of the innermost loop's point. When that loop's own table is
+    selected, its row count determines the write range. A separate acquisition
+    contributes its last sample at the Save step to the current collected point.
+    Earlier points without a captured sample get NaN in those columns.
+    For other incremental exports the longest selected table determines the
+    range, and shorter tables carry their last available value forward.
+
     The default **TDI Format 2.0** text file is structured as follows:
 
     * The top-left cell (row 0, column 0) contains ``"TDI Format 2.0"``.
@@ -431,6 +479,9 @@ class SaveCommand(CommandPlugin):
             Registered writer identifier for the output file format. Defaults
             to ``"tdi"``. ``"nexus"`` writes a NeXus/HDF5 file when ``h5py`` is
             available.
+        incremental_save (bool):
+            Save newly available rows to the same file during the current run.
+            Defaults to ``False``.
         instance_name (str):
             Inherited Python identifier for this instance in the Script tab and
             QtConsole.
@@ -462,7 +513,7 @@ class SaveCommand(CommandPlugin):
         self.no_overwrite: bool = True
         self.save_format: str = TdiSaveWriter.format_id
         self.incremental_save: bool = False
-        self._incremental_files: dict[str, dict[str, str | int]] = {}
+        self._incremental_files: dict[pathlib.Path, _SavedFile] = {}
 
     @property
     def has_lifecycle(self) -> bool:
@@ -579,24 +630,20 @@ class SaveCommand(CommandPlugin):
         trace_keys, effective_no_overwrite = self._resolve_effective_options(
             trace=trace, no_overwrite=no_overwrite
         )
-        payload = self.build_payload(trace_keys=trace_keys)
         writer = self._writer()
 
         if self.incremental_save and writer.supports_incremental:
-            dest = self._write_incremental_data_rows(
-                payload=payload,
-                writer=writer,
-                no_overwrite=effective_no_overwrite,
-            )
-        else:
-            original = self._resolve_original_destination()
-            dest = self._next_available_destination(original) if effective_no_overwrite else original
-            writer.write(dest=dest, payload=payload)
-            self._record_saved_file(
-                original=original,
-                dest=dest,
-                data_rows=self._data_row_count(payload.columns),
-            )
+            self._save_incrementally(trace_keys, writer, effective_no_overwrite)
+            return
+        payload = self.build_payload(trace_keys=trace_keys)
+        original = self._resolve_original_destination()
+        dest = self._next_available_destination(original) if effective_no_overwrite else original
+        writer.write(dest=dest, payload=payload)
+        self._incremental_files[original] = _SavedFile(
+            destination=dest,
+            rows_saved=self._data_row_count(payload.columns),
+            metadata=payload.metadata,
+        )
         self.log.info("Data saved to %s", dest)
 
     def build_payload(self, *, trace_keys: set[str] | None = None) -> SavePayload:
@@ -707,75 +754,173 @@ class SaveCommand(CommandPlugin):
         metadata["outputs"] = outputs
         return _flatten_to_metadata(metadata)
 
-    def _build_trace_columns(
-        self,
-        *,
-        ns: dict[str, Any],
-        trace_keys: set[str] | None,
-    ) -> list[tuple[str, np.ndarray]]:
-        """Build numeric columns from selected traces."""
-        columns: list[tuple[str, np.ndarray]] = []
+    def _selected_traces(self, ns: dict[str, Any], trace_keys: set[str] | None) -> dict[str, str]:
+        """Resolve the selected trace expressions in catalogue order."""
         traces_catalog: dict[str, str] = ns.get("_traces", {})
-        for trace_key, expr in traces_catalog.items():
-            if trace_keys is not None:
-                if trace_key not in trace_keys:
-                    continue
-            elif not self.trace_selection.get(trace_key, True):
-                continue
+        return {
+            key: expr
+            for key, expr in traces_catalog.items()
+            if (key in trace_keys if trace_keys is not None else self.trace_selection.get(key, True))
+        }
+
+    def _trace_columns(self, traces: dict[str, str]) -> Iterator[tuple[str, str, pd.Series]]:
+        """Describe trace columns without converting or copying their data."""
+        schemas = self.engine_namespace.get("_trace_schemas", {}) if self.incremental_save else {}
+        for trace_key, expr in traces.items():
             try:
                 trace_data = self.eval(expr)
-                frame = trace_data.df
-                for column_name in frame.columns:
-                    values = frame[column_name].to_numpy(dtype=float, copy=True)
-                    label = (trace_data.names or {}).get(column_name) or str(column_name)
-                    units = (trace_data.units or {}).get(column_name, "")
-                    columns.append((f"{trace_key}:{label} ({units})", values))
             except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
                 self.log.debug("Failed to evaluate trace %r: %s", trace_key, exc)
+                trace_data = None
+            if trace_data is None:
+                trace_data = schemas.get(trace_key)
+            if trace_data is None:
+                continue
+            try:
+                frame = trace_data.df
+                if frame.empty and self.incremental_save:
+                    # Collected tables advertise their eventual columns before their first row.
+                    frame = frame.reindex(columns=trace_data.expected_columns)
+                    names, units = trace_data.expected_names, trace_data.expected_units
+                else:
+                    names, units = trace_data.names or {}, trace_data.units or {}
+                for column_name in frame.columns:
+                    label = names.get(column_name) or str(column_name)
+                    unit = units.get(column_name, "")
+                    yield trace_key, f"{trace_key}:{label} ({unit})", frame[column_name]
+            except Exception as exc:  # noqa: BLE001  # pylint: disable=broad-exception-caught
+                self.log.debug("Failed to read trace %r: %s", trace_key, exc)
+
+    def _build_trace_columns(
+        self, *, ns: dict[str, Any], trace_keys: set[str] | None
+    ) -> list[tuple[str, np.ndarray]]:
+        """Copy the selected columns for a complete snapshot."""
+        columns = []
+        failed = set()
+        for key, header, values in self._trace_columns(self._selected_traces(ns, trace_keys)):
+            if key in failed:
+                continue
+            try:
+                columns.append((header, values.to_numpy(dtype=float, copy=True)))
+            except (TypeError, ValueError) as exc:
+                failed.add(key)
+                self.log.debug("Failed to convert trace %r: %s", key, exc)
+        return columns
+
+    def _save_incrementally(
+        self, trace_keys: set[str] | None, writer: BaseSaveWriter, no_overwrite: bool
+    ) -> None:
+        """Resolve the save request and defer it when it uses an active collection table."""
+        from stoner_measurement.plugins.state.base import StatePlugin
+
+        ns = self.engine_namespace
+        traces = self._selected_traces(ns, trace_keys)
+        original = self._resolve_original_destination()
+        points = active_iteration_scopes()
+        active_tables = {
+            id(point): f"{point.owner.instance_name}.data"
+            for point in points
+            if isinstance(point.owner, StatePlugin)
+        }
+        write = partial(self._write_incremental_data_rows, original, traces, writer, no_overwrite)
+        if not any(key in traces for key in active_tables.values()):
+            write()
+            return
+
+        point = points[0]
+        owner_key = active_tables.get(id(point))
+        point_values: dict[str, list[tuple[str, float]]] = {}
+        if owner_key in traces:
+            collected_keys = {
+                key for key, expr in traces.items()
+                if key == expr and key.endswith(".data")
+                and isinstance(ns.get(key.removesuffix(".data")), StatePlugin)
+            }
+            engine = self.sequence_engine
+            local_traces = {
+                key: expr for key, expr in traces.items()
+                if key not in collected_keys and (engine is None or engine.chart_trace(key) is None)
+            }
+            for key in local_traces:
+                point_values[key] = []
+            for key, header, values in self._trace_columns(local_traces):
+                last_value = _to_float_or_nan(values.iloc[-1]) if len(values) else np.nan
+                point_values[key].append((header, last_value))
+        else:
+            owner_key = None
+
+        point.enqueue(partial(write, point=point, owner_key=owner_key, point_values=point_values))
+
+    def _incremental_columns(
+        self,
+        traces: dict[str, str],
+        point_values: dict[str, list[tuple[str, float]]],
+        start: int,
+        stop: int,
+        committed_row: int | None,
+        live_columns: dict[str, list[tuple[str, pd.Series]]],
+    ) -> list[tuple[str, np.ndarray]]:
+        """Copy only the write range and align captured readings with their point."""
+        columns = []
+        for key in traces:
+            for header, values in live_columns.get(key, []):
+                # Include the last available value if a shorter trace ends before this slice.
+                window = values.iloc[min(start, max(0, len(values) - 1)) : stop]
+                try:
+                    data = window.to_numpy(dtype=float, copy=True)
+                except (TypeError, ValueError):
+                    data = np.fromiter((_to_float_or_nan(value) for value in window), dtype=float)
+                columns.append((header, _incremental_values(data, 0, stop - start)))
+            for header, value in point_values.get(key, []):
+                data = np.full(stop - start, np.nan)
+                if committed_row is not None and start <= committed_row < stop:
+                    data[committed_row - start] = value
+                columns.append((header, data))
         return columns
 
     def _write_incremental_data_rows(
         self,
-        *,
-        payload: SavePayload,
+        original: pathlib.Path,
+        traces: dict[str, str],
         writer: BaseSaveWriter,
         no_overwrite: bool,
-    ) -> pathlib.Path:
-        """Write or append data-mode rows according to the incremental save state."""
-        original = self._resolve_original_destination()
-        original_key = str(original)
-        entry = self._incremental_files.get(original_key)
-        is_new_file = entry is None
-        if entry is None:
-            actual = self._next_available_destination(original) if no_overwrite else original
-            entry = {"actual_filename": str(actual), "rows_saved": 0}
-            self._incremental_files[original_key] = entry
-
-        dest = pathlib.Path(str(entry["actual_filename"]))
-        rows_saved = int(entry["rows_saved"])
-        meta_rows = len(payload.metadata)
-        data_rows = self._data_row_count(payload.columns)
-
-        if is_new_file or (writer.aligns_metadata_with_data_rows and rows_saved < meta_rows):
-            writer.write(dest=dest, payload=payload)
-        elif data_rows > rows_saved:
-            writer.append_data_rows(dest=dest, payload=payload, start=rows_saved, stop=data_rows)
-
-        entry["rows_saved"] = data_rows
-        return dest
-
-    def _record_saved_file(
-        self,
         *,
-        original: pathlib.Path,
-        dest: pathlib.Path,
-        data_rows: int,
+        point: HookScope | None = None,
+        owner_key: str | None = None,
+        point_values: dict[str, list[tuple[str, float]]] | None = None,
     ) -> None:
-        """Track the latest non-incremental data save for the current original filename."""
-        self._incremental_files[str(original)] = {
-            "actual_filename": str(dest),
-            "rows_saved": data_rows,
-        }
+        """Write or append data-mode rows according to the incremental save state."""
+        captures = point_values or {}
+        live_traces = {key: expr for key, expr in traces.items() if key not in captures}
+        live_columns: dict[str, list[tuple[str, pd.Series]]] = {}
+        for key, header, values in self._trace_columns(live_traces):
+            live_columns.setdefault(key, []).append((header, values))
+
+        sources = live_columns.values() if owner_key is None else [live_columns.get(owner_key, [])]
+        stop = max((len(values) for columns in sources for _, values in columns), default=0)
+        entry = self._incremental_files.get(original)
+        start = 0 if entry is None else entry.rows_saved
+        if entry is not None and stop <= start:
+            return
+
+        committed_row = point.committed_row if point is not None else None
+        columns = self._incremental_columns(traces, captures, start, stop, committed_row, live_columns)
+        if entry is None:
+            dest = self._next_available_destination(original) if no_overwrite else original
+            metadata = self._build_metadata(ns=self.engine_namespace)
+            writer.write(dest=dest, payload=SavePayload(metadata=metadata, columns=columns))
+            self._incremental_files[original] = _SavedFile(dest, stop, metadata)
+        else:
+            dest = entry.destination
+            metadata = entry.metadata if writer.aligns_metadata_with_data_rows else []
+            writer.append_data_rows(
+                dest=dest,
+                payload=SavePayload(metadata=metadata, columns=columns, row_offset=start),
+                start=start,
+                stop=stop,
+            )
+            entry.rows_saved = stop
+        self.log.info("Data saved to %s", dest)
 
     def _data_row_count(self, columns: list[tuple[str, np.ndarray]]) -> int:
         """Return the number of data rows available across the supplied columns."""

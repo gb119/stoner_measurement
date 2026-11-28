@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor  # pylint: disable=no-name-in-module
+from contextvars import copy_context
 
 from qtpy.QtCore import QObject
 from qtpy.QtWidgets import QWidget
@@ -125,8 +126,9 @@ class RunSequentiallyPlugin(_FunctionSequencePlugin):
 
     def execute(self, sub_steps: list[Callable[[], None]]) -> None:
         """Invoke each child callable in list order."""
-        for sub_step in sub_steps:
-            sub_step()
+        with self.sequence_hook_scope():
+            for sub_step in sub_steps:
+                sub_step()
 
     def execute_sequence(self, sub_steps: list[Callable[[], None]]) -> None:
         """Implement the standard sequence-container execution contract."""
@@ -228,7 +230,7 @@ class RunParallelPlugin(_FunctionSequencePlugin):
             max_workers=len(sub_steps),
             thread_name_prefix=self.instance_name,
         ) as executor:
-            futures = [executor.submit(sub_step) for sub_step in sub_steps]
+            futures = [executor.submit(copy_context().run, sub_step) for sub_step in sub_steps]
             for future in futures:
                 future.result()
 

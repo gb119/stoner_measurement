@@ -181,6 +181,7 @@ Command plugins
    stoner_measurement.plugins.command.keithley_set.Keithley6221SetCommand
    stoner_measurement.plugins.command.loop_control.BreakIfCommand
    stoner_measurement.plugins.command.loop_control.ContinueIfCommand
+   stoner_measurement.plugins.command.loop_control.SkipCollectionCommand
    stoner_measurement.plugins.command.make_safe.MakeSafeCommand
    stoner_measurement.plugins.command.network_analyser_set.NetworkAnalyserSetCommand
    stoner_measurement.plugins.command.plot_clear.PlotClearCommand

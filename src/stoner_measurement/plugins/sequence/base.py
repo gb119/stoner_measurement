@@ -19,6 +19,11 @@ from abc import abstractmethod
 from collections.abc import Callable
 
 from stoner_measurement.core.plugin_outputs import PluginOutputs
+from stoner_measurement.core.sequence_hooks import (
+    HookBoundary,
+    defer_sequence_action,
+    sequence_hook_scope,
+)
 from stoner_measurement.plugins.base_plugin import BasePlugin
 
 
@@ -53,6 +58,15 @@ class SequencePlugin(BasePlugin):
 
     #: Sub-step descriptors set by the engine before calling execute_sequence.
     _sub_steps: list
+
+    def sequence_hook_scope(self):
+        """Open the end-of-sequence queue for this invocation."""
+        return sequence_hook_scope(self, "sequence")
+
+    @staticmethod
+    def defer_action(boundary: HookBoundary, callback: Callable[[], None]) -> bool:
+        """Route a callback to the active owner of the requested boundary."""
+        return defer_sequence_action(boundary, callback)
 
     def declared_outputs(self) -> PluginOutputs:
         """Declare no outputs for a transparent sequence container."""
@@ -105,8 +119,8 @@ class SequencePlugin(BasePlugin):
     ) -> list[str]:
         """Return action code lines by transparently rendering all sub-steps.
 
-        A generic :class:`SequencePlugin` container has no action of its own;
-        it simply delegates to each nested step at the same indentation level.
+        A generic :class:`SequencePlugin` container opens a sequence hook
+        scope and delegates to its nested steps.
         :class:`~stoner_measurement.plugins.state_control.StateControlPlugin`
         overrides this method to wrap sub-steps inside a scan loop.
 
@@ -131,8 +145,10 @@ class SequencePlugin(BasePlugin):
         """
         lines: list[str] = []
         for sub_step in sub_steps:
-            lines.extend(render_sub_step(sub_step, indent))
-        return lines
+            lines.extend(render_sub_step(sub_step, indent + 1))
+        if not any(line.strip() for line in lines):
+            return []
+        return [f"{'    ' * indent}with {self.instance_name}.sequence_hook_scope():", *lines]
 
     @abstractmethod
     def execute_sequence(self, sub_steps: list) -> None:
@@ -224,5 +240,6 @@ class TopLevelSequence(SequencePlugin):
             >>> results
             [1]
         """
-        for sub_step in sub_steps:
-            sub_step()
+        with sequence_hook_scope(self, "root"):
+            for sub_step in sub_steps:
+                sub_step()

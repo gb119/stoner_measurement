@@ -19,6 +19,8 @@ both families:
 from __future__ import annotations
 
 from abc import abstractmethod
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any, SupportsInt
 
 import pandas as pd
@@ -29,6 +31,7 @@ from stoner_measurement.core.plugin_outputs import (
     ScalarOutput,
     TraceOutput,
 )
+from stoner_measurement.core.sequence_hooks import HookScope, sequence_hook_scope
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_D,
     COLUMN_ROLE_E,
@@ -357,6 +360,20 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             should_clear = True
         if should_clear:
             self._data = self._empty_trace_data()
+
+    @contextmanager
+    def point_hook_scope(self) -> Iterator[HookScope]:
+        """Collect first on normal exit, then run the current point's hooks."""
+        with sequence_hook_scope(self, "iteration") as scope:
+            def collect_point() -> None:
+                if self.collect_data:
+                    previous = self._data.row_count
+                    self.collect()
+                    if self._data.row_count > previous:
+                        scope.committed_row = self._data.row_count - 1
+
+            scope.enqueue(collect_point)
+            yield scope
 
     def collect(self, outputs: list[str] | None = None) -> None:
         """Append a row of current output values to :attr:`data`.

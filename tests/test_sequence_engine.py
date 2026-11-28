@@ -563,13 +563,12 @@ class TestExceptionReporting:
         code, line_map = engine.generate_sequence_code(
             ["dummy"], plugins, return_line_map=True
         )
-        # Replace the action body with a line that raises so we can test attribution.
-        # Instead, inject a script with the correct structure but a raising action.
-        # We craft a minimal script that mirrors what the engine generates but raises.
-        action_lineno = min(line_map)  # first mapped line
+        # Inject an error at the first mapped action using its generated indentation.
+        action_lineno = min(line_map)
         source_lines = code.splitlines()
-        # Replace the first action line with a raise statement.
-        source_lines[action_lineno - 1] = "    raise RuntimeError('plugin error')"
+        action = source_lines[action_lineno - 1]
+        indent = action[: len(action) - len(action.lstrip())]
+        source_lines[action_lineno - 1] = f"{indent}raise RuntimeError('plugin error')"
         bad_script = "\n".join(source_lines)
 
         errors: list[str] = []

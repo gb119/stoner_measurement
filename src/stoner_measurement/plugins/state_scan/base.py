@@ -580,14 +580,14 @@ class StateScanPlugin(StatePlugin):
         self.connect()
         self.configure()
         try:
-            if self.clear_on_start:
-                self.clear_data()
-            for self.ix, self.value, self.meas_flag, self.stage in self.scan_points():
-                self.ramp_to(float(self.value))
-                for sub_step in sub_steps:
-                    sub_step()
-                if self.collect_data:
-                    self.collect()
+            with self.sequence_hook_scope():
+                if self.clear_on_start:
+                    self.clear_data()
+                for self.ix, self.value, self.meas_flag, self.stage in self.scan_points():
+                    with self.point_hook_scope():
+                        self.ramp_to(float(self.value))
+                        for sub_step in sub_steps:
+                            sub_step()
         finally:
             self.disconnect()
 
@@ -762,31 +762,34 @@ class StateScanPlugin(StatePlugin):
             >>> lines2 = p.generate_action_code(1, [], lambda s, i: [])
             >>> any("s.clear_data()" in line for line in lines2)
             True
-            >>> any("s.collect()" in line for line in lines)
+            >>> any("s.point_hook_scope()" in line for line in lines)
             True
         """
         prefix = "    " * indent
-        loop_prefix = "    " * (indent + 1)
+        sequence_prefix = "    " * (indent + 1)
+        loop_prefix = "    " * (indent + 2)
+        point_prefix = "    " * (indent + 3)
         var_name = self.instance_name
-        lines: list[str] = [f"{prefix}{var_name}._reset_iteration_state()"]
+        lines: list[str] = [
+            f"{prefix}with {var_name}.sequence_hook_scope():",
+            f"{sequence_prefix}{var_name}._reset_iteration_state()",
+        ]
         if self.clear_on_start:
-            lines.append(f"{prefix}{var_name}.clear_data()")
+            lines.append(f"{sequence_prefix}{var_name}.clear_data()")
         lines += [
             (
-                f"{prefix}for {var_name}.ix, {var_name}.value, {var_name}.meas_flag, "
+                f"{sequence_prefix}for {var_name}.ix, {var_name}.value, {var_name}.meas_flag, "
                 f"{var_name}.stage in {var_name}.scan_points():"
             ),
-            f"{loop_prefix}wait_for_plot_ready()",
-            f"{loop_prefix}{var_name}.ramp_to(float({var_name}.value))",
+            f"{loop_prefix}with {var_name}.point_hook_scope():",
+            f"{point_prefix}wait_for_plot_ready()",
+            f"{point_prefix}{var_name}.ramp_to(float({var_name}.value))",
             (
-                f'{loop_prefix}log.debug("%s: %.4g %s", '
+                f'{point_prefix}log.debug("%s: %.4g %s", '
                 f"{self.state_name!r}, {var_name}.get_state(), {self.units!r})"
             ),
         ]
-        if sub_steps:
-            for sub_step in sub_steps:
-                lines.extend(render_sub_step(sub_step, indent + 1))
-        if self.collect_data:
-            lines.append(f"{loop_prefix}{var_name}.collect()")
+        for sub_step in sub_steps:
+            lines.extend(render_sub_step(sub_step, indent + 3))
         lines.append("")
         return lines

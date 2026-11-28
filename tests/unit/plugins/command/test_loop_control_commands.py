@@ -6,7 +6,13 @@ import pytest
 from qtpy.QtWidgets import QLineEdit
 
 from stoner_measurement.plugins.base_plugin import BasePlugin
-from stoner_measurement.plugins.command import BreakIfCommand, ContinueIfCommand, IfCommand
+from stoner_measurement.plugins.command import (
+    BreakIfCommand,
+    ContinueIfCommand,
+    IfCommand,
+    SkipCollectionCommand,
+)
+from stoner_measurement.plugins.sequence import RunParallelPlugin
 from stoner_measurement.plugins.state_scan.counter import CounterPlugin
 
 
@@ -75,6 +81,18 @@ def test_sequence_engine_generates_loop_control_inside_scan(qapp, engine):
     )
     assert "if counter.index < 2:" in code
     assert "continue" in code
+
+
+def test_skip_collection_round_trip_and_position_validation(qapp):
+    command = SkipCollectionCommand()
+    restored = BasePlugin.from_json(command.to_json())
+    assert isinstance(restored, SkipCollectionCommand)
+    assert restored.instance_name == "skip_collection"
+    with pytest.raises(ValueError, match="inside a scan or sweep loop"):
+        restored.validate_sequence_position([restored])
+    restored.validate_sequence_position([(CounterPlugin(), [(RunParallelPlugin(), [restored])])])
+    with pytest.raises(RuntimeError, match="requires an active"):
+        restored()
 
 
 if __name__ == "__main__":

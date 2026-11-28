@@ -31,7 +31,11 @@ from stoner_measurement.plugins.command.keithley_set import (
     Keithley2400SetCommand,
     Keithley6221SetCommand,
 )
-from stoner_measurement.plugins.command.loop_control import BreakIfCommand, ContinueIfCommand
+from stoner_measurement.plugins.command.loop_control import (
+    BreakIfCommand,
+    ContinueIfCommand,
+    SkipCollectionCommand,
+)
 from stoner_measurement.plugins.command.make_safe import MakeSafeCommand
 from stoner_measurement.plugins.command.network_analyser_set import (
     NetworkAnalyserSetCommand,
@@ -75,6 +79,7 @@ __all__ = [
     "BreakIfCommand",
     "CommandPlugin",
     "ContinueIfCommand",
+    "SkipCollectionCommand",
     "DaqmxSetCommand",
     "DetailsCommand",
     "EditFunctionScanCommand",

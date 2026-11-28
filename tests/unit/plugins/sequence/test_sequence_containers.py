@@ -8,11 +8,13 @@ import pytest
 from qtpy.QtWidgets import QLineEdit, QTextBrowser
 
 from stoner_measurement.core.sequence_engine import SequenceEngine
+from stoner_measurement.core.sequence_hooks import defer_sequence_action
 from stoner_measurement.core.serializer import sequence_from_json, sequence_to_json
 from stoner_measurement.plugins.command import BreakIfCommand, WaitCommand
 from stoner_measurement.plugins.sequence import (
     RunParallelPlugin,
     RunSequentiallyPlugin,
+    TopLevelSequence,
 )
 from stoner_measurement.plugins.state_scan import CounterPlugin
 
@@ -35,6 +37,53 @@ def _invoke_in_thread(
     thread = threading.Thread(target=_target)
     thread.start()
     return thread, completed
+
+
+def test_parallel_hook_requests_bubble_to_the_enclosing_point_and_sequence():
+    root = TopLevelSequence()
+    scan = CounterPlugin()
+    parallel = RunParallelPlugin()
+    events = []
+    caller = threading.get_ident()
+
+    def record(event):
+        assert threading.get_ident() == caller
+        events.append(event)
+
+    def branch():
+        assert defer_sequence_action("iteration", lambda: record("point"))
+        assert defer_sequence_action("sequence", lambda: record("scan"))
+
+    def body():
+        with scan.sequence_hook_scope():
+            with scan.point_hook_scope():
+                parallel.execute([branch, branch])
+                record("joined")
+            record("next point")
+        assert defer_sequence_action("iteration", lambda: record("root iteration"))
+        assert defer_sequence_action("sequence", lambda: record("root sequence"))
+        record("root body")
+
+    root.execute_sequence([body])
+    assert events == [
+        "joined", "point", "point", "next point", "scan", "scan",
+        "root body", "root iteration", "root sequence",
+    ]
+
+
+def test_failed_parallel_branch_discards_parent_hooks():
+    root = TopLevelSequence()
+    parallel = RunParallelPlugin()
+    events = []
+
+    def failing_branch():
+        assert defer_sequence_action("sequence", lambda: events.append("leaked"))
+        raise RuntimeError("branch failed")
+
+    with pytest.raises(RuntimeError, match="branch failed"):
+        root.execute_sequence([lambda: parallel.execute([failing_branch])])
+    root.execute_sequence([lambda: events.append("next run")])
+    assert events == ["next run"]
 
 
 @pytest.mark.parametrize(
