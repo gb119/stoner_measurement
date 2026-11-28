@@ -16,13 +16,14 @@ from qtpy.QtWidgets import (
     QTableWidgetItem,
 )
 
+from stoner_measurement.plugins.state.base import COLLECT_OUTPUT_ROLES, DEFAULT_OUTPUT_ROLE
 from stoner_measurement.qt_compat import pyqtSignal
 
 if TYPE_CHECKING:
     from stoner_measurement.plugins.state.base import StatePlugin
 
 
-OUTPUT_ROLE_CHOICES = ("-", "x", "d", "y", "e")
+OUTPUT_ROLE_CHOICES = (DEFAULT_OUTPUT_ROLE, *COLLECT_OUTPUT_ROLES)
 
 
 class OutputSelectionTable(QTableWidget):
@@ -65,11 +66,6 @@ class OutputSelectionTable(QTableWidget):
             None if self._plugin.collect_outputs is None else set(self._plugin.collect_outputs)
         )
         configured_roles = self._plugin.collect_output_roles
-        inferred_roles = (
-            self._plugin.inferred_output_roles(keys)
-            if self._plugin.collect_outputs is None and not configured_roles
-            else {}
-        )
         for row, key in enumerate(keys):
             self.insertRow(row)
             check = QCheckBox(self)
@@ -95,7 +91,7 @@ class OutputSelectionTable(QTableWidget):
             role_combo.setObjectName(f"collectOutputRole:{key}")
             role_combo.setProperty("output_key", key)
             role_combo.addItems(OUTPUT_ROLE_CHOICES)
-            role_combo.setCurrentText(configured_roles.get(key, inferred_roles.get(key, "-")))
+            role_combo.setCurrentText(configured_roles.get(key, DEFAULT_OUTPUT_ROLE))
             role_combo.currentTextChanged.connect(
                 lambda role, output_key=key: self._role_changed(output_key, role)
             )
@@ -129,13 +125,9 @@ class OutputSelectionTable(QTableWidget):
             check.setChecked(True)
         inferred_roles = self._plugin.inferred_output_roles(list(self._role_combos))
         for key, combo in self._role_combos.items():
-            combo.setCurrentText(inferred_roles.get(key, "-"))
-        self._plugin.collect_outputs = None
-        self._plugin.collect_output_roles = {
-            key: combo.currentText() for key, combo in self._role_combos.items()
-        }
+            combo.setCurrentText(inferred_roles.get(key, DEFAULT_OUTPUT_ROLE))
         self._sync_in_progress = False
-        self.selection_changed.emit(self.all_selected)
+        self._sync_plugin()
 
     def _role_changed(self, output_key: str, role: str) -> None:
         if self._sync_in_progress:
@@ -144,7 +136,7 @@ class OutputSelectionTable(QTableWidget):
             self._sync_in_progress = True
             for key, combo in self._role_combos.items():
                 if key != output_key and combo.currentText() == "x":
-                    combo.setCurrentText("-")
+                    combo.setCurrentText(DEFAULT_OUTPUT_ROLE)
             self._sync_in_progress = False
         self._sync_plugin()
 
@@ -160,6 +152,8 @@ class OutputSelectionTable(QTableWidget):
         selected = [key for key, check in self._checks.items() if check.isChecked()]
         self._plugin.collect_outputs = None if len(selected) == len(self._checks) else selected
         self._plugin.collect_output_roles = {
-            key: combo.currentText() for key, combo in self._role_combos.items()
+            key: role
+            for key, combo in self._role_combos.items()
+            if (role := combo.currentText()) != DEFAULT_OUTPUT_ROLE
         }
         self.selection_changed.emit(self.all_selected)

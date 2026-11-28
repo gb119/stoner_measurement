@@ -154,7 +154,7 @@ class TestStateSweepPlugin:
         plugin.collect()
         assert plugin.data.df.empty
 
-    def test_sweep_config_has_output_catalogue_table(self, qapp):
+    def test_sweep_config_has_output_catalogue_table(self, qapp, managed_plugin_config_tabs):
         from qtpy.QtWidgets import QCheckBox, QComboBox, QPushButton, QTableWidget
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -165,7 +165,7 @@ class TestStateSweepPlugin:
         engine.add_plugin("testsweep", plugin)
         engine.add_plugin("counter", counter)
         engine.update_step_plugin_catalog([plugin, counter])
-        tabs = plugin.config_tabs()
+        tabs = managed_plugin_config_tabs(plugin)
         data_page = tabs[1][1]
         table = data_page.findChild(QTableWidget, "stateOutputSelectionTable")
         assert table is not None
@@ -185,7 +185,7 @@ class TestStateSweepPlugin:
             None,
         )
         assert value_checkbox.isChecked()
-        assert role_combo.currentText() == "y"
+        assert role_combo.currentText() == "-"
         assert select_all_checkbox is not None
         assert select_all_checkbox.isChecked()
         data_page.resize(900, 1800)

@@ -45,26 +45,30 @@ FORM_NAMES = {
     "xyz": "XYZ",
     "xyz_value": "XYZ + value",
 }
-FORM_DEFAULTS = {
-    "plot_form": "xy",
+_SURFACE_DEFAULTS = {
     "new_x_expr": "",
-    "fixed_y_expr": "0",
-    "z_expr": "",
-    "value_expr": "",
-    "coordinate_y_expr": "0",
-    "fixed_y_label": "",
-    "fixed_y_unit": "",
-    "surface_id_expr": "",
     "acquisition_id_expr": "'default'",
-    "slice_id_expr": "",
     "duplicate_policy": "reject",
     "reset_on_change": False,
     "coordinate_settings": {},
+}
+_POINT_SURFACE_DEFAULTS = {
+    "coordinate_y_expr": "0",
     "z_entries": [],
+}
+_TRACE_SURFACE_DEFAULTS = {
+    "fixed_y_expr": "0",
+    "fixed_y_label": "",
+    "fixed_y_unit": "",
+    "z_expr": "",
+    "surface_id_expr": "",
+    "slice_id_expr": "",
     "new_x_error_expr": "",
     "z_error_expr": "",
     "regrid_policy": "mean",
     "regrid_bounds": "nearest",
+}
+_POLAR_DEFAULTS = {
     "polar_angle_expr": "",
     "polar_radius_expr": "",
     "polar_angle_error_expr": "",
@@ -73,6 +77,14 @@ FORM_DEFAULTS = {
     "polar_title_expr": "'Angular signal'",
     "polar_settings": {"angular_unit": "degrees", "angular_origin": 90.0, "clockwise": True},
     "polar_style": {},
+}
+FORM_DEFAULTS = {
+    "plot_form": "xy",
+    **_SURFACE_DEFAULTS,
+    **_POINT_SURFACE_DEFAULTS,
+    **_TRACE_SURFACE_DEFAULTS,
+    "value_expr": "",
+    **_POLAR_DEFAULTS,
 }
 
 
@@ -97,9 +109,22 @@ def _ensure_surface_identity(plugin) -> None:
         plugin.surface_id_expr = repr(uuid4().hex)
 
 
-def serialise_forms(plugin) -> dict:
-    """Return independent JSON-compatible bindings, excluding live UI objects."""
-    return {name: deepcopy(getattr(plugin, name)) for name in FORM_DEFAULTS}
+def serialise_forms(plugin, *, trace: bool) -> dict:
+    """Copy the configured form's bindings independently of the current display."""
+    form = plugin.plot_form
+    if form == "xy":
+        return {"plot_form": form}
+    if form == "polar":
+        fields = tuple(_POLAR_DEFAULTS)
+    elif form in FORM_NAMES:
+        source_fields = _TRACE_SURFACE_DEFAULTS if trace else _POINT_SURFACE_DEFAULTS
+        fields = (*_SURFACE_DEFAULTS, *source_fields)
+        if form == "xyz_value":
+            fields += ("value_expr",)
+    else:
+        # Preserve the known bindings when a saved form is unrecognised.
+        fields = tuple(FORM_DEFAULTS)
+    return {"plot_form": form, **{name: deepcopy(getattr(plugin, name)) for name in fields}}
 
 
 def descriptor(plugin) -> CoordinateDescriptor:
@@ -538,13 +563,18 @@ class PlotFormPanel(QWidget):
         return edit
 
     def _source_field(self, label, attribute):
+        combo = self.expression_combo(self.options, attribute)
+        self.fields.addRow(label, combo)
+        return combo
+
+    def expression_combo(self, parent, attribute):
+        """Edit one expression with the same catalogue as the plot form."""
         combo = self._source_combo(
-            self.options,
+            parent,
             lambda: getattr(self.plugin, attribute),
             lambda text: setattr(self.plugin, attribute, text),
         )
         combo.setObjectName(attribute)
-        self.fields.addRow(label, combo)
         return combo
 
     def _source_combo(self, parent, read, write):
@@ -554,10 +584,20 @@ class PlotFormPanel(QWidget):
         combo.setToolTip(
             "Select a catalogue channel or type a Python expression evaluated at execution."
         )
-        combo.setCurrentText(read())
+        self._populate_source_combo(combo, read())
         combo.currentTextChanged.connect(lambda text: write(self.sources.get(text, text)))
         self.source_combos.append((combo, read))
         return combo
+
+    def _populate_source_combo(self, combo, expression):
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("")
+        combo.addItems(self.sources)
+        combo.setCurrentText(
+            next((label for label, expr in self.sources.items() if expr == expression), expression)
+        )
+        combo.blockSignals(False)
 
     def _build_z_entries(self):
         area = QScrollArea(self.options)
@@ -685,18 +725,7 @@ class PlotFormPanel(QWidget):
             else self.value_catalog
         )
         for combo, read in self.source_combos:
-            expression = read()
-            combo.blockSignals(True)
-            combo.clear()
-            combo.addItem("")
-            combo.addItems(self.sources)
-            combo.setCurrentText(
-                next(
-                    (label for label, expr in self.sources.items() if expr == expression),
-                    expression,
-                )
-            )
-            combo.blockSignals(False)
+            self._populate_source_combo(combo, read())
 
     def _select_form(self, _index):
         self.plugin.plot_form = self.forms.currentData()

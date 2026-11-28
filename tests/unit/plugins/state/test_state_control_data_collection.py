@@ -205,25 +205,28 @@ class TestStateControlDataCollection:
         assert p.data.column_roles["instantstate:Voltage"] == COLUMN_ROLE_E
         engine.shutdown()
 
-    def test_collect_dash_role_leaves_output_auxiliary(self, qapp):
+    @pytest.mark.parametrize("saved_roles", [None, {"counter:Value": "-"}])
+    def test_collect_default_role_leaves_output_auxiliary(self, qapp, saved_roles):
         from stoner_measurement.core import COLUMN_ROLE_Z
         from stoner_measurement.core.sequence_engine import SequenceEngine
         from stoner_measurement.plugins.state_control import CounterPlugin
 
         engine = SequenceEngine()
-        p = _InstantState()
+        settings = _InstantState().to_json()
+        settings["collect_outputs"] = ["counter:Value"]
+        if saved_roles is not None:
+            settings["collect_output_roles"] = saved_roles
+        p = BasePlugin.from_json(settings)
         counter = CounterPlugin()
         engine.add_plugin("instantstate", p)
         engine.add_plugin("counter", counter)
         engine.update_step_plugin_catalog([p, counter])
         p.collect_filter = "True"
         p.meas_flag = True
-        p.collect_outputs = ["counter:Value"]
-        p.collect_output_roles = {"counter:Value": "-"}
-
         p.collect()
 
         assert p.data.column_roles["counter:Value"] == COLUMN_ROLE_Z
+        assert "collect_output_roles" not in p.to_json()
         engine.shutdown()
 
     def test_to_json_includes_data_collection_settings(self, qapp):
@@ -239,7 +242,7 @@ class TestStateControlDataCollection:
         assert d["collect_filter"] == "custom_expr"
         assert d["clear_filter"] == "another_expr"
         assert d["collect_outputs"] == ["a:value", "b:value"]
-        assert d["collect_output_roles"] == {"a:value": "x", "b:value": "-"}
+        assert d["collect_output_roles"] == {"a:value": "x"}
 
     def test_from_json_restores_data_collection_settings(self, qapp):
         p = _InstantState()
@@ -265,7 +268,7 @@ class TestStateControlDataCollection:
 
         assert restored.start_from_current_value is True
 
-    def test_scan_config_has_output_catalogue_table(self, qapp):
+    def test_scan_config_has_output_catalogue_table(self, qapp, managed_plugin_config_tabs):
         from qtpy.QtWidgets import QCheckBox, QComboBox, QPushButton, QTableWidget
 
         from stoner_measurement.core.sequence_engine import SequenceEngine
@@ -277,11 +280,13 @@ class TestStateControlDataCollection:
         engine.add_plugin("instantstate", p)
         engine.add_plugin("counter", counter)
         engine.update_step_plugin_catalog([p, counter])
-        tabs = p.config_tabs()
+        tabs = managed_plugin_config_tabs(p)
         data_page = tabs[1][1]
         table = data_page.findChild(QTableWidget, "stateOutputSelectionTable")
         assert table is not None
-        value_row = next(row for row in range(table.rowCount()) if table.item(row, 1).text() == "counter:Value")
+        value_row = next(
+            row for row in range(table.rowCount()) if table.item(row, 1).text() == "counter:Value"
+        )
         value_checkbox = table.cellWidget(value_row, 0)
         role_combo = table.cellWidget(value_row, 3)
         assert isinstance(value_checkbox, QCheckBox)
@@ -295,7 +300,8 @@ class TestStateControlDataCollection:
             None,
         )
         assert value_checkbox.isChecked()
-        assert role_combo.currentText() == "y"
+        assert role_combo.currentText() == "-"
+        assert "collect_output_roles" not in p.to_json()
         assert select_all_checkbox is not None
         assert select_all_checkbox.isChecked()
         data_page.resize(900, 1800)
@@ -325,8 +331,7 @@ class TestStateControlDataCollection:
         other_role_combo.setCurrentText("x")
         assert role_combo.currentText() == "-"
         assert p.collect_output_roles["instantstate:Voltage"] == "x"
-        role_combo.setCurrentText("-")
-        assert p.collect_output_roles["counter:Value"] == "-"
+        assert "counter:Value" not in p.collect_output_roles
         engine.shutdown()
 
     def test_generate_action_code_includes_clear_when_clear_on_start(self, qapp):

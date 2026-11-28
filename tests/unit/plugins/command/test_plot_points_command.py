@@ -200,12 +200,14 @@ class TestPlotPointsCommand:
         assert isinstance(grid, QGridLayout)
 
         value_combo = grid.itemAtPosition(1, 1).widget()
-        label_combo = grid.itemAtPosition(2, 1).widget()
-        y_axis_combo = grid.itemAtPosition(3, 1).widget()
-        line_style_combo = grid.itemAtPosition(5, 1).widget()
-        point_style_combo = grid.itemAtPosition(6, 1).widget()
-        line_width_spin = grid.itemAtPosition(7, 1).widget()
-        point_size_spin = grid.itemAtPosition(8, 1).widget()
+        uncertainty = widget.findChild(QComboBox, "plot_points_y_uncertainty_0")
+        x_uncertainty = widget.findChild(QComboBox, "plot_points_x_uncertainty")
+        label_combo = grid.itemAtPosition(3, 1).widget()
+        y_axis_combo = grid.itemAtPosition(4, 1).widget()
+        line_style_combo = grid.itemAtPosition(6, 1).widget()
+        point_style_combo = grid.itemAtPosition(7, 1).widget()
+        line_width_spin = grid.itemAtPosition(8, 1).widget()
+        point_size_spin = grid.itemAtPosition(9, 1).widget()
         assert isinstance(value_combo, QComboBox)
         assert isinstance(label_combo, QComboBox)
         assert isinstance(y_axis_combo, QComboBox)
@@ -215,6 +217,8 @@ class TestPlotPointsCommand:
         assert isinstance(point_size_spin, QDoubleSpinBox)
 
         value_combo.setCurrentText("p:z")
+        uncertainty.setCurrentIndex(uncertainty.findData("p:y"))
+        x_uncertainty.setCurrentIndex(x_uncertainty.findData("p:x"))
         label_combo.lineEdit().setText("Edited label")
         label_combo.lineEdit().editingFinished.emit()
         y_axis_combo.setEditText("custom-axis")
@@ -226,6 +230,7 @@ class TestPlotPointsCommand:
         assert command.y_entries == [
             {
                 "key": "p:z",
+                "error_key": "p:y",
                 "label": "Edited label",
                 "y_axis": "custom-axis",
                 "line_style": "dash",
@@ -234,6 +239,9 @@ class TestPlotPointsCommand:
                 "point_size": 9.0,
             }
         ]
+        assert command.x_error_key == "p:x"
+        uncertainty.setCurrentIndex(0)
+        assert "error_key" not in command.y_entries[0]
 
     def test_editing_series_label_renames_existing_plot_trace(
         self, qapp, engine, managed_qt_widget
@@ -246,8 +254,7 @@ class TestPlotPointsCommand:
         command.y_entries = [{"key": "p:y", "label": "Old label", "y_axis": "left"}]
         plot_widget.append_point("Old label", 1.0, 2.0)
         widget = managed_qt_widget(command.config_widget())
-        grid = widget.findChild(QScrollArea).widget().layout()
-        label_combo = grid.itemAtPosition(2, 1).widget()
+        label_combo = widget.findChild(QComboBox, "plot_points_y_label_0")
 
         label_combo.lineEdit().setText("New label")
         label_combo.lineEdit().editingFinished.emit()
@@ -482,6 +489,24 @@ class TestPlotPointsCommand:
         assert plot_widget.x_data("My Y") == [1.0]
         assert plot_widget.y_data("My Y") == [5.0]
         assert plot_widget.is_busy_for_data() is False
+
+    def test_legacy_cartesian_widget_appends_point_uncertainties(self, engine):
+        plot_widget = self.make_plot_widget()
+        engine.plot_widget = plot_widget
+        command = PlotPointsCommand()
+        engine.add_plugin("plot_points", command)
+        engine._namespace["_values"] = {"p:x": "1.0", "p:y": "5.0", "p:error": "0.25"}
+        command.x_key = "p:x"
+        command.y_entries = [{"key": "p:y", "label": "My Y", "error_key": "p:error"}]
+        command.execute()
+        engine._namespace["_values"]["p:error"] = "0.5"
+        command.execute()
+
+        x_errors, y_errors = plot_widget.trace_uncertainties("My Y")
+        assert plot_widget.y_data("My Y") == [5.0, 5.0]
+        assert x_errors is None
+        assert y_errors.tolist() == [0.25, 0.5]
+        assert not plot_widget.is_busy_for_data()
 
     def test_successive_execute_keeps_existing_trace_table_controls(self, qapp, engine):
         plot_widget = self.make_plot_widget()

@@ -175,6 +175,28 @@ class TestPlotTraceCommand:
         assert advanced_help.wordWrap() is True
         assert advanced_help.hasHeightForWidth() is True
 
+    def test_config_xy_uncertainty_controls_select_or_edit_sources(
+        self, engine, managed_plugin_config_tabs
+    ):
+        from qtpy.QtWidgets import QCheckBox, QComboBox
+
+        cmd = PlotTraceCommand()
+        engine.add_plugin("plot_trace", cmd)
+        engine._namespace["_values"] = {"source:Error": "source_error"}
+        widget = dict(managed_plugin_config_tabs(cmd))["General"]
+        advanced = widget.findChild(QCheckBox, "plot_trace_advanced_mode")
+        x_uncertainty = widget.findChild(QComboBox, "x_error_expr")
+        y_uncertainty = widget.findChild(QComboBox, "y_error_expr")
+        assert x_uncertainty.isHidden() and y_uncertainty.isHidden()
+        advanced.setChecked(True)
+        assert not x_uncertainty.isHidden() and not y_uncertainty.isHidden()
+        x_uncertainty.setCurrentText("source:Error")
+        y_uncertainty.setEditText("[0.1, 0.2]")
+        assert cmd.x_error_expr == "source_error"
+        assert cmd.y_error_expr == "[0.1, 0.2]"
+        x_uncertainty.setCurrentIndex(0)
+        assert cmd.x_error_expr == ""
+
     def test_config_advanced_checkbox_toggles_advanced_mode(self, qapp):
         from qtpy.QtWidgets import QCheckBox
 

@@ -100,17 +100,32 @@ selected from the same catalogue.
      - Independent coordinate. Only one selected readback can have this role.
    * - ``y``
      - Dependent measurement or fitted parameter.
+   * - ``z``
+     - Secondary measurement that can be selected as Z in an XYZ plot.
    * - ``d``
-     - Additional data channel.
+     - X-coordinate uncertainty.
    * - ``e``
-     - Uncertainty channel.
+     - Y-coordinate uncertainty.
+   * - ``f``
+     - Z-coordinate uncertainty.
+   * - ``p``
+     - Phi (φ) angular coordinate.
+   * - ``q``
+     - Theta (θ) angular coordinate.
+   * - ``r``
+     - Radial coordinate.
    * - ``-``
-     - Auxiliary column retained without a primary plotting role.
+     - Default role. The output is retained as an auxiliary column.
 
-The **Include** checkbox determines whether a reading is collected; ``-``
-does not exclude it. **Use all catalogue outputs** selects all available
-outputs and assigns automatic roles. Adjust the individual rows when you want
-a smaller table or explicit roles.
+The **Include** checkbox determines whether a reading is collected. The
+sequence file records role choices that differ from ``-``. Selecting
+**Use all catalogue outputs** selects all available outputs and assigns
+automatic roles. Adjust the individual rows when you want a smaller table
+or explicit roles.
+
+Bind the collected columns in the plot command's coordinate controls. For
+example, choose the relevant angular column and radius for a 2D Polar plot.
+Drawing uncertainty bars requires support from the selected display.
 
 By default the commanded scan/sweep value supplies ``x``. Assigning ``x`` to
 a readback instead uses that measured value and retains the commanded value
@@ -210,6 +225,12 @@ parameters from the current acquisition. Choose **XY** as **Plot form**,
 ``scan:Value`` as **X value**, and add Y series for ``curve_fit:Ic`` and
 ``curve_fit:Rn``. Set their labels, colours and point styles in the series
 table. **Add Y series** adds another scalar output to the same command.
+
+For symmetric error bars in XY, choose an optional **X uncertainty** and
+a **Y uncertainty** for each Y series in **Plot Points**. In **Plot Trace**
+**Advanced mode**, choose **X uncertainty** and **Y uncertainty** channels
+or enter expressions. An expression can supply one uncertainty per sample
+or a constant for the entire channel. Use the same units as the plotted data.
 
 .. figure:: _static/screenshots/plot-points.png
    :alt: Plot Points XY configuration with scan Value on the top axis and two Y series, Ic and Rn, assigned separate axes, colours and point symbols.

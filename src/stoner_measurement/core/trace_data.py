@@ -16,7 +16,7 @@ COLUMN_ROLE_X: str = "x"
 """Role tag identifying the independent-variable column."""
 
 COLUMN_ROLE_Z: str = "z"
-"""Role tag identifying a column as a secondary dependent variable."""
+"""Role tag for secondary data that can be bound to a plot's Z axis."""
 
 COLUMN_ROLE_D: str = "d"
 """Role tag identifying a column as x-axis uncertainty (error bar)."""
@@ -24,8 +24,30 @@ COLUMN_ROLE_D: str = "d"
 COLUMN_ROLE_E: str = "e"
 """Role tag identifying a column as y-axis uncertainty (error bar)."""
 
+COLUMN_ROLE_F: str = "f"
+"""Role tag identifying a column as z-axis uncertainty (error bar)."""
+
+COLUMN_ROLE_P: str = "p"
+"""Role tag identifying a column as the phi angular coordinate."""
+
+COLUMN_ROLE_Q: str = "q"
+"""Role tag identifying a column as the theta angular coordinate."""
+
+COLUMN_ROLE_R: str = "r"
+"""Role tag identifying a column as the radial coordinate."""
+
 _VALID_ROLES: frozenset[str] = frozenset(
-    {COLUMN_ROLE_X, COLUMN_ROLE_Y, COLUMN_ROLE_Z, COLUMN_ROLE_D, COLUMN_ROLE_E}
+    {
+        COLUMN_ROLE_X,
+        COLUMN_ROLE_Y,
+        COLUMN_ROLE_Z,
+        COLUMN_ROLE_D,
+        COLUMN_ROLE_E,
+        COLUMN_ROLE_F,
+        COLUMN_ROLE_P,
+        COLUMN_ROLE_Q,
+        COLUMN_ROLE_R,
+    }
 )
 
 
@@ -35,7 +57,8 @@ class TraceData:
     The DataFrame uses a simple integer row index. Its columns store the
     independent variable, measured or derived data, and uncertainties on the
     same row grid. Column roles identify x (``x``), primary data (``y``),
-    auxiliary data (``z``), x uncertainty (``d``), and y uncertainty (``e``).
+    secondary data or a Z coordinate (``z``), x/y/z uncertainties (``d``,
+    ``e``, ``f``), and phi, theta and radius coordinates (``p``, ``q``, ``r``).
 
     ``names`` and ``units`` are completed for every DataFrame column during
     construction. Unknown role or metadata keys are rejected so these mappings

@@ -41,8 +41,15 @@ quantity. They are separate from the DataFrame's column identifier.
    * - ``COLUMN_ROLE_E``
      - Y-coordinate uncertainty (vertical error bar).
    * - ``COLUMN_ROLE_Z``
-     - Secondary/auxiliary data channel; this does not automatically bind a
-       3D plot's Z slot.
+     - Secondary data channel that can be bound to the Z slot of a 3D plot.
+   * - ``COLUMN_ROLE_F``
+     - Z-coordinate uncertainty.
+   * - ``COLUMN_ROLE_P``
+     - Phi (φ) angular coordinate.
+   * - ``COLUMN_ROLE_Q``
+     - Theta (θ) angular coordinate.
+   * - ``COLUMN_ROLE_R``
+     - Radial coordinate.
 
 ``td.x``, ``td.y``, ``td.d`` and ``td.e`` provide views of the first column with
 that role. Use ``get_columns_by_role`` for every matching column, and ``td.df``

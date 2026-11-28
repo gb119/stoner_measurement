@@ -22,6 +22,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
+from math import isfinite
 from typing import TYPE_CHECKING, Any, cast
 
 from qtpy.QtCore import Qt  # type: ignore[attr-defined]
@@ -43,19 +44,21 @@ from qtpy.QtWidgets import (
 from stoner_measurement.core.plotting.producers import ensure_plugin_axes, xy_update
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.command.plot_forms import (
-    PlotContextBinding as _PlotContextBinding,
-)
-from stoner_measurement.plugins.command.plot_forms import (
-    PlotFormPanel as _PlotFormPanel,
-)
-from stoner_measurement.plugins.command.plot_forms import (
+    FORM_NAMES,
     UnavailablePointData,
     axis_names,
     execute_points_form,
     initialise_forms,
     refresh_axis_combo,
     restore_forms,
+    scalar,
     serialise_forms,
+)
+from stoner_measurement.plugins.command.plot_forms import (
+    PlotContextBinding as _PlotContextBinding,
+)
+from stoner_measurement.plugins.command.plot_forms import (
+    PlotFormPanel as _PlotFormPanel,
 )
 from stoner_measurement.plugins.trace_catalog_ui import bind_value_catalog_updates
 from stoner_measurement.qt_compat import pyqtSignal
@@ -76,6 +79,7 @@ _POINT_STYLE_OPTIONS = ("none", "circle", "square", "triangle", "diamond", "plus
 
 _PLOT_SIGNAL_BINDINGS = (
     ("plot_point", "append_point"),
+    ("plot_point_with_errors", "append_point_with_errors"),
     ("plot_update_queued", "mark_data_update_queued"),
     ("plot_ensure_y_axis", "ensure_y_axis"),
     ("plot_ensure_x_axis", "ensure_x_axis"),
@@ -90,6 +94,7 @@ class _YSeriesWidgets:
     """Widgets belonging to one configured y-series column."""
 
     value: QComboBox
+    uncertainty: QComboBox
     label: QComboBox
     y_axis: QComboBox
     colour: QPushButton
@@ -266,11 +271,14 @@ class PlotPointsCommand(CommandPlugin):
         x_key (str):
             Key in the ``_values`` catalogue for the x data. The current
             value is read each time the command executes.
+        x_error_key (str):
+            Optional scalar catalogue key for shared symmetric X uncertainty.
         y_entries (list[dict[str, str]]):
             Ordered list of y-series definitions.  Each entry is a dict with
             keys ``"key"`` (catalogue key), ``"label"`` (trace name shown
             in the legend), ``"y_axis"`` (y-axis name; defaults to
-            ``"left"`` when absent), and optional format keys ``"colour"``,
+            ``"left"`` when absent), an optional ``"error_key"`` for Y
+            uncertainty, and optional format keys ``"colour"``,
             ``"line_style"``, ``"point_style"``, ``"line_width"``, and
             ``"point_size"``.  Empty string values and ``0.0`` numeric values
             mean "use the plot panel default".
@@ -336,6 +344,8 @@ class PlotPointsCommand(CommandPlugin):
     plot_context_changed = pyqtSignal()
     #: XY data signal; additional forms submit complete portable requests.
     plot_point = pyqtSignal(str, float, float)
+    #: XY point with optional symmetric x and y uncertainties.
+    plot_point_with_errors = pyqtSignal(str, float, float, object, object)
     #: Signal emitted by execute() before each queued point update.
     plot_update_queued = pyqtSignal()
     #: Signal emitted by execute() to ensure x-axis exists — (axis_name, axis_label).
@@ -355,6 +365,7 @@ class PlotPointsCommand(CommandPlugin):
         self._sequence_engine_ref: SequenceEngine | None = None
         initialise_forms(self)
         self.x_key: str = ""
+        self.x_error_key: str = ""
         self.y_entries: list[dict[str, Any]] = []
         self.x_axis_name: str = _DEFAULT_X_AXIS
 
@@ -518,9 +529,25 @@ class PlotPointsCommand(CommandPlugin):
             )
             return
 
-        self._execute_xy_entries(values, x_expr, x_val)
+        try:
+            x_error = self._xy_uncertainty(values, self.x_error_key)
+        except Exception as exc:
+            self.log.warning("PlotPoints: invalid X uncertainty — skipping plot: %s", exc)
+            return
+        self._execute_xy_entries(values, x_expr, x_val, x_error)
 
-    def _execute_xy_entries(self, values: dict[str, str], x_expr: str, x_val: float) -> None:
+    def _xy_uncertainty(self, values: dict[str, str], key: str) -> float | None:
+        """Evaluate an optional catalogue uncertainty for one point."""
+        if not key:
+            return None
+        error = scalar(self, values[key])
+        if not isfinite(error) or error < 0:
+            raise ValueError(f"{key!r} must supply a finite nonnegative uncertainty.")
+        return error
+
+    def _execute_xy_entries(
+        self, values: dict[str, str], x_expr: str, x_val: float, x_error: float | None
+    ) -> None:
         """Evaluate each Y entry and submit points in configured order."""
         for entry in self.y_entries:
             y_key = entry.get("key", "")
@@ -538,10 +565,11 @@ class PlotPointsCommand(CommandPlugin):
             y_expr = values[y_key]
             try:
                 y_val = float(self.eval(y_expr))
+                y_error = self._xy_uncertainty(values, entry.get("error_key", ""))
             except Exception as exc:
                 self.log.warning(
-                    "PlotPoints: could not evaluate y expression %r: %s — skipping.",
-                    y_expr,
+                    "PlotPoints: could not evaluate Y data or uncertainty for %r: %s — skipping.",
+                    y_key,
                     exc,
                 )
                 continue
@@ -558,6 +586,8 @@ class PlotPointsCommand(CommandPlugin):
                         label,
                         [x_val],
                         [y_val],
+                        x_error=[x_error] if x_error is not None else None,
+                        y_error=[y_error] if y_error is not None else None,
                         x_label=_axis_label(self.x_key, x_expr),
                         y_label=_axis_label(y_key, y_expr),
                         x_axis=x_axis,
@@ -571,7 +601,10 @@ class PlotPointsCommand(CommandPlugin):
             )
             if not handled:
                 self._queue_plot_update_request(self.plot_update_queued)
-            self.plot_point.emit(label, x_val, y_val)
+            if x_error is None and y_error is None:
+                self.plot_point.emit(label, x_val, y_val)
+            else:
+                self.plot_point_with_errors.emit(label, x_val, y_val, x_error, y_error)
             self.plot_trace_axes.emit(label, x_axis, y_axis)
             if not handled:
                 self._wait_for_plot_response_or_raise(label)
@@ -590,6 +623,7 @@ class PlotPointsCommand(CommandPlugin):
         The widget contains:
 
         * An **X value** dropdown populated from the ``_values`` catalogue.
+        * An optional **X uncertainty** from the same catalogue.
         * An **X axis** dropdown for the shared x-axis.
         * A scrollable list of **Y series** rows, each with a value
           dropdown, a label line-edit (defaulting to
@@ -624,6 +658,13 @@ class PlotPointsCommand(CommandPlugin):
         outer_layout = QFormLayout(legacy)
 
         x_combo = self._build_x_combos_section(outer, outer_layout, value_keys, x_axis_names)
+        x_error_combo = QComboBox(outer)
+        x_error_combo.setObjectName("plot_points_x_uncertainty")
+        self._refresh_error_combo(x_error_combo, value_keys, self.x_error_key)
+        x_error_combo.currentIndexChanged.connect(
+            lambda _: setattr(self, "x_error_key", x_error_combo.currentData())
+        )
+        outer_layout.insertRow(1, "X uncertainty:", x_error_combo)
 
         outer_layout.addRow(QLabel("<b>Y series:</b>", outer))
         rebuild_y_series = self._build_y_series_section(
@@ -633,6 +674,7 @@ class PlotPointsCommand(CommandPlugin):
         def _refresh_values(catalog: dict[str, str]) -> None:
             value_keys[:] = catalog.keys()
             self._refresh_x_value_combo(x_combo, value_keys)
+            self._refresh_error_combo(x_error_combo, value_keys, self.x_error_key)
             rebuild_y_series()
 
         bind_value_catalog_updates(self, outer, _refresh_values)
@@ -715,7 +757,7 @@ class PlotPointsCommand(CommandPlugin):
         series_container = QWidget()
         series_layout = QGridLayout(series_container)
         series_layout.setColumnStretch(0, 0)
-        series_layout.setRowStretch(10, 1)
+        series_layout.setRowStretch(11, 1)
 
         scroll_area.setWidget(series_container)
         outer_layout.addRow(scroll_area)
@@ -762,7 +804,18 @@ class PlotPointsCommand(CommandPlugin):
     def _add_y_series_headers(container: QWidget, layout: QGridLayout) -> None:
         """Add the fixed option labels down the first grid column."""
         layout.addWidget(QLabel("<b>Option</b>", container), 0, 0)
-        titles = ("Value", "Label", "Y axis", "Colour", "Line", "Points", "Width", "Pt size", "")
+        titles = (
+            "Value",
+            "Y uncertainty",
+            "Label",
+            "Y axis",
+            "Colour",
+            "Line",
+            "Points",
+            "Width",
+            "Pt size",
+            "",
+        )
         for row_index, title in enumerate(titles, start=1):
             layout.addWidget(QLabel(f"<b>{title}</b>", container), row_index, 0)
 
@@ -774,8 +827,12 @@ class PlotPointsCommand(CommandPlugin):
     ) -> _YSeriesWidgets:
         """Create and initialise the editors for one y-series."""
         value = self._create_value_combo(context.container, entry, context.value_keys)
+        uncertainty = QComboBox(context.container)
+        uncertainty.setObjectName(f"plot_points_y_uncertainty_{index}")
+        self._refresh_error_combo(uncertainty, context.value_keys, entry.get("error_key", ""))
 
         label = QComboBox(context.container)
+        label.setObjectName(f"plot_points_y_label_{index}")
         label.setEditable(True)
         label.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         label.lineEdit().setText(entry.get("label", ""))
@@ -791,6 +848,7 @@ class PlotPointsCommand(CommandPlugin):
 
         return _YSeriesWidgets(
             value=value,
+            uncertainty=uncertainty,
             label=label,
             y_axis=y_axis,
             colour=colour,
@@ -808,6 +866,19 @@ class PlotPointsCommand(CommandPlugin):
             ),
             remove=QPushButton("Remove", context.container),
         )
+
+    @staticmethod
+    def _refresh_error_combo(combo: QComboBox, keys: list[str], selected: str) -> None:
+        """List optional catalogue uncertainties without losing an unavailable key."""
+        combo.blockSignals(True)
+        combo.clear()
+        combo.addItem("(none)", "")
+        for key in keys:
+            combo.addItem(key, key)
+        if selected and selected not in keys:
+            combo.addItem(f"{selected} (unavailable)", selected)
+        combo.setCurrentIndex(combo.findData(selected))
+        combo.blockSignals(False)
 
     @staticmethod
     def _create_value_combo(
@@ -878,6 +949,7 @@ class PlotPointsCommand(CommandPlugin):
         context.layout.addWidget(QLabel(f"<b>Series {index + 1}</b>", context.container), 0, column)
         ordered_widgets = (
             widgets.value,
+            widgets.uncertainty,
             widgets.label,
             widgets.y_axis,
             widgets.colour,
@@ -901,6 +973,16 @@ class PlotPointsCommand(CommandPlugin):
         widgets.value.currentTextChanged.connect(
             partial(self._apply_y_key, index, widgets, namespace)
         )
+
+        def set_uncertainty(_: int) -> None:
+            entry = self.y_entries[index]
+            key = widgets.uncertainty.currentData()
+            if key:
+                entry["error_key"] = key
+            else:
+                entry.pop("error_key", None)
+
+        widgets.uncertainty.currentIndexChanged.connect(set_uncertainty)
         widgets.label.lineEdit().editingFinished.connect(
             partial(self._apply_y_label, index, widgets)
         )
@@ -1033,11 +1115,15 @@ class PlotPointsCommand(CommandPlugin):
     def to_json(self) -> dict[str, Any]:
         """Serialise the plot-points command configuration to a JSON-compatible dict.
 
+        Only the selected plot form's settings are saved. Other forms start
+        with their default settings when the command is reloaded.
+
         Returns:
             (dict[str, Any]):
                 Base dict from
                 :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
-                extended with ``"x_key"``, ``"x_axis_name"``, and
+                extended with the selected form's configuration. For XY this
+                includes ``"x_key"``, ``"x_axis_name"``, and
                 ``"y_entries"`` (each entry includes ``"y_axis"`` and optional
                 format fields ``"colour"``, ``"line_style"``, ``"point_style"``,
                 ``"line_width"``, and ``"point_size"``).
@@ -1053,10 +1139,13 @@ class PlotPointsCommand(CommandPlugin):
             True
         """
         d = super().to_json()
-        d.update(serialise_forms(self))
-        d["x_key"] = self.x_key
-        d["x_axis_name"] = self.x_axis_name
-        d["y_entries"] = [dict(e) for e in self.y_entries]
+        d.update(serialise_forms(self, trace=False))
+        if self.plot_form == "xy" or self.plot_form not in FORM_NAMES:
+            d["x_key"] = self.x_key
+            if self.x_error_key:
+                d["x_error_key"] = self.x_error_key
+            d["x_axis_name"] = self.x_axis_name
+            d["y_entries"] = [dict(e) for e in self.y_entries]
         return d
 
     def _restore_from_json(self, data: dict[str, Any]) -> None:
@@ -1072,6 +1161,7 @@ class PlotPointsCommand(CommandPlugin):
         """
         restore_forms(self, data)
         self.x_key = data.get("x_key", "")
+        self.x_error_key = data.get("x_error_key", "")
         self.x_axis_name = data.get("x_axis_name", _DEFAULT_X_AXIS)
         # Backward-compat: old format stored a global y_axis_name.
         legacy_y_axis = data.get("y_axis_name", _DEFAULT_Y_AXIS)

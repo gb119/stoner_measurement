@@ -528,22 +528,52 @@ def test_identity_collisions_are_rejected_before_any_measured_channel_submission
 
 
 @pytest.mark.parametrize("command_type", [PlotTraceCommand, PlotPointsCommand])
-def test_optional_fields_round_trip_and_old_json_remains_xy(qapp, command_type):
-    command = command_type()
-    command.plot_form = "xyz_value"
-    command.new_x_expr, command.z_expr, command.value_expr = "source_x", "source_z", "source_value"
-    command.coordinate_settings = {"system": "cylindrical", "angular_unit": "degrees"}
-    command.z_entries = [{"expr": "signal", "surface_id_expr": "'identity'", "label": "Z"}]
-    command.duplicate_policy, command.reset_on_change = "replace", True
-    command.regrid_policy, command.regrid_bounds = "last", "missing"
+@pytest.mark.parametrize("form", ["xy", "polar", "xy_intensity", "xyz", "xyz_value"])
+def test_plot_json_round_trips_only_the_selected_form(qapp, command_type, form):
+    xy = {"x_axis_name": "top"}
+    polar = {"polar_angle_expr": "angle", "polar_settings": {"angular_unit": "radians"}}
+    surface = {
+        "new_x_expr": "source_x",
+        "coordinate_settings": {"system": "cylindrical", "angular_unit": "degrees"},
+        "duplicate_policy": "replace",
+    }
+    surface_trace = {"z_expr": "source_z", "regrid_policy": "last"}
+    surface_points = {"z_entries": [{"expr": "signal", "surface_id_expr": "'identity'"}]}
+    value = {"value_expr": "source_value"}
+    trace_style = {}
+    if command_type is PlotTraceCommand:
+        xy["trace_key"] = "iv"
+        trace_style = {"title_expr": "'IV'", "line_width": 2.0}
+    else:
+        xy["y_entries"] = [{"key": "signal", "y_axis": "right"}]
+
+    settings = {**xy, **polar, **surface, **surface_trace, **surface_points, **value, **trace_style}
+    legacy = {**command_type().to_json(), **settings, "plot_form": form}
+    command = BasePlugin.from_json(legacy)
     data = command.to_json()
-    restored = command_type()
-    restored._restore_from_json(data)
-    assert restored.to_json() == data
-    data["z_entries"][0]["expr"] = "changed"
-    assert command.z_entries[0]["expr"] == "signal"
-    restored._restore_from_json({})
-    assert restored.plot_form == "xy"
+
+    if form == "xy":
+        expected = {**xy, **trace_style}
+    elif form == "polar":
+        expected = polar
+    else:
+        bindings = surface_trace if command_type is PlotTraceCommand else surface_points
+        expected = {**surface, **bindings, **trace_style}
+        if form == "xyz_value":
+            expected.update(value)
+    assert {key: data[key] for key in settings if key in data} == expected
+    assert BasePlugin.from_json(data).to_json() == data
+    assert {key: getattr(command, key) for key in settings} == settings
+
+    if "coordinate_settings" in data:
+        data["coordinate_settings"]["system"] = "cartesian"
+        assert command.coordinate_settings["system"] == "cylindrical"
+    if "z_entries" in data:
+        data["z_entries"][0]["expr"] = "changed"
+        assert command.z_entries[0]["expr"] == "signal"
+
+    legacy.pop("plot_form")
+    assert BasePlugin.from_json(legacy).plot_form == "xy"
 
 
 if __name__ == "__main__":

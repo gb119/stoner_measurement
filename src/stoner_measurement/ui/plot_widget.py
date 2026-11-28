@@ -2271,6 +2271,45 @@ class PlotWidget(QWidget):
         finally:
             self._mark_data_update_processed()
 
+    @pyqtSlot(str, float, float, object, object)
+    def append_point_with_errors(
+        self, trace_name: str, x: float, y: float, x_error: float | None, y_error: float | None
+    ) -> None:
+        """Append a point and its optional symmetric uncertainties."""
+        self.append_points_with_errors(
+            trace_name,
+            [x],
+            [y],
+            [x_error] if x_error is not None else None,
+            [y_error] if y_error is not None else None,
+        )
+
+    def append_points_with_errors(
+        self,
+        trace_name: str,
+        xs: Sequence[float],
+        ys: Sequence[float],
+        x_errors: Sequence[float] | None,
+        y_errors: Sequence[float] | None,
+    ) -> None:
+        """Append samples and retain any uncertainties already on the series."""
+        old_x, old_y = self._trace_data.get(trace_name, ([], []))
+        old_errors = self._trace_error_data.get(trace_name, (None, None))
+        combined_errors = [
+            np.concatenate(
+                (
+                    previous if previous is not None else np.zeros(len(old_x)),
+                    current if current is not None else np.zeros(len(xs)),
+                )
+            )
+            if previous is not None or current is not None
+            else None
+            for previous, current in zip(old_errors, (x_errors, y_errors), strict=True)
+        ]
+        self.set_trace_with_errors(
+            trace_name, np.concatenate((old_x, xs)), np.concatenate((old_y, ys)), *combined_errors
+        )
+
     @pyqtSlot(str, object, object)
     def set_trace(
         self,

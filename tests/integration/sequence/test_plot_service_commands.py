@@ -59,6 +59,39 @@ def test_actual_engine_worker_uses_gui_and_observable_signals(routed, qtbot, mon
     np.testing.assert_array_equal(widget.y_data("Signal"), [3, 4])
 
 
+def test_saved_advanced_trace_plots_explicit_xy_uncertainties(routed, qtbot):
+    engine, service, widget = routed
+    command = trace_command(engine)
+    command.x_error_expr, command.y_error_expr = "0.1", "[0.2, 0.3]"
+    restored = BasePlugin.from_json(command.to_json())
+    engine.add_plugin("restored_plot", restored)
+    errors = []
+    engine.error_output.connect(errors.append)
+    engine._namespace["plot_command"] = restored
+    with qtbot.waitSignal(engine.script_finished, timeout=5000):
+        engine.run_script("plot_command.execute()")
+    data = service.data_snapshot("Signal")
+    assert not errors
+    np.testing.assert_allclose(data.uncertainties["x"], [0.1, 0.1])
+    np.testing.assert_allclose(data.uncertainties["y"], [0.2, 0.3])
+    x_errors, y_errors = widget.trace_uncertainties("Signal")
+    np.testing.assert_allclose(x_errors, [0.1, 0.1])
+    np.testing.assert_allclose(y_errors, [0.2, 0.3])
+
+
+def test_invalid_advanced_trace_uncertainty_skips_plot_and_continues(routed, qtbot):
+    engine, _, widget = routed
+    command = trace_command(engine)
+    command.x_error_expr = "[0.1]"
+    engine._namespace["plot_command"] = command
+    ran_later = []
+    engine._namespace["ran_later"] = ran_later
+    with qtbot.waitSignal(engine.script_finished, timeout=5000):
+        engine.run_script("plot_command.execute()\nran_later.append(True)")
+    assert widget.trace_names == []
+    assert ran_later == [True]
+
+
 def test_worker_renderer_failure_is_reported(routed, qtbot, monkeypatch):
     engine, _, widget = routed
     command = trace_command(engine)
@@ -185,7 +218,10 @@ def test_saved_point_command_generated_actions_and_markers(routed, qtbot):
     engine, service, widget = routed
     configured = PlotPointsCommand()
     configured.x_key = "p:x"
-    configured.y_entries = [{"key": "p:y", "label": "Voltage", "colour": "red"}]
+    configured.x_error_key = "p:x_error"
+    configured.y_entries = [
+        {"key": "p:y", "error_key": "p:y_error", "label": "Voltage", "colour": "red"}
+    ]
     points = BasePlugin.from_json(configured.to_json())
     engine.add_plugin("plot_points", points)
     marker = AddPlotMarkerCommand()
@@ -198,15 +234,23 @@ def test_saved_point_command_generated_actions_and_markers(routed, qtbot):
         ("plot_clear", clear),
     ):
         engine.add_plugin(name, command)
-    engine._namespace["_values"] = {"p:x": "1.0", "p:y": "2.0"}
+    engine._namespace["_values"] = {
+        "p:x": "1.0",
+        "p:y": "2.0",
+        "p:x_error": "0.1",
+        "p:y_error": "0.2",
+    }
     observations, results = [], []
-    points.plot_point.connect(lambda *args: observations.append(args))
+    points.plot_point_with_errors.connect(lambda *args: observations.append(args))
     service.result_ready.connect(results.append)
     code = "\n".join(points.generate_action_code(0, [], lambda *args: []))
     with qtbot.waitSignal(engine.script_finished, timeout=5000):
         engine.run_script(code + "\n" + code + "\nadd_plot_marker()\nremove_plot_markers()")
     assert len(observations) == 2 and len(results) == 4
     np.testing.assert_array_equal(widget.y_data("Voltage"), [2, 2])
+    x_errors, y_errors = widget.trace_uncertainties("Voltage")
+    np.testing.assert_allclose(x_errors, [0.1, 0.1])
+    np.testing.assert_allclose(y_errors, [0.2, 0.2])
     assert all(result.status == ResultStatus.APPLIED for result in results)
     with qtbot.waitSignal(engine.script_finished, timeout=5000):
         engine.run_script("plot_clear()")

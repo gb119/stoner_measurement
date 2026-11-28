@@ -250,32 +250,14 @@ class CartesianPlotBridge:
         xs = update.data.channels[update.binding.x]
         ys = update.data.channels[update.binding.y]
         # Point append uses the widget's existing list buffers: no whole-series copy.
-        if update.mode == UpdateMode.APPEND and not update.data.uncertainties:
-            widget.append_points(name, xs, ys)
+        errors = update.data.uncertainties
+        xerr, yerr = errors.get(update.binding.x), errors.get(update.binding.y)
+        if update.mode == UpdateMode.APPEND:
+            if errors:
+                widget.append_points_with_errors(name, xs, ys, xerr, yerr)
+            else:
+                widget.append_points(name, xs, ys)
         else:
-            errors = update.data.uncertainties
-            xerr, yerr = errors.get(update.binding.x), errors.get(update.binding.y)
-            if update.mode == UpdateMode.APPEND:
-                # Error-bar append is less common; preserve prior uncertainties.
-                old_x, old_y = widget.x_data(name), widget.y_data(name)
-                old_errors = widget.trace_uncertainties(name)
-                xs, ys = np.concatenate((old_x, xs)), np.concatenate((old_y, ys))
-                xerr = np.concatenate(
-                    (
-                        old_errors[0] if old_errors[0] is not None else np.zeros(len(old_x)),
-                        xerr
-                        if xerr is not None
-                        else np.zeros(len(update.data.channels[update.binding.x])),
-                    )
-                )
-                yerr = np.concatenate(
-                    (
-                        old_errors[1] if old_errors[1] is not None else np.zeros(len(old_y)),
-                        yerr
-                        if yerr is not None
-                        else np.zeros(len(update.data.channels[update.binding.y])),
-                    )
-                )
             widget.set_trace_with_errors(name, xs, ys, xerr, yerr)
         widget.assign_trace_axes(name, x_axis, y_axis)
         if update.title is not None:

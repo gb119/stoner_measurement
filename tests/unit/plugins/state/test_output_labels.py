@@ -7,11 +7,11 @@ from stoner_measurement.plugins.base_plugin import BasePlugin
 from stoner_measurement.plugins.state.output_selection import OutputSelectionTable
 from stoner_measurement.plugins.state_scan import CounterPlugin
 from stoner_measurement.plugins.state_sweep import SweepTimePlugin
-from stoner_measurement.plugins.trace_catalog_ui import trace_channel_items
+from stoner_measurement.plugins.trace_catalog_ui import trace_channel_items, trace_channel_roles
 
 
 @pytest.mark.parametrize("plugin_class", [CounterPlugin, SweepTimePlugin])
-@pytest.mark.parametrize("role", ["y", "x", "e"])
+@pytest.mark.parametrize("role", ["x", "y", "z", "d", "e", "f", "p", "q", "r", "-"])
 def test_labels_match_schema_collection_and_catalogue(engine, plugin_class, role):
     plugin = plugin_class()
     plugin.instance_name = "axis"
@@ -22,25 +22,31 @@ def test_labels_match_schema_collection_and_catalogue(engine, plugin_class, role
     key = f"{source.instance_name}:Value"
     plugin.collect_data = True
     plugin.collect_outputs = [key]
-    plugin.collect_output_roles = {key: role}
+    plugin.collect_output_roles = {key: role} if role != "-" else {}
     plugin.collect_output_labels = {key: "Measured value"}
     plugin.collect_filter = "True"
     plugin.meas_flag = True
     engine.update_step_plugin_catalog([plugin, source])
     schema = plugin._configured_collected_trace()
     assert "Measured value" in schema.columns
-    assert schema.column_roles["Measured value"] == role
+    expected_role = role if role != "-" else "z"
+    assert schema.column_roles["Measured value"] == expected_role
+    items = trace_channel_items(plugin, engine.traces_catalog)
+    channel = next(expr for label, expr in items.items() if "Measured value" in label)
+    assert trace_channel_roles(plugin, engine.traces_catalog)[channel] == expected_role
     for value in [3.0, 5.0]:
         source.value = value
         plugin.collect()
     assert plugin.data.df["Measured value"].tolist() == [3.0, 5.0]
     assert plugin.data.columns == schema.columns
+    assert plugin.data.column_roles == schema.column_roles
     assert plugin.data.names == schema.names
     assert plugin.data.units == schema.units
-    items = trace_channel_items(plugin, engine.traces_catalog)
-    assert any("Measured value" in item for item in items)
-    restored = BasePlugin.from_json(plugin.to_json())
+    saved = plugin.to_json()
+    assert saved.get("collect_output_roles", {}) == plugin.collect_output_roles
+    restored = BasePlugin.from_json(saved)
     assert restored.collect_output_labels == plugin.collect_output_labels
+    assert restored.collect_output_roles == plugin.collect_output_roles
     legacy = plugin.to_json()
     legacy.pop("collect_output_labels")
     assert BasePlugin.from_json(legacy).collect_output_labels == {}
@@ -72,6 +78,12 @@ def test_label_editor_survives_refresh_and_selection(
         if page.findChild(OutputSelectionTable)
     )
     key = table.item(0, 1).text()
+    role_combo = table.cellWidget(0, 3)
+    assert {"z", "f", "p", "q", "r"} <= {
+        role_combo.itemText(index) for index in range(role_combo.count())
+    }
+    role_combo.setCurrentText("f")
+    assert plugin.to_json()["collect_output_roles"] == {key: "f"}
     editor = table.cellWidget(0, 2)
     assert isinstance(editor, QLineEdit)
     editor.setText("Custom reading")

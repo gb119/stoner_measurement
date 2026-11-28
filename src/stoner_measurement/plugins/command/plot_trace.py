@@ -16,6 +16,7 @@ Two operating modes are supported:
   the live engine namespace via
   :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval`, allowing
   data from different trace channels to be mixed on a single plot.
+  Optional X and Y uncertainty expressions supply symmetric error bars.
 """
 
 from __future__ import annotations
@@ -43,18 +44,19 @@ from stoner_measurement.core.trace_data import (
 )
 from stoner_measurement.plugins.command.base import CommandPlugin
 from stoner_measurement.plugins.command.plot_forms import (
-    PlotContextBinding as _PlotContextBinding,
-)
-from stoner_measurement.plugins.command.plot_forms import (
-    PlotFormPanel as _PlotFormPanel,
-)
-from stoner_measurement.plugins.command.plot_forms import (
+    FORM_NAMES,
     axis_names,
     execute_trace_form,
     initialise_forms,
     refresh_axis_combo,
     restore_forms,
     serialise_forms,
+)
+from stoner_measurement.plugins.command.plot_forms import (
+    PlotContextBinding as _PlotContextBinding,
+)
+from stoner_measurement.plugins.command.plot_forms import (
+    PlotFormPanel as _PlotFormPanel,
 )
 from stoner_measurement.plugins.trace_catalog_ui import (
     TraceChannelComboBox,
@@ -163,7 +165,7 @@ class PlotTraceCommand(CommandPlugin):
 
     For script-oriented use, :meth:`execute` emits either the
     :attr:`plot_trace` signal
-    (advanced mode) or the :attr:`plot_trace_with_errors` signal (simple mode)
+    (advanced mode without errors) or the :attr:`plot_trace_with_errors` signal
     with the resolved title string, x/y arrays, and optional error-bar arrays.
     The :attr:`~stoner_measurement.plugins.base_plugin.BasePlugin.sequence_engine`
     setter automatically wires these signals to the engine's
@@ -242,18 +244,23 @@ class PlotTraceCommand(CommandPlugin):
             Python expression (evaluated against the engine namespace) that
             produces the y-axis data array in advanced mode.  Defaults to
             ``""``.
+        x_error_expr, y_error_expr (str):
+            Optional advanced XY expressions for symmetric uncertainties in
+            the corresponding data units. Each can supply one value per
+            sample or a scalar applied to the whole channel.
         title_expr (str):
             Python expression evaluated via
             :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.eval` to
             obtain the plot trace title in advanced mode.  Defaults to
             ``"'plot'"``.
         plot_trace (pyqtSignal[str, object, object]):
-            Emitted by :meth:`execute` in **advanced mode** with
+            Emitted by :meth:`execute` in **advanced mode** without errors, with
             ``(title, x_array, y_array)``.  Automatically connected to
             :meth:`~stoner_measurement.ui.plot_widget.PlotWidget.set_trace`
             when the plugin is attached to an engine with a plot widget.
         plot_trace_with_errors (pyqtSignal[str, object, object, object, object]):
-            Emitted by :meth:`execute` in **simple mode** with
+            Emitted by :meth:`execute` in **simple mode** and in **advanced
+            mode** with configured uncertainties, with
             ``(title, x_array, y_array, x_err, y_err)`` where *x_err* and
             *y_err* may be ``None`` when no error columns are present.
             Automatically connected to
@@ -367,6 +374,8 @@ class PlotTraceCommand(CommandPlugin):
         self.column_key: str = ""
         self.transpose: bool = False
         self.advanced_mode: bool = False
+        self.x_error_expr: str = ""
+        self.y_error_expr: str = ""
         self.x_expr: str = ""
         self.y_expr: str = ""
         self.title_expr: str = "'plot'"
@@ -675,6 +684,12 @@ class PlotTraceCommand(CommandPlugin):
         if x_data is None or y_data is None or title_data is None:
             self.log.warning("PlotTrace: expression returned no data — skipping plot.")
             return
+        try:
+            x_error = self._xy_uncertainty(self.x_error_expr, x_data)
+            y_error = self._xy_uncertainty(self.y_error_expr, y_data)
+        except Exception as exc:
+            self.log.warning("PlotTrace: invalid uncertainty — skipping plot: %s", exc)
+            return
         title = str(title_data)
         if not self._wait_for_plot_ready(timeout=None):
             self.log.debug("PlotTrace: wait for plot readiness interrupted for %r.", title)
@@ -691,6 +706,8 @@ class PlotTraceCommand(CommandPlugin):
                     title,
                     x_data,
                     y_data,
+                    x_error=x_error,
+                    y_error=y_error,
                     x_label=x_label,
                     y_label=y_label,
                     x_axis=x_axis,
@@ -703,11 +720,11 @@ class PlotTraceCommand(CommandPlugin):
         )
         if not handled:
             self._queue_plot_update_request(self.plot_update_queued)
-        self.plot_trace.emit(
-            title,
-            np.asarray(x_data, dtype=float),
-            np.asarray(y_data, dtype=float),
-        )
+        xs, ys = np.asarray(x_data, dtype=float), np.asarray(y_data, dtype=float)
+        if x_error is None and y_error is None:
+            self.plot_trace.emit(title, xs, ys)
+        else:
+            self.plot_trace_with_errors.emit(title, xs, ys, x_error, y_error)
         self.plot_trace_axes.emit(title, x_axis, y_axis)
         if not handled:
             self._wait_for_plot_response_or_raise(title)
@@ -715,6 +732,26 @@ class PlotTraceCommand(CommandPlugin):
         if style:
             self.plot_trace_style.emit(title, style)
         self.log.debug("PlotTrace: emitted plot for %r (%d points)", title, len(x_data))
+
+    def _xy_uncertainty(self, expression: str, data) -> np.ndarray | None:
+        """Resolve an optional scalar or one uncertainty per coordinate value."""
+        if not expression:
+            return None
+        value = self.eval(expression)
+        if value is None:
+            raise ValueError(f"{expression!r} returned no data.")
+        shape = np.shape(data)
+        uncertainty = np.asarray(value, dtype=float)
+        if uncertainty.ndim == 0:
+            uncertainty = np.full(shape, uncertainty)
+        if (
+            uncertainty.ndim != 1
+            or uncertainty.shape != shape
+            or np.any(uncertainty < 0)
+            or np.any(np.isinf(uncertainty))
+        ):
+            raise ValueError(f"{expression!r} must supply matching nonnegative uncertainties.")
+        return uncertainty
 
     def _build_style_dict(self) -> dict:
         """Build a style dictionary from the current format attributes.
@@ -867,6 +904,7 @@ class PlotTraceCommand(CommandPlugin):
             "before sending data to the plot window.\nOnly applies in simple mode."
         )
         advanced_check = QCheckBox(widget)
+        advanced_check.setObjectName("plot_trace_advanced_mode")
         advanced_check.setChecked(self.advanced_mode)
         x_combo = self._build_channel_combo(
             widget,
@@ -954,6 +992,19 @@ class PlotTraceCommand(CommandPlugin):
 
         panel = _PlotFormPanel(self, widget, update_form)
         layout.insertRow(0, panel)
+        x_error_combo = panel.expression_combo(widget, "x_error_expr")
+        y_error_combo = panel.expression_combo(widget, "y_error_expr")
+        y_row, _ = layout.getWidgetPosition(y_combo)
+        layout.insertRow(y_row + 1, "X uncertainty:", x_error_combo)
+        layout.insertRow(y_row + 2, "Y uncertainty:", y_error_combo)
+
+        def update_uncertainty_controls(advanced):
+            visible = self.plot_form == "xy" and advanced
+            for combo in (x_error_combo, y_error_combo):
+                combo.setVisible(visible)
+                layout.labelForField(combo).setVisible(visible)
+
+        advanced_check.toggled.connect(update_uncertainty_controls)
 
         def refresh_axes():
             names = axis_names(self.sequence_engine)
@@ -1234,13 +1285,15 @@ class PlotTraceCommand(CommandPlugin):
     def to_json(self) -> dict[str, Any]:
         """Serialise the plot-trace command configuration to a JSON-compatible dict.
 
+        Only the selected plot form's settings are saved. Other forms start
+        with their default settings when the command is reloaded.
+
         Returns:
             (dict[str, Any]):
                 Base dict from :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
-                extended with ``"trace_key"``, ``"transpose"``, ``"advanced_mode"``,
-                ``"x_expr"``, ``"y_expr"``, ``"title_expr"``, and format fields
-                ``"colour"``, ``"line_style"``, ``"point_style"``,
-                ``"line_width"``, and ``"point_size"``.
+                extended with the selected form's configuration. The XY trace
+                selection and axis bindings are saved for XY, and the title
+                expression and style are shared by XY and surface forms.
 
         Examples:
             >>> from qtpy.QtWidgets import QApplication
@@ -1255,16 +1308,23 @@ class PlotTraceCommand(CommandPlugin):
             True
         """
         d = super().to_json()
-        d.update(serialise_forms(self))
-        d["trace_key"] = self.trace_key
-        d["column_key"] = self.column_key
-        d["transpose"] = self.transpose
-        d["advanced_mode"] = self.advanced_mode
-        d["x_expr"] = self.x_expr
-        d["y_expr"] = self.y_expr
+        d.update(serialise_forms(self, trace=True))
+        if self.plot_form == "polar":
+            return d
+        if self.plot_form == "xy" or self.plot_form not in FORM_NAMES:
+            d["trace_key"] = self.trace_key
+            d["column_key"] = self.column_key
+            d["transpose"] = self.transpose
+            d["advanced_mode"] = self.advanced_mode
+            d["x_expr"] = self.x_expr
+            d["y_expr"] = self.y_expr
+            if self.x_error_expr:
+                d["x_error_expr"] = self.x_error_expr
+            if self.y_error_expr:
+                d["y_error_expr"] = self.y_error_expr
+            d["x_axis_name"] = self.x_axis_name
+            d["y_axis_name"] = self.y_axis_name
         d["title_expr"] = self.title_expr
-        d["x_axis_name"] = self.x_axis_name
-        d["y_axis_name"] = self.y_axis_name
         d["colour"] = self.colour
         d["line_style"] = self.line_style
         d["point_style"] = self.point_style
@@ -1286,6 +1346,8 @@ class PlotTraceCommand(CommandPlugin):
         self.advanced_mode = data.get("advanced_mode", False)
         self.x_expr = data.get("x_expr", "")
         self.y_expr = data.get("y_expr", "")
+        self.x_error_expr = data.get("x_error_expr", "")
+        self.y_error_expr = data.get("y_error_expr", "")
         self.title_expr = data.get("title_expr", "'plot'")
         self.x_axis_name = data.get("x_axis_name", _DEFAULT_X_AXIS)
         self.y_axis_name = data.get("y_axis_name", _DEFAULT_Y_AXIS)

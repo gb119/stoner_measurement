@@ -4,6 +4,10 @@ from stoner_measurement.core.sequence_engine import SequenceEngine
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_D,
     COLUMN_ROLE_E,
+    COLUMN_ROLE_F,
+    COLUMN_ROLE_P,
+    COLUMN_ROLE_Q,
+    COLUMN_ROLE_R,
     COLUMN_ROLE_X,
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
@@ -14,6 +18,10 @@ from stoner_measurement.core.value_catalog import ValueCatalogEntry
 __all__ = [
     "COLUMN_ROLE_D",
     "COLUMN_ROLE_E",
+    "COLUMN_ROLE_F",
+    "COLUMN_ROLE_P",
+    "COLUMN_ROLE_Q",
+    "COLUMN_ROLE_R",
     "COLUMN_ROLE_X",
     "COLUMN_ROLE_Y",
     "COLUMN_ROLE_Z",

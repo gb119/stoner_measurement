@@ -35,6 +35,10 @@ from stoner_measurement.core.sequence_hooks import HookScope, sequence_hook_scop
 from stoner_measurement.core.trace_data import (
     COLUMN_ROLE_D,
     COLUMN_ROLE_E,
+    COLUMN_ROLE_F,
+    COLUMN_ROLE_P,
+    COLUMN_ROLE_Q,
+    COLUMN_ROLE_R,
     COLUMN_ROLE_X,
     COLUMN_ROLE_Y,
     COLUMN_ROLE_Z,
@@ -43,6 +47,19 @@ from stoner_measurement.core.trace_data import (
 from stoner_measurement.plugins.base_plugin import BasePlugin, _ABCQObjectMeta, lifecycle_noop
 from stoner_measurement.plugins.sequence.base import SequencePlugin
 from stoner_measurement.qt_compat import pyqtSignal
+
+DEFAULT_OUTPUT_ROLE = "-"
+_DATA_OUTPUT_ROLES = (
+    COLUMN_ROLE_D,
+    COLUMN_ROLE_Y,
+    COLUMN_ROLE_E,
+    COLUMN_ROLE_Z,
+    COLUMN_ROLE_F,
+    COLUMN_ROLE_P,
+    COLUMN_ROLE_Q,
+    COLUMN_ROLE_R,
+)
+COLLECT_OUTPUT_ROLES = (COLUMN_ROLE_X, *_DATA_OUTPUT_ROLES)
 
 
 class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
@@ -81,9 +98,10 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
             ``"True"``.
         collect_output_roles (dict[str, str]):
             Per-output role choices from the configuration table. ``"x"``
-            promotes a measured readback to the trace x axis; ``"d"``,
-            ``"y"``, and ``"e"`` set data-column roles; ``"-"`` leaves the
-            role unspecified for the normal fallback heuristics.
+            promotes a measured readback to the trace x axis. Other choices
+            describe Y or Z data, x/y/z uncertainty, or phi, theta and radius.
+            The default ``"-"`` keeps the output as an auxiliary column and
+            is omitted from JSON.
         collect_output_labels (dict[str, str]):
             Optional dataframe headers keyed by catalogue output name. Edit
             these in the Data tab's Label column; blank labels use the output
@@ -498,15 +516,11 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         roles = {"x": COLUMN_ROLE_X, "iteration": COLUMN_ROLE_Z, "stage": COLUMN_ROLE_Z}
         if "state" in frame.columns:
             roles["state"] = COLUMN_ROLE_Z
-        role_constants = {"d": COLUMN_ROLE_D, "y": COLUMN_ROLE_Y, "e": COLUMN_ROLE_E}
         for column in output_columns:
-            configured_role = self.collect_output_roles.get(column)
-            if configured_role in role_constants:
-                roles[column] = role_constants[configured_role]
-            elif configured_role == "-":
-                roles[column] = COLUMN_ROLE_Z
-            else:
-                roles[column] = COLUMN_ROLE_Y
+            configured_role = self.collect_output_roles.get(column, DEFAULT_OUTPUT_ROLE)
+            roles[column] = (
+                configured_role if configured_role in _DATA_OUTPUT_ROLES else COLUMN_ROLE_Z
+            )
         names = {
             "x": explicit_x or self.state_name,
             "iteration": "Iteration",
@@ -574,8 +588,9 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
 
         Extends the base :meth:`~stoner_measurement.plugins.base_plugin.BasePlugin.to_json`
         dict with ``collect_data``, ``clear_on_start``, ``collect_filter``, and
-        ``clear_filter``.  Subclasses call ``super().to_json()`` and add their
-        own generator-specific keys.
+        ``clear_filter``. Only output roles that differ from the default
+        ``"-"`` are written. Subclasses call ``super().to_json()`` and add
+        their own generator-specific keys.
 
         Returns:
             (dict[str, Any]):
@@ -600,7 +615,13 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
         data["collect_outputs"] = (
             None if self.collect_outputs is None else list(self.collect_outputs)
         )
-        data["collect_output_roles"] = dict(self.collect_output_roles)
+        roles = {
+            key: role
+            for key, role in self.collect_output_roles.items()
+            if role != DEFAULT_OUTPUT_ROLE
+        }
+        if roles:
+            data["collect_output_roles"] = roles
         data["collect_output_labels"] = dict(self.collect_output_labels)
         return data
 
@@ -642,9 +663,10 @@ class StatePlugin(QObject, SequencePlugin, metaclass=_ABCQObjectMeta):
                 self.collect_outputs = None
         raw_roles = data.get("collect_output_roles", {})
         if isinstance(raw_roles, dict):
-            valid_roles = {"-", "x", "d", "y", "e"}
             roles = {
-                str(key): str(role) for key, role in raw_roles.items() if str(role) in valid_roles
+                str(key): str(role)
+                for key, role in raw_roles.items()
+                if str(role) in COLLECT_OUTPUT_ROLES
             }
             x_keys = [key for key, role in roles.items() if role == "x"]
             for key in x_keys[1:]:
