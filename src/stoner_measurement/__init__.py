@@ -40,7 +40,7 @@ from stoner_measurement.temperature_control import (
     TemperaturePublisher,
 )
 
-__version__ = "0.10.0b2"
+__version__ = "0.10.0b3"
 __author__ = "Gavin Burnell"
 
 __all__ = [

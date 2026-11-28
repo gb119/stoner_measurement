@@ -1,4 +1,4 @@
-{% set version = "0.10.0b2" %}
+{% set version = "0.10.0b3" %}
 {% set python_min = "3.13" %}
 
 package:

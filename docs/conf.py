@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent / "_ext"))
 project = "Stoner Measurement"
 copyright = "2024, Gavin Burnell"  # pylint: disable=redefined-builtin
 author = "Gavin Burnell"
-release = "0.10.0b2"
+release = "0.10.0b3"
 
 # -- General configuration ----------------------------------------------------
 
