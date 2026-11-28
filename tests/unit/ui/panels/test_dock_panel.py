@@ -507,7 +507,9 @@ class TestDockPanel:
 
         assert step_plugin.instance_name == name_before
 
-    def test_name_edit_reverts_in_general_config_widget(self, qapp, monkeypatch):
+    def test_name_edit_reverts_in_general_config_widget(
+        self, monkeypatch, managed_qt_widget, managed_plugin_config_tabs
+    ):
         """The config-tab QLineEdit reflects the reverted name after a collision.
 
         :meth:`CommandPlugin.config_tabs` returns a single tab containing the
@@ -518,7 +520,7 @@ class TestDockPanel:
 
         pm = PluginManager()
         pm.register("PlotTrace", PlotTraceCommand())
-        panel = DockPanel(plugin_manager=pm)
+        panel = managed_qt_widget(DockPanel(plugin_manager=pm))
 
         # Add two PlotTraceCommand steps.
         panel._plugin_list.select_plugin("PlotTrace")
@@ -536,7 +538,7 @@ class TestDockPanel:
         )
 
         # Build the config widget so _sync_name_edit is wired up.
-        tabs = steps[0].config_tabs()
+        tabs = managed_plugin_config_tabs(steps[0])
         # Command plugins now have a single combined tab.
         combined_widget = tabs[0][1]
         name_edit = combined_widget.findChild(QLineEdit)
@@ -939,11 +941,13 @@ class TestDockPanel:
 
         assert panel._unique_step_name("list") == "list_2"
 
-    def test_config_tab_isolation_between_multiple_instances(self, qapp):
+    def test_config_tab_isolation_between_multiple_instances(
+        self, managed_qt_widget, managed_plugin_config_tabs
+    ):
         """Config tabs for two steps of the same type are independent widgets."""
         pm = PluginManager()
         pm.register("Dummy", DummyPlugin())
-        panel = DockPanel(plugin_manager=pm)
+        panel = managed_qt_widget(DockPanel(plugin_manager=pm))
 
         panel._plugin_list.select_plugin("Dummy")
         panel._add_step()
@@ -951,9 +955,8 @@ class TestDockPanel:
         panel._add_step()
 
         steps = panel.sequence_steps
-        # Each step's config_tabs() returns distinct widget objects.
-        tabs0 = steps[0].config_tabs()
-        tabs1 = steps[1].config_tabs()
+        tabs0 = managed_plugin_config_tabs(steps[0])
+        tabs1 = managed_plugin_config_tabs(steps[1])
         assert tabs0[0][1] is not tabs1[0][1]
 
     # --- Plugin-list drag-and-drop tests ---
