@@ -84,10 +84,9 @@ operation.
 Use controllers in a measurement
 --------------------------------
 
-Use a set command for a target, a scan to run measurements after discrete
-points, a sweep to collect while state changes, or a monitor for scalar
-readback. The specific controller pages list the available steps and any
-stability or movement conditions.
+Find the steps for your subsystem under
+:doc:`Rig Control in Sequence commands </_generated/sequence_commands/group-rig-control>`.
+Use :doc:`sequence_execution` for the order of child actions and collection.
 
 Recording controller charts
 ---------------------------

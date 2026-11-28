@@ -46,11 +46,9 @@ The panel's live chart is separate from saved sequence results.
 Sequences and results
 ---------------------
 
-**Pressure Monitor**, **Set Flow** and **Gauge Channel** steps borrow the shared
-pressure service. Their output and channel selectors determine which readings
-participate in a measurement. Use Plot Points for current scalar values, or
-enable scan/sweep data collection to retain them in a result table. Save then
-writes that table; see :doc:`data_workflows`.
+See :doc:`Vacuum System commands </_generated/sequence_commands/group-vacuum-system>`
+for monitoring pressure and controlling gauge channels and flow during a
+measurement.
 
 Python access and extension contracts are covered by :doc:`console_api`,
 :doc:`api/core` and :doc:`third_party_plugins`.

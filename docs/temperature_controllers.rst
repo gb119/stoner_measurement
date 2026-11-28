@@ -161,19 +161,9 @@ selected data clears the trace and displays ``Unavailable``.
 Sequences and console use
 -------------------------
 
-Set Temperature, Temperature Controller Scan and Temperature Controller Sweep
-use a controller-labelled loop selector. Saved selections remain visible as
-unavailable while disconnected. A missing secondary target never selects primary
-instead. Scan/sweep limits come from the chosen controller.
-
-Sensor and monitor-loop lists have catalogue pickers. Editable lists accept
-``A, secondary:A`` for sensors and ``1, secondary:1`` for loops. Unqualified
-entries mean primary. An empty sensor list includes all available sensors.
-The monitor leaves the shared controller connections running when it stops.
-
-For controller-qualified Python calls and state inspection, see
-:ref:`temperature-console`. Legacy unqualified loop numbers and sensor names
-continue to mean primary; use qualified references for the secondary device.
+See :doc:`Temperature Control commands </_generated/sequence_commands/group-temperature-control>`
+for target, scan, sweep and monitor settings. For controller-qualified Python
+calls and state inspection, see :ref:`temperature-console`.
 
 Make Safe attempts output shutdown on every advertised loop of both connected
 controllers, including after a failure on the first. Stopping the temperature

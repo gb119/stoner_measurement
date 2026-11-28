@@ -72,6 +72,10 @@ the 2-theta detector arm clockwise, with the detector moving through twice the
 angle. The live synoptic displays the measured sample, detector and reflected
 ray geometry after every snapshot.
 
+Counterclockwise moves overshoot by the configured backlash on each moving
+axis and finish with a clockwise approach. The simulator also shows this
+temporary excursion.
+
 .. figure:: _static/screenshots/controller-xray.png
    :alt: Dark X-ray Control page with axis selection, motion controls, detector counting and the live geometry synoptic using the simulator.
    :width: 100%
@@ -102,31 +106,8 @@ minute takes one minute while the live position and synoptic update.
 Sequence plugins
 ----------------
 
-The **X-ray Diffractometer Scan** state plugin defaults to the multi-stage
-stepped generator and supplies the standard generator and data-collection
-settings plus an **Axes** choice:
-
-* **Theta/omega scan** moves theta and holds 2-theta at its present position;
-* **Theta-2theta coupled** moves both axes with the configured datum offset;
-* **Detector/2theta scan** moves only the detector arm.
-
-The scan uses the engine's configured motion speed and reconnects the saved
-instrument when necessary. At every point whose measurement flag is enabled,
-it completes the move first and then acquires detector counts. The **Count
-time** control accepts either a number or a runtime expression evaluated at
-each point, for example ``0.5 + abs(xray_scan.value) / 20``. This permits
-longer integrations at higher angles. While the scan runs, the evaluated time
-is shared with the engine and control panel; the pre-scan value is restored on
-normal completion or failure.
-
-Counterclockwise moves automatically overshoot by the configured backlash for
-each moving axis and finish with a clockwise approach. The simulator exposes
-the same temporary excursion.
-
-The **Set Diffractometer** command provides the same axis selection and an
-expression-capable angle control. It publishes the final theta, 2-theta,
-counts, and at-target state. The standalone **Read Diffractometer** command
-performs an active acquisition using the engine/control-panel count time and
-exposes the resulting detector counts as ``instance.value``. All three plugins
-declare the ``xray`` feature and are hidden when the X-ray diffractometer is
-disabled in Preferences.
+See :doc:`Diffractometer Control commands </_generated/sequence_commands/group-diffractometer-control>`
+for scan, set and read steps. For example, in a scan named ``xray_scan``, the
+count-time expression ``0.5 + abs(xray_scan.value) / 20`` lengthens integrations
+at higher angles. The control panel shows the active count time during the
+scan. Enable the X-ray feature in Preferences to show its steps in the tree.

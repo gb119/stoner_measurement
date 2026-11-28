@@ -78,6 +78,9 @@ as the documentation deployment workflow does. API detail pages under
 ``docs/_generated/api/`` are regenerated from the authored catalogues and
 templates; edit the catalogue, template or owning docstring instead of those
 generated files. Inspect the generated HTML, downloads and image links.
+The :doc:`sequence_commands` pages follow the bundled ``plugin_catalogue.yaml``
+and the registered sequence-plugin entry points. Update a plugin's class
+docstring to change its description in the reference.
 Validate executable examples, including generated actions and persistence,
 rather than only syntax-highlighting their source.
 

@@ -2,9 +2,9 @@ Sequence execution reference
 =============================
 
 This page is for users arranging and debugging measurement sequences. Begin
-with :doc:`usage` for adding/configuring steps and :doc:`data_workflows` for
-acquisition, fitting and saving. Plugin implementers should instead follow
-:doc:`third_party_plugins` for lifecycle and generation contracts.
+with :doc:`usage` for adding steps and :doc:`data_workflows` for acquisition,
+fitting and saving. See :doc:`sequence_commands` for individual step settings
+and :doc:`third_party_plugins` for lifecycle and generation contracts.
 
 The execution model
 --------------------
@@ -40,30 +40,19 @@ alone does not acquire its unselected parent's setup or loop context. See
 Reconnecting and applying settings at a chosen step
 ---------------------------------------------------
 
-Use **Reconfigure** when selected instances need their connection/configuration
-applied at a particular point rather than only at sequence startup. Its flat
-checklist identifies sequence instances, not plugin types. Each execution
-reconnects the selected instances and applies their settings in sequence order.
-
-**Suppress connect and configure at startup** defaults to on. Keep it enabled
-when those instances must wait for this command before becoming ready. Turn it
-off when normal startup setup should still occur and the command should apply
-settings again later. A target's deferred state is derived from enabled
-Reconfigure selections; it has no independent editor or saved flag.
-
-For two configured instances using the same instrument at different points::
+Use :doc:`Reconfigure </_generated/sequence_commands/plugin-reconfigure>` to
+apply different settings to the same instrument at different points in the
+sequence::
 
     Reconfigure (select measurement_a)
     measurement_a
     Reconfigure (select measurement_b)
     measurement_b
 
-Leave suppression enabled on both commands. Put another Reconfigure before
-returning to ``measurement_a`` so its settings are applied again. Reconfigure
-inside a loop reconnects and configures on every iteration. Runtime readiness
-checks still apply inside branches and loops; arranging a command elsewhere
-in the tree does not make an instance ready unless that command executes.
-Disabled targets are skipped, and removed/unresolved targets raise an error.
+Leave startup suppression enabled on both commands. Put another Reconfigure
+before returning to ``measurement_a`` so its settings are applied again.
+In a conditional sequence, make sure every path that uses an instance reaches
+its setup step first.
 
 Shared controller sessions remain owned by their controller services. A
 Reconfigure selection is not a mechanism for another instance to close a
@@ -73,16 +62,12 @@ connection settings.
 Collecting and saving inside loops
 -----------------------------------
 
-State scans and sweeps collect a row after their child actions. **Break If**
-and **Continue If** finish the current point using the normal collection
-rules and then change the loop flow. Use **Skip Collection** inside an **If**
-to clear the current point's measurement flag. The next point gets its own
-flag from the generator.
-
-An incremental Save child selecting an enclosing collection table writes
-after the innermost loop's point finishes collecting. An **If** around Save
-controls when the unsaved rows are written. See :doc:`data_workflows` for the
-worked example and the behaviour when saving several traces.
+At the end of a scan or sweep point, collection runs before deferred actions.
+This still happens when Break If or Continue If skips the rest of the point.
+Place :doc:`Skip Collection </_generated/sequence_commands/plugin-skip_collection>`
+before either step if the current point should be excluded. An **If** around
+:doc:`Save </_generated/sequence_commands/plugin-save>` controls when accumulated
+rows are written. See :doc:`data_workflows` for a worked example.
 
 Sequence files, scripts and result provenance
 ---------------------------------------------

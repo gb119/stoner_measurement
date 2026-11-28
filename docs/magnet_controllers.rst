@@ -40,12 +40,9 @@ when you intend to end the session.
 Sequences and results
 ---------------------
 
-**Set Field**, **Magnet Controller Scan**, **Magnet Controller Sweep** and
-**Magnetic Field Monitor** borrow the same controller service. Use a scan to
-measure after discrete targets; use a sweep to sample while the field changes.
-Configure the step's data collection and plotting as shown in
-:doc:`data_workflows`. The panel's chart does not itself create a saved
-measurement table.
+See :doc:`Magnet Control commands </_generated/sequence_commands/group-magnet-control>`
+for setting targets, measuring field steps and sweeps, and collecting readbacks.
+To record the panel's chart as a trace, see :doc:`rig_controls`.
 
 For scripted control, use the shared controller service described in
 :doc:`console_api` and its signatures in :doc:`api/core`. Plugin authors must

@@ -19,20 +19,13 @@ Bundled polar display
 ---------------------
 
 Choose **View → Plot display → Polar traces**, then select
-**Polar (angle, radius)** in Plot Trace or Plot Points. **Angle data** is the
-first, independent input; **Radius data** is the second, dependent input.
-For angular measurements select motor position as angle and the measured
-response as radius. Catalogue selections store their runtime expressions.
-Plot Trace replaces a complete pair of arrays; Plot Points appends one pair
-of scalars per execution. Use separate plotting steps for multiple responses.
-Each step starts with its own persistent series ID: use the same angle source
-and a different radius source in each step to overlay datasets. Give each a
-distinct title and colour to identify them. Reusing a series ID appends to the
-same series for Plot Points or replaces it for Plot Trace.
-
-The polar input scroll area expands with the configuration panel. Controls
-remain packed at the top; colour, line/point styles and sizes are below the
-angle conventions and become visible as more height is available.
+**Polar (angle, radius)** in
+:doc:`Plot Trace </_generated/sequence_commands/plugin-plot_trace>` or
+:doc:`Plot Points </_generated/sequence_commands/plugin-plot_points>`.
+For angular measurements, select motor position as the angle and the measured
+response as the radius. To overlay responses, use a plotting step for each
+response with the same angle source and a distinct title and colour.
+Style controls sit below the angle conventions in the configuration panel.
 
 Source angles default to **degrees**, with **radians** selectable. Zero is at
 the **top** and positive angles run **clockwise**: 90 degrees is right, 180 is
@@ -128,28 +121,18 @@ grids. Coordinate/value uncertainties, markers and nonlinear axes are rejected
 explicitly. Intensity does not accept portable curve styles; the host retains
 them during compatible idle replay.
 
-Plot Trace and Plot Points configuration pages query the active factory's
-capabilities. Selecting XYZ enables XYZ and XYZ + value forms; selecting intensity
-enables XY intensity. Existing cached pages update immediately on replacement.
-Saved forms which the new display cannot accept remain visibly unsupported
-until another form is selected; their expressions are preserved.
+The plotting forms offered in an open configuration page update when you
+switch displays. Cartesian XYZ offers **XYZ** and **XYZ + value**, and the
+intensity display offers **XY intensity**.
 
 Preparing surface slices
 -------------------------
 
-For Plot Trace surface forms, provide X/Z arrays and the scalar fixed Y for
-one slice. **Surface X grid** sorts X and averages repeated coordinates by
-default, including floating-point round-off repeats. First/last-sample choices
-retain the corresponding acquired sample; strict mode requires unique X and
-the same grid in every slice. Averaging repeated X can merge sweep branches,
-including hysteresis, so choose the preparation that matches your experiment.
-
-Later slices are interpolated onto the first slice's X grid. **Outside X
-range** can hold the nearest boundary value or leave NaN gaps; internal gaps
-remain missing. These choices affect plotted samples only, not acquired trace
-tables. Repeated-slice replacement is a separate setting from repeated X
-within a slice. Give each measured surface a stable ID and use a new acquisition
-ID or explicit clear for a new run.
+In :doc:`Plot Trace </_generated/sequence_commands/plugin-plot_trace>` surface
+forms, averaging repeated X coordinates can merge sweep branches, including
+hysteresis. The averaging policy also groups coordinates that differ only by
+floating-point round-off. The grid and interpolation affect only the rendered
+surface. The source trace keeps its original X coordinates and values.
 
 For script access to display selection and preferences, see :doc:`console_api`.
 The coordinate and request records are defined in :doc:`plotting_contracts`.

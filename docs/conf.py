@@ -32,6 +32,7 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "qt_signals",
+    "sequence_commands",
 ]
 
 autosummary_generate = True

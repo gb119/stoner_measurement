@@ -217,3 +217,4 @@ notes/sources/*
 
 # Sphinx autosummary output is regenerated from the authored API catalogue.
 docs/_generated/api/
+docs/_generated/sequence_commands/

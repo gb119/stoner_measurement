@@ -39,10 +39,7 @@ rig before using a new hardware configuration.
 Sequences and results
 ---------------------
 
-**Set Position**, **Motor Controller Scan**, **Motor Controller Sweep** and
-**Motor Angle Monitor** share the same controller session. A scan runs its
-measurement sub-sequence at discrete positions; a sweep collects while the
-state changes. The simulator supports motion-profile checks without a stage.
-
-Use :doc:`data_workflows` to collect, plot and save the selected scalar outputs.
-For direct Python control see :doc:`console_api` and :doc:`api/core`.
+See :doc:`Motor Control commands </_generated/sequence_commands/group-motor-control>`
+for position changes, scans, sweeps and angle readbacks. Use the simulator for
+motion-profile checks without a stage. For direct Python control see
+:doc:`console_api` and :doc:`api/core`.

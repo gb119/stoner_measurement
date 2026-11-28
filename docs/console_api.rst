@@ -144,15 +144,7 @@ settings. Legacy integer-keyed state dictionaries and ``state.readings`` remain
 primary views; ``state.secondary`` contains the secondary snapshot.
 ``cache_ages`` and ``controller_statuses`` distinguish freshness and status.
 
-For a Set Temperature step and a temperature-monitor instance:
-
-.. code-block:: python
-
-   set_temperature.controller_id = 'secondary'
-   set_temperature.control_loop = 1
-   set_temperature.setpoint_expr = '275'
-   temperature_monitor.temperature({'controller_id': 'secondary', 'channel': 'A'})
-
-Use the actual step names and refresh their UI after edits. Do not close the
-shared service as cleanup for a plugin that merely borrows it. The connection,
-stability and migration controls are covered in :doc:`temperature_controllers`.
+For step attributes and console examples, see the
+:doc:`Temperature Control commands </_generated/sequence_commands/group-temperature-control>`.
+For connection, stability and migration controls, see
+:doc:`temperature_controllers`.

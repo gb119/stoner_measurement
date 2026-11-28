@@ -35,6 +35,7 @@ composition and discovery are introduced in :doc:`api/instruments`.
    :caption: Measurement reference
 
    sequence_execution
+   sequence_commands
    console_api
    trace_data
    plot_displays

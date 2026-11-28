@@ -14,16 +14,31 @@ from __future__ import annotations
 import importlib.resources
 import logging
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import platformdirs
 import yaml
+
+if TYPE_CHECKING:
+    from stoner_measurement.plugins.base_plugin import BasePlugin
 
 logger = logging.getLogger(__name__)
 
 _BUNDLED_CONFIG_PACKAGE = "stoner_measurement.conf"
 _DEFAULT_SEQUENCE_TEMPLATE_NAME = "sequence_template.json"
+
+_PLUGIN_TYPE_CATEGORIES = {
+    "trace": "Trace",
+    "state_control": "State Control",
+    "state_scan": "State Scan",
+    "state_sweep": "State Sweep",
+    "monitor": "Monitor",
+    "transform": "Transform",
+    "command": "Command",
+    "sequence": "Sequence",
+}
 
 
 def user_config_root() -> Path:
@@ -298,6 +313,42 @@ def load_plugin_catalogue_config() -> dict[str, Any]:
     return normalise_plugin_catalogue_config(
         load_user_or_bundled_yaml("plugin_catalogue.yaml")
     )
+
+
+def resolve_plugin_catalogue(
+    config: dict[str, Any], plugins: Mapping[str, BasePlugin]
+) -> list[dict[str, Any]]:
+    """Resolve labels, available entries and fallback groups for a catalogue.
+
+    Args:
+        config (dict): Normalised catalogue configuration.
+        plugins (Mapping[str, BasePlugin]): Available plugins keyed by entry point.
+
+    Returns:
+        (list[dict]): Ordered group and plugin nodes with display labels.
+    """
+    remaining = dict(plugins)
+
+    def resolve_items(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        resolved = []
+        for item in items:
+            if "plugin" in item:
+                key = item["plugin"]
+                if (plugin := remaining.pop(key, None)) is not None:
+                    resolved.append({"plugin": key, "label": item.get("label", plugin.name)})
+            elif children := resolve_items(item["items"]):
+                resolved.append({"group": item["group"], "items": children})
+        return resolved
+
+    resolved = resolve_items(config["items"])
+    by_type: dict[str, list[dict[str, str]]] = {}
+    for key, plugin in sorted(remaining.items()):
+        by_type.setdefault(plugin.plugin_type, []).append({"plugin": key, "label": plugin.name})
+    for kind in (*_PLUGIN_TYPE_CATEGORIES, *sorted(by_type.keys() - _PLUGIN_TYPE_CATEGORIES.keys())):
+        if entries := by_type.get(kind):
+            label = _PLUGIN_TYPE_CATEGORIES.get(kind, kind.capitalize())
+            resolved.append({"group": label, "items": entries})
+    return resolved
 
 
 def save_plugin_catalogue_config(config: dict[str, Any]) -> Path:

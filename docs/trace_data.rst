@@ -121,10 +121,9 @@ value retained in an auxiliary ``state`` column. ``iteration`` and ``stage``
 are auxiliary bookkeeping columns. Selected outputs retain their configured
 data/uncertainty roles; an included ``-`` role is stored as auxiliary data.
 
-Automatic collection follows the point's child actions. Plotting or saving a
-collected table inside those actions sees previously completed rows. For the
-UI controls, incremental-save ordering and final-row handling, see
-:doc:`data_workflows`.
+Automatic collection follows the point's child actions. See
+:doc:`sequence_execution` for how the loop coordinates collection and
+incremental Save, and :doc:`data_workflows` for a worked example.
 
 Acquisition data and display data
 ----------------------------------

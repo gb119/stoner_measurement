@@ -9,10 +9,9 @@ Return to :doc:`keithley_meters` for the measurement choices.
 6221/2182A buffered I-V
 -----------------------
 
-The ordinary :doc:`keithley_6221_2182a` trace programs a 6221 current list.
-After settling at each point, the source triggers the primary 2182A; its
-meter-complete response permits the next source step. Both buffered meter
-readings and source progression must complete before the trace is returned.
+After settling at each point of the :doc:`keithley_6221_2182a` trace, the
+source triggers the primary 2182A. The meter's completion signal permits the
+next source step.
 
 The primary settings expose the two Trigger Link lines:
 
@@ -76,18 +75,16 @@ a dedicated SMU/meter Trigger Link handshake. The SMU's output line triggers
 the meter and the meter's completion returns on the configured input line.
 This acquisition chooses its own compatible counts and arm behaviour rather
 than combining arbitrary manual trigger overrides. Meter integration and
-filtering must fit the intended cadence. See :doc:`keithley_2400` for settings
-and result columns.
+filtering must fit the intended cadence. See :doc:`keithley_2400` for the
+configuration screenshots.
 
 6221 with lock-ins
 ------------------
 
 The :doc:`keithley_lockin` trace uses a 6221 sine-wave phase marker on its
-selected Trigger Link line as the external reference for the lock-ins. This
-is an AC phase/frequency reference, rather than a buffered point-complete
-handshake. The plugin changes the chosen source parameter, allows the
-configured time-constant/cooldown settling and reads the selected outputs.
-Choose the harmonic, phase and input configuration for each lock-in.
+selected Trigger Link line as the external phase and frequency reference for
+the lock-ins. Buffered IV traces use their trigger line to signal completion
+of each meter conversion.
 
 Native Pulse Delta
 ------------------
@@ -97,25 +94,16 @@ Native Pulse Delta
 Both serial ports use 19.2 kbaud without flow control; the PC talks to the
 6221 over GPIB. The source manages the pulse/meter handshake and integration.
 
-The ordinary I-V trace's arbitrary secondary-meter routing does not apply to
-native Pulse Delta. That plugin supports no auxiliary meter. Its live timing
-diagram shows nominal pulse and baseline timing, with a 50/60 Hz preview
-assumption; it does not change the instrument's mains configuration or verify
-physical cable timing.
+Use the ordinary I-V trace if you need to trigger an auxiliary meter as part
+of the acquisition.
 
 Held-DC point scans and set commands
 ------------------------------------
 
-The 6221 point scan and Set 6221/2182 command directly set a DC level, wait for
-settling, then read any enabled meters sequentially. They do not emit output
-triggers or invoke LIST/Pulse Delta merely to obtain a pulse. Current remains
-held while nested or later steps execute, until it is changed or cleanup
-disables the source. The primary and secondary meter sessions are optional.
-
-The 2400 point scan and Set 2400 retain their instrument trigger-model
-options, including Trigger Link output. They apply one source level at a
-time, rather than programming a buffered source sweep. See
-:doc:`keithley_point_commands` for per-point outputs and lifecycle behaviour.
+For held DC, the 6221 point and set steps run without Trigger Link wiring.
+The 2400 point and set steps can use the instrument's trigger routing,
+including Trigger Link output. See :doc:`keithley_point_commands` for setup
+examples.
 
 For any physical rig, check the cable routing, signal compatibility,
 integration/filter settings and source limits against the selected

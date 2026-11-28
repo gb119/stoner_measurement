@@ -3,8 +3,9 @@ Plugin modules
 
 The API catalogue uses each object's defining module. Package-level imports
 refer to the same classes; each class is documented once here, including its
-configuration, outputs, attributes and methods. For the operational guides,
-start with :doc:`../rig_controls`, :doc:`../keithley_meters` or
+configuration, outputs, attributes and methods. To find a step by its name
+and group in the application, use :doc:`../sequence_commands`. For worked
+examples, see :doc:`../rig_controls`, :doc:`../keithley_meters` and
 :doc:`../data_workflows`.
 
 The implementation contracts are in :doc:`../third_party_plugins` and
